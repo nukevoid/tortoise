@@ -57,7 +57,7 @@ mark done tasks like - [X]
 - [X] Add weather
 - [X] fliped mechanic to hard at the end. Start is easy but final flip is always missing
 - [X] Balanse gameplay 
-- [ ] Change had indication: heath - hearts, stamina - leafs. Change all code than use it
+- [X] Change had indication: heath - hearts, stamina - leafs. Change all code than use it
 - [ ] Add more mobs variation 
 - [ ] Do mobs that in same time wont be Heron and Glass, or other 
 - [ ] increase quality of water, place more water regions

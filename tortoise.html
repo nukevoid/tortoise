@@ -41,13 +41,25 @@
     box-shadow:0 0 10px #e8a13a,0 0 22px rgba(232,161,58,.55);border-color:#ffe08a}
 
   #bars{position:absolute;left:18px;bottom:18px;padding:12px 14px;width:214px}
-  .bar{height:9px;border-radius:5px;background:rgba(0,0,0,.45);overflow:hidden;
-    border:1px solid rgba(255,255,255,.12)}
-  .bar>i{display:block;height:100%;width:100%;border-radius:4px;transition:width .12s linear}
+  /* Health and stamina are counted in things, not in percentages: five
+     hearts and five leaves. Each pip is the silhouette punched out of a
+     dim plate, with a brighter plate inside it whose width is the fill --
+     so a pip can be half a heart rather than only on or off. */
+  .pips{display:flex;gap:4px;align-items:center}
+  .pip{position:relative;display:block;width:18px;height:17px;
+       background:rgba(255,255,255,.13);
+       -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
+       -webkit-mask-size:contain;mask-size:contain;
+       -webkit-mask-position:center;mask-position:center}
+  .pip>i{display:block;height:100%;width:100%;transition:width .12s linear}
+  .pip.heart{-webkit-mask-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 21s-7.4-4.6-9.6-9.1C.6 8.4 2.4 5 5.8 5c2 0 3.5 1.1 4.2 2.2C10.7 6.1 12.2 5 14.2 5c3.4 0 5.2 3.4 3.4 6.9C19.4 16.4 12 21 12 21z"/></svg>');
+             mask-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 21s-7.4-4.6-9.6-9.1C.6 8.4 2.4 5 5.8 5c2 0 3.5 1.1 4.2 2.2C10.7 6.1 12.2 5 14.2 5c3.4 0 5.2 3.4 3.4 6.9C19.4 16.4 12 21 12 21z"/></svg>')}
+  .pip.leaf{-webkit-mask-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 3C10 4 3 10 3 19c0 1 0 2 .2 2C4 14 9 9 17 7c-5 3-8 7-9 13 9 0 13-7 13-17z"/></svg>');
+            mask-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 3C10 4 3 10 3 19c0 1 0 2 .2 2C4 14 9 9 17 7c-5 3-8 7-9 13 9 0 13-7 13-17z"/></svg>')}
+  .pip.heart>i{background:linear-gradient(90deg,#c0392b,#e8735c)}
+  .pip.leaf>i{background:linear-gradient(90deg,#4f7d2a,#a6d564)}
   .lab{font-size:10px;letter-spacing:.16em;text-transform:uppercase;opacity:.75;margin:0 0 4px}
   .lab:nth-of-type(2){margin-top:10px}
-  #hp>i{background:linear-gradient(90deg,#c0392b,#e8735c)}
-  #sp>i{background:linear-gradient(90deg,#4f7d2a,#a6d564)}
 
   #hotbar{position:absolute;left:50%;transform:translateX(-50%);bottom:18px;display:flex;gap:10px}
   .slot{width:62px;height:62px;border-radius:12px;background:var(--panel);
@@ -135,9 +147,9 @@
 
     <div id="bars" class="panel">
       <p class="lab">Vitality</p>
-      <div class="bar" id="hp"><i></i></div>
+      <div class="pips" id="hp"></div>
       <p class="lab">Stamina</p>
-      <div class="bar" id="sp"><i></i></div>
+      <div class="pips" id="sp"></div>
     </div>
 
     <div id="hotbar">
@@ -5115,8 +5127,8 @@ function toast(html,secs){
   el.toast.innerHTML=html;el.toast.style.opacity='1';toastTimer=secs||3.2;
 }
 function updateHUD(){
-  el.hp.style.width=clamp(P.hp,0,100)+'%';
-  el.sp.style.width=clamp(P.sp,0,100)+'%';
+  setPips('hp',P.hp);
+  setPips('sp',P.sp);
   for(let i=0;i<3;i++)el.stones[i].className='stone'+(i<P.stones?' got':'');
 }
 function updateHotbar(){
@@ -5139,6 +5151,34 @@ function updateObjective(){
   }
 }
 function show(id,on){$(id).classList.toggle('hide',!on);}
+
+/* Health and stamina pips. Five of each; a pip fills from the left, so a
+   value between two pips shows as a part-filled heart rather than jumping. */
+const PIPS=5;
+function buildPips(){
+  for(const [id,cls] of [['hp','heart'],['sp','leaf']]){
+    const host=$(id);
+    if(!host)continue;
+    host.innerHTML='';
+    for(let i=0;i<PIPS;i++){
+      const pip=document.createElement('span');
+      pip.className='pip '+cls;
+      pip.appendChild(document.createElement('i'));
+      host.appendChild(pip);
+    }
+  }
+}
+function setPips(id,pct){
+  const host=$(id);
+  if(!host)return;
+  const v=clamp(pct,0,100)/100*PIPS;
+  const kids=host.children;
+  for(let i=0;i<kids.length;i++){
+    const fill=clamp(v-i,0,1);
+    kids[i].firstChild.style.width=(fill*100)+'%';
+  }
+}
+buildPips();
 
 /* minimap ------------------------------------------------------- */
 const mapC=$('minimap');
