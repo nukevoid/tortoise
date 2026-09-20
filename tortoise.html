@@ -1554,11 +1554,11 @@ function stage(i){ RNG.reseed((DECO_SEED+Math.imul(i,0x9E3779B1))|0); }
    prints, and paste it here. Null means "generate one". */
 /* Generated offline with ?export and pasted here. This is the forest
    the game ships; delete it and the generator grows a fresh one. */
-const LEVEL_BAKED={"v":1,"grid":"/////yOACIjeTVVXLYqoilhV3/U3ooAIaD98XN0AiAiI31h/0COCAADW9V/BrSiAAFpd31+3iIggYt/33dQAKCig/V/fd4OAIAh2/V91LQqIClrV1MW3KqgAYBVUQf8qoACC1XAHdSsoAIhWVXM8jaoCCNpX1f+3oCICaH39fdcAAgCC/////wE=","gloomCell":[9,4],"biomes":[[-36.424,-36.349,1],[-2.832,-28.044,2],[21.427,-36.178,3],[1.629,10.874,0],[11.461,17.62,1],[-21.601,-7.412,2],[38.938,16.568,3]],"items":[["stone",7.8,-18.2,0.5],["stone",23.4,28.6,0.5],["stone",39,-39,0.5],["lantern",-39,-33.8,0.12],["berry",-23.842,2.5,0.14],["berry",17.54,-38.488,0.14],["berry",-33.143,33.167,0.14],["berry",38.872,38.297,0.14],["berry",13.443,18.013,0.14],["berry",-29.275,23.084,0.14],["berry",7.04,34.455,0.14],["berry",-28.477,-18.571,0.14],["shroom",23.878,18,0.06],["shroom",33.191,-12.254,0.06],["shroom",2.206,-8.325,0.06],["berry",16.656,-13.041,0.14],["shroom",16.323,-13.297,0.06],["berry",35.416,-18.963,0.14],["berry",35.626,-18.917,0.14],["shroom",36.309,-19.004,0.06],["berry",21.204,-20.386,0.14],["berry",21.188,-20.497,0.14],["shroom",21.683,-20.619,0.06],["berry",-0.371,2.566,0.14],["shroom",0.167,2.643,0.06],["berry",-10.237,-7.945,0.14],["shroom",-10.458,-7.334,0.06],["berry",26.012,-2.808,0.14],["shroom",26.75,-2.722,0.06]],"hazardCells":[[12,15],[10,8],[6,7],[7,7],[15,14],[3,8],[4,2],[13,1],[7,12],[2,6],[8,14],[5,9],[6,10],[1,14]],"thornmaws":[[13.461,-13.474],[23.444,-18.677],[38.563,-17.812],[-3.005,2.509],[-12.881,-7.333],[23.441,-2.619],[-33.717,2.223]]};
+const LEVEL_BAKED={"v":1,"grid":"/////yOIgAJW133VrSooiljVX9e1AICIaGHfd92CIACiAV4dXAOAIogGcF3QLwgAgNjY49e1CgCgaIWPX90IgKCgF/5VeKMCogBW9dXDjQgiKNj1/VU3IACqYsH9P9QCAACIBf//cAsACCjWfVVVLSCiqNrd9V01igiq6t39VdeAACCg/////wE=","gloomCell":[12,3],"biomes":[[-36.424,-36.349,1],[-2.832,-28.044,2],[21.427,-36.178,3],[1.629,10.874,0],[11.461,17.62,1],[-21.601,-7.412,2],[38.938,16.568,3]],"items":[["stone",23.4,-23.4,0.5],["stone",23.4,18.2,0.5],["stone",-28.6,18.2,0.5],["lantern",2.6,-33.8,0.12],["berry",-29.042,2.5,0.14],["berry",17.54,-38.488,0.14],["berry",-33.143,33.167,0.14],["berry",38.872,38.297,0.14],["berry",13.443,18.013,0.14],["berry",-18.875,23.084,0.14],["berry",7.04,34.455,0.14],["berry",-28.477,-18.571,0.14],["shroom",29.078,18,0.06],["shroom",27.991,-12.254,0.06],["shroom",2.206,-8.325,0.06],["berry",-10.746,37.967,0.14],["shroom",-11.079,37.711,0.06],["berry",-29.075,10.348,0.14],["berry",-28.866,10.395,0.14],["shroom",-28.183,10.308,0.06],["berry",-18.491,-30.893,0.14],["berry",-18.508,-31.004,0.14],["shroom",-18.013,-31.127,0.06],["berry",-34.513,0.121,0.14],["shroom",-33.975,0.199,0.06],["berry",33.263,-21.798,0.14],["shroom",33.042,-21.187,0.06],["berry",5.043,38.775,0.14],["shroom",5.781,38.861,0.06]],"hazardCells":[[12,15],[12,8],[8,7],[9,7],[15,14],[4,8],[4,2],[13,1],[7,12],[4,6],[8,14],[7,9],[7,10],[1,14]],"thornmaws":[[-8.274,38.769],[-29.077,7.583],[-17.812,-33.961],[33.809,-18.605],[-33.928,-2.481],[2.472,38.964],[7.785,7.883]],"rooms":[[5,9,3.4],[23,9,2.6],[5,23,2.6],[25,23,1.9],[15,13,1.9],[7,15,1.9],[25,17,1.9]]};
 
 let LEVEL_USED=null;               // the level actually in play
 /* Whatever the generator decided this run, so it can be written out. */
-const LEVEL_REC={gloomCell:null,items:[],hazardCells:[],thornmaws:[]};
+const LEVEL_REC={gloomCell:null,items:[],hazardCells:[],thornmaws:[],rooms:[]};
 
 /* The level as text. Open the game with ?export and paste the result into
    LEVEL_BAKED above to freeze this forest for good. */
@@ -1570,7 +1570,8 @@ function exportLevel(){
     biomes:BIOME_SEEDS.map(a=>[q3(a[0]),q3(a[1]),a[2]]),
     items:LEVEL_REC.items,
     hazardCells:LEVEL_REC.hazardCells,
-    thornmaws:LEVEL_REC.thornmaws
+    thornmaws:LEVEL_REC.thornmaws,
+    rooms:LEVEL_REC.rooms
   });
 }
 
@@ -1676,6 +1677,131 @@ GEN.glades=function(){
     }
   }
   GEN._glades=placed;
+};
+
+
+/* Places, and the ways between them.
+
+   glades cut six holes in a finished maze, which gave the board open ground
+   but not shape: the clearings were wherever the maze happened to allow, and
+   getting from one to another meant the same undifferentiated corridor as
+   everywhere else. A player could not say where they had been.
+
+   This lays the level out the other way round. Seven chambers are placed
+   first, spread across the board and sized differently so they do not read
+   as one repeated room. They are joined by carved corridors -- a spanning
+   tree so everywhere is reachable by design rather than by luck, plus two
+   extra links so a wrong turn is a loop and not a retrace. Only then is the
+   leftover space filled with maze, which becomes the thicket between the
+   places rather than the whole level. */
+GEN.poi=function(){
+  const rooms=[];
+  const want=7;
+  /* Spread them by force rather than by rejection sampling: on a 16-cell
+     board, rejection leaves the last two wherever they will fit, which is
+     usually a corner. */
+  const slots=[[3,3],[12,3],[3,12],[12,12],[8,7],[3,8],[13,8]];
+  for(let i=0;i<want;i++){
+    const j=slots[i%slots.length];
+    const cx=clamp(j[0]+ri(-1,1),2,N-3), cy=clamp(j[1]+ri(-1,1),2,N-3);
+    // three sizes, so one of them is a hall and two are alcoves
+    const r=i===0?3.4:(i<3?2.6:1.9);
+    rooms.push([2*cx+1,2*cy+1,r]);
+  }
+  const carveRoom=(tx,ty,r)=>{
+    const ri2=Math.ceil(r);
+    for(let dy=-ri2;dy<=ri2;dy++)for(let dx=-ri2;dx<=ri2;dx++){
+      if(Math.hypot(dx,dy)>r)continue;
+      const gx=tx+dx, gy=ty+dy;
+      if(gx>0&&gy>0&&gx<G-1&&gy<G-1)solid[gi(gx,gy)]=0;
+    }
+  };
+  const carveLink=(a,b)=>{
+    // an L, with the corner on whichever axis is longer, so the bends read
+    let x=a[0], y=a[1];
+    const horizFirst=Math.abs(b[0]-a[0])>=Math.abs(b[1]-a[1]);
+    const stepTo=(tx,ty)=>{
+      while(x!==tx){ x+=Math.sign(tx-x); if(x>0&&y>0&&x<G-1&&y<G-1)solid[gi(x,y)]=0; }
+      while(y!==ty){ y+=Math.sign(ty-y); if(x>0&&y>0&&x<G-1&&y<G-1)solid[gi(x,y)]=0; }
+    };
+    if(horizFirst)stepTo(b[0],a[1]),stepTo(b[0],b[1]);
+    else { while(y!==b[1]){ y+=Math.sign(b[1]-y); if(x>0&&y>0&&x<G-1&&y<G-1)solid[gi(x,y)]=0; }
+           stepTo(b[0],b[1]); }
+  };
+
+  solid.fill(1);
+  for(const r of rooms)carveRoom(r[0],r[1],r[2]);
+
+  /* A spanning tree over the rooms: repeatedly join the nearest unjoined
+     one to the set that is already connected. */
+  const inTree=[0], out=rooms.map((_,i)=>i).slice(1);
+  const links=[];
+  while(out.length){
+    let bi=0, bj=0, bd=1e9;
+    for(const i of inTree)for(let k=0;k<out.length;k++){
+      const d=Math.hypot(rooms[i][0]-rooms[out[k]][0],rooms[i][1]-rooms[out[k]][1]);
+      if(d<bd){bd=d;bi=i;bj=k;}
+    }
+    const j=out.splice(bj,1)[0];
+    links.push([bi,j]); inTree.push(j);
+  }
+  // ...and two more, for loops
+  for(let n=0;n<2;n++){
+    const a=ri(0,rooms.length-1);
+    let b=ri(0,rooms.length-1);
+    if(a===b)b=(b+1)%rooms.length;
+    if(!links.some(l=>(l[0]===a&&l[1]===b)||(l[0]===b&&l[1]===a)))links.push([a,b]);
+  }
+  for(const [a,b] of links)carveLink(rooms[a],rooms[b]);
+
+  /* Fill what is left with maze, grown only into cells the rooms and their
+     corridors did not take, so the thicket wraps the places instead of
+     replacing them. */
+  const vis=new Uint8Array(N*N);
+  for(let cy=0;cy<N;cy++)for(let cx=0;cx<N;cx++)
+    if(!solid[gi(2*cx+1,2*cy+1)])vis[cy*N+cx]=1;
+  const dirs=[[0,-1],[1,0],[0,1],[-1,0]];
+  const seeds=[];
+  for(let cy=0;cy<N;cy++)for(let cx=0;cx<N;cx++)if(!vis[cy*N+cx])seeds.push([cx,cy]);
+  while(seeds.length){
+    const st=[seeds.splice(Math.floor(RNG()*seeds.length),1)[0]];
+    if(vis[st[0][1]*N+st[0][0]])continue;
+    vis[st[0][1]*N+st[0][0]]=1; solid[gi(2*st[0][0]+1,2*st[0][1]+1)]=0;
+    while(st.length){
+      const c=st[st.length-1], opts=[];
+      for(const d of dirs){
+        const nx=c[0]+d[0], ny=c[1]+d[1];
+        if(nx<0||ny<0||nx>=N||ny>=N||vis[ny*N+nx])continue;
+        opts.push([nx,ny,d[0],d[1]]);
+      }
+      if(!opts.length){ st.pop(); continue; }
+      const o=opts[Math.floor(RNG()*opts.length)];
+      vis[o[1]*N+o[0]]=1;
+      solid[gi(2*o[0]+1,2*o[1]+1)]=0;
+      solid[gi(2*c[0]+1+o[2],2*c[1]+1+o[3])]=0;
+      st.push([o[0],o[1]]);
+    }
+  }
+  /* Every maze cell that ended up walled off from the rooms gets one door,
+     so the thicket is part of the level rather than a set of pockets. */
+  for(let cy=0;cy<N;cy++)for(let cx=0;cx<N;cx++){
+    let n=0;
+    for(const d of dirs)if(!isSolid(2*cx+1+d[0],2*cy+1+d[1]))n++;
+    if(n===0){
+      const d=dirs[Math.floor(RNG()*4)];
+      const wx=2*cx+1+d[0], wy=2*cy+1+d[1];
+      if(wx>0&&wy>0&&wx<G-1&&wy<G-1)solid[gi(wx,wy)]=0;
+    }
+  }
+  // braid: knock out a few more walls so the whole thing has loops
+  for(let cy=0;cy<N;cy++)for(let cx=0;cx<N;cx++){
+    if(RNG()>0.16)continue;
+    const d=dirs[Math.floor(RNG()*4)];
+    const wx=2*cx+1+d[0], wy=2*cy+1+d[1];
+    if(wx>0&&wy>0&&wx<G-1&&wy<G-1)solid[gi(wx,wy)]=0;
+  }
+  solid[gi(1,1)]=0;                       // the start is always open
+  GEN._rooms=rooms;
 };
 
 /* Cellular automata: smoothed noise, the usual cave recipe. Included
@@ -1799,7 +1925,7 @@ function benchGenerators(){
   return rows;
 }
 
-const LEVEL_GEN=(location.search.match(/gen=(\w+)/)||[])[1]||'glades';
+const LEVEL_GEN=(location.search.match(/gen=(\w+)/)||[])[1]||'poi';
 
 /* ═══ Biomes ═══════════════════════════════════════════════════════
    The Hollow was one forest end to end, which made it hard to tell one
@@ -1869,16 +1995,22 @@ function biomeDensity(x,z,key){
 }
 
 function generateMaze(){
-  (GEN[LEVEL_GEN]||GEN.glades)();
+  (GEN[LEVEL_GEN]||GEN.poi)();
+  LEVEL_REC.rooms=(GEN._rooms||[]).map(r=>[r[0],r[1],Math.round(r[2]*1000)/1000]);
 }
+/* Where the places are, however the level arrived: straight out of the
+   artifact on a baked run, straight off the generator on a fresh one. */
+let LEVEL_ROOMS=[];
 /* Walls: from the saved level if there is one, otherwise grown. Either way
    the scenery's random stream starts from the same place afterwards. */
 const LEVEL_FRESH=location.search.indexOf('fresh')>=0;   // ignore the bake
 if(!LEVEL_FRESH&&LEVEL_BAKED&&LEVEL_BAKED.v===LEVEL_VERSION&&LEVEL_BAKED.grid){
   gridFromString(LEVEL_BAKED.grid);
   LEVEL_USED=LEVEL_BAKED;
+  LEVEL_ROOMS=(LEVEL_BAKED.rooms||[]).map(r=>[r[0],r[1],r[2]]);
 }else{
   generateMaze();
+  LEVEL_ROOMS=LEVEL_REC.rooms.map(r=>[r[0],r[1],r[2]]);
 }
 RNG.reseed(DECO_SEED);
 if(LEVEL_USED&&LEVEL_USED.biomes)BIOME_SEEDS=LEVEL_USED.biomes.map(a=>[a[0],a[1],a[2]]);
@@ -6127,6 +6259,16 @@ function tryPickup(){
   it.collected=true;it.mesh.visible=false;
   if(it.type==='stone'){
     P.stones++;SFX.stone();SFX.hollowStirs(P.stones);
+    /* The places are joined on purpose now, so the stone tour is 161m rather
+       than the 364m the old maze forced: a player who knows where they are
+       going can walk it in under three minutes, which is less than the
+       heron's first visit was ever scheduled for. It is the climax of the
+       ladder and it cannot be allowed to miss the run, so the second stone
+       pulls it in if it has not come yet. */
+    if(P.stones>=2){
+      const h=mobs.find(m=>m.type==='heron');
+      if(h&&h.data&&h.data.cd>26&&!heronHintShown)h.data.cd=26;
+    }
     toast(`<b>Sunstone</b> recovered — ${P.stones} of 3`,3.2);
     if(P.stones>=3)openGate();
     updateObjective();
@@ -6859,11 +7001,20 @@ function placeItems(){
     for(const it of LEVEL_USED.items)addItem(it[0],it[1],it[2],it[3]);
     return;
   }
-  // --- Sunstones: far dead ends, well separated, one inside the gloom ---
-  let ends=deadEnds().filter(c=>dist[c[1]*N+c[0]]>6);
-  if(ends.length<6)ends=openCells.filter(c=>dist[c[1]*N+c[0]]>8);
-  ends.sort((a,b)=>dist[b[1]*N+b[0]]-dist[a[1]*N+a[0]]);
+  /* Sunstones go in the chambers, not down random dead ends. A stone at
+     the end of an anonymous stub is a thing you find by exhausting the
+     board; a stone in a room you can describe is a thing you go back for.
+     The three furthest chambers from the start are used, so the three trips
+     are different lengths, and the gloom grove keeps one of them because
+     that is what the lantern is for. */
   const chosen=[];
+  const roomCells=LEVEL_ROOMS
+    .map(r=>[(r[0]-1)/2|0,(r[1]-1)/2|0])
+    .filter(c=>c[0]>=0&&c[1]>=0&&c[0]<N&&c[1]<N&&!isSolid(2*c[0]+1,2*c[1]+1))
+    .map(c=>({c,d:dist[c[1]*N+c[0]]}))
+    .filter(o=>o.d>4)
+    .sort((a,b)=>b.d-a.d)
+    .map(o=>o.c);
   // one stone in the gloom grove (nearest open cell to its centre)
   let best=null,bestD=1e9;
   for(const c of openCells){
@@ -6872,11 +7023,23 @@ function placeItems(){
     if(d<bestD){bestD=d;best=c;}
   }
   if(best)chosen.push(best);
-  for(const c of ends){
+  for(const c of roomCells){
     if(chosen.length>=3)break;
     let ok=true;
-    for(const o of chosen)if(Math.abs(o[0]-c[0])+Math.abs(o[1]-c[1])<9)ok=false;
+    for(const o of chosen)if(Math.abs(o[0]-c[0])+Math.abs(o[1]-c[1])<7)ok=false;
     if(ok)chosen.push(c);
+  }
+  // ...and if the level has no rooms to speak of, the old rule still works
+  if(chosen.length<3){
+    let ends=deadEnds().filter(c=>dist[c[1]*N+c[0]]>6);
+    if(ends.length<6)ends=openCells.filter(c=>dist[c[1]*N+c[0]]>8);
+    ends.sort((a,b)=>dist[b[1]*N+b[0]]-dist[a[1]*N+a[0]]);
+    for(const c of ends){
+      if(chosen.length>=3)break;
+      let ok=true;
+      for(const o of chosen)if(Math.abs(o[0]-c[0])+Math.abs(o[1]-c[1])<7)ok=false;
+      if(ok)chosen.push(c);
+    }
   }
   while(chosen.length<3){
     const c=openCells[Math.floor(RNG()*openCells.length)];
@@ -6972,6 +7135,7 @@ window.__game={
     hissCut:+rainHissFilt.frequency.value.toFixed(0),
     drips:dripCount}:null; },
   exportLevel,get levelIsBaked(){return !!LEVEL_USED;},placeRiskCaches,
+  get rooms(){return LEVEL_ROOMS;},
   analyseGrid,benchGenerators,GEN,
   BIOMES,biomeAt,get biomeSeeds(){return BIOME_SEEDS;},
   groundH,terrainBase,waterDepth,blocked,BASINS,CREEK,
