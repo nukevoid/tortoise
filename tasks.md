@@ -31,7 +31,7 @@ mark done tasks like - [X]
 - [X] Fix terrain texture resolution 
 - [X] Add water, creeks, pudles, lake
 - [X] make falling leaf animation realistinc (rotation, dwings etc) 
-- [ ] Crteate optimisation plan
+- [X] Crteate optimisation plan
 - [ ] Do optimisation
 - [ ] Make bushed more realistic 
 - [ ] Do color corection to more calm and realistic
