@@ -179,7 +179,7 @@
 
   <div id="dead" class="overlay hide">
     <h2>The Hollow keeps you</h2>
-    <p>Your shell grows cold among the roots. The forest is patient — it will let you try again.</p>
+    <p id="deadwhy">Your shell grows cold among the roots. The forest is patient — it will let you try again.</p>
     <div class="cta" id="retrybtn">Press R to wake again</div>
   </div>
 
@@ -3074,6 +3074,154 @@ function spawnThornmaws(n){
   return placed;
 }
 
+
+/* ═══ Heron ════════════════════════════════════════════════════════
+   The one thing in the Hollow a tortoise cannot survive being wrong about.
+   You never see the bird, only its shadow: a dark patch that slides over
+   the ground and settles on you. That is the whole warning, and it lasts
+   long enough to answer -- pull into the shell and the beak rings off it.
+   Stay out and it is over, no health bar involved.
+
+   The shadow tracks you while the bird is lining up and locks in the last
+   moment, so backing away buys a little and hiding is the real answer. */
+
+const HERON={
+  firstVisit:42,                 // seconds of play before it ever comes
+  cooldownMin:44, cooldownMax:82,
+  telegraph:2.7,                 // the shadow, i.e. the time you get
+  lock:0.5,                      // it stops following you this long before
+  descend:0.42,                  // the stab
+  hold:0.35, rise:1.6,
+  skyY:9.0                       // where the neck disappears upward
+};
+
+const matHeron =new THREE.MeshStandardMaterial({color:0xd8d9d2,roughness:0.72,metalness:0});
+const matHeronB=new THREE.MeshStandardMaterial({color:0xe0c05a,roughness:0.5,metalness:0.05});
+const matHeronE=new THREE.MeshStandardMaterial({color:0x14100a,roughness:0.35,metalness:0});
+
+defineMob('heron',{
+  activeRange:Infinity,          // it hunts wherever you are
+  build(m){
+    const rig=new THREE.Group();
+
+    const neck=new THREE.Mesh(new THREE.CylinderGeometry(0.075,0.115,1,8,1),matHeron);
+    neck.geometry.translate(0,0.5,0);      // grows upward from its base
+    neck.castShadow=true;
+    rig.add(neck);
+
+    const head=new THREE.Group();
+    const skull=new THREE.Mesh(new THREE.SphereGeometry(0.15,14,10),matHeron);
+    skull.scale.set(1,0.86,1.25); skull.castShadow=true;
+    head.add(skull);
+    const beak=new THREE.Mesh(new THREE.ConeGeometry(0.062,0.72,8),matHeronB);
+    beak.rotation.x=-Math.PI*0.5;          // a spear, pointing the way it stabs
+    beak.position.set(0,-0.02,0.40);
+    beak.castShadow=true;
+    head.add(beak);
+    for(const sx of [-1,1]){
+      const eye=new THREE.Mesh(new THREE.SphereGeometry(0.036,8,6),matHeronE);
+      eye.position.set(sx*0.105,0.045,0.085);
+      head.add(eye);
+    }
+    rig.add(head);
+
+    m.parts.rig=rig; m.parts.neck=neck; m.parts.head=head;
+    rig.visible=false;
+    m.group.add(rig);
+
+    const sh=makeThreatShadow();
+    m.parts.shadow=sh;
+    scene.add(sh);                          // lives in world space, not on the rig
+
+    m.data.cd=HERON.firstVisit;
+    m.data.tx=0; m.data.tz=0;
+  },
+  onReset(m){
+    m.data.cd=HERON.firstVisit;
+    if(m.parts.rig)m.parts.rig.visible=false;
+    if(m.parts.shadow)m.parts.shadow.visible=false;
+    setMobState(m,'wait');
+  },
+  think(m,dt,d){
+    const P_=P, sh=m.parts.shadow, rig=m.parts.rig;
+    if(state!=='play'){ rig.visible=false; sh.visible=false; return; }
+
+    if(m.state==='idle')setMobState(m,'wait');
+
+    if(m.state==='wait'){
+      rig.visible=false; sh.visible=false;
+      m.data.cd-=dt;
+      if(m.data.cd<=0){
+        m.data.tx=P_.pos.x; m.data.tz=P_.pos.z;
+        setMobState(m,'telegraph');
+        SFX.heronCall();
+        if(!heronHintShown){
+          heronHintShown=true;
+          toast('A shadow slides over the path — <b>HOLD SPACE</b>, and do not move!',4.2);
+        }
+      }
+      return;
+    }
+
+    if(m.state==='telegraph'){
+      const t=m.stateT/HERON.telegraph;
+      // it follows you until the last moment, then commits
+      if(m.stateT < HERON.telegraph-HERON.lock){
+        m.data.tx=lerp(m.data.tx,P_.pos.x,1-Math.pow(0.02,dt));
+        m.data.tz=lerp(m.data.tz,P_.pos.z,1-Math.pow(0.02,dt));
+      }
+      // the patch darkens and tightens as the bird drops towards you
+      placeThreatShadow(sh,m.data.tx,m.data.tz,
+                        lerp(2.5,0.85,clamp(t,0,1)),
+                        lerp(0.05,0.72,clamp(t*1.25,0,1)));
+      rig.visible=false;
+      if(m.stateT>=HERON.telegraph){ setMobState(m,'strike'); SFX.heronStab(); }
+      return;
+    }
+
+    if(m.state==='strike'||m.state==='hold'||m.state==='rise'){
+      const gy=groundH(m.data.tx,m.data.tz);
+      let headY;
+      if(m.state==='strike'){
+        const k=clamp(m.stateT/HERON.descend,0,1);
+        headY=lerp(HERON.skyY,gy+0.30,k*k);          // accelerating down
+        if(k>=1){
+          // the moment of truth
+          if(playerSheltered()||Math.hypot(P_.pos.x-m.data.tx,P_.pos.z-m.data.tz)>1.35){
+            SFX.heronMiss();
+          }else{
+            die('heron');
+          }
+          setMobState(m,'hold');
+        }
+      }else if(m.state==='hold'){
+        headY=gy+0.30;
+        if(m.stateT>=HERON.hold)setMobState(m,'rise');
+      }else{
+        const k=clamp(m.stateT/HERON.rise,0,1);
+        headY=lerp(gy+0.30,HERON.skyY,k*k);
+        if(k>=1){
+          setMobState(m,'wait');
+          m.data.cd=rr(HERON.cooldownMin,HERON.cooldownMax);
+        }
+      }
+      rig.visible=true;
+      rig.position.set(m.data.tx,0,m.data.tz);
+      // face the strike point so the beak comes down at the player
+      const yaw=Math.atan2(P_.pos.x-m.data.tx,P_.pos.z-m.data.tz);
+      m.parts.head.position.y=headY;
+      m.parts.head.rotation.set(-1.15,yaw,0);
+      m.parts.neck.position.y=headY;
+      m.parts.neck.scale.y=Math.max(0.1,HERON.skyY+2.0-headY);
+      // the shadow shrinks under the descending bird
+      const f=clamp((headY-gy)/HERON.skyY,0,1);
+      placeThreatShadow(sh,m.data.tx,m.data.tz,lerp(0.55,0.85,f),lerp(0.8,0.2,f));
+      return;
+    }
+  }
+});
+let heronHintShown=false;
+
 /* --- crows --- */
 const crows=[];
 function makeCrow(){
@@ -3579,6 +3727,10 @@ const SFX={
   chirp(){const f=rr(2200,3600);tone(f,0.07,'sine',0.045,f*1.5);
           tone(f*1.2,0.06,'sine',0.035,f*0.8,0.09);},
   near(){tone(1320,0.5,'sine',0.045);},
+  heronCall(){ tone(340,0.5,'sawtooth',0.10,150); tone(250,0.4,'square',0.05,110,0.12); },
+  heronStab(){ noiseHit(0.20,900,1.6,0.14); tone(90,0.24,'sine',0.10,45); },
+  heronMiss(){ tone(900,0.16,'square',0.13,420); tone(1500,0.10,'sine',0.08,700,0.02);
+               noiseHit(0.14,1800,2.0,0.10); },
   /* a wet snap when the jaws find you, a dry clack when they shut on air --
      the difference is the feedback that tells you the shell worked */
   thornBite(hit){
@@ -3618,7 +3770,7 @@ function resetPlayer(){
   P.hp=100;P.sp=100;P.hidden=false;P.hideAmt=0;P.boost=0;P.lastHurt=99;
   P.stones=0;P.berries=0;P.shrooms=0;P.hasLantern=false;P.lanternOn=false;
   P.berriesEaten=0;P.slot=0;P.time=0;
-  huntedHintShown=false;gloomHintShown=false;
+  huntedHintShown=false;gloomHintShown=false;heronHintShown=false;
   resetMobs();
   gateLocked=true;gateOpenAmt=0;
   if(gateGroup){gateGroup.userData.curtain.position.y=0;
@@ -3870,7 +4022,14 @@ function hurt(dmg,reason){
   SFX.hurt();updateHUD();
   if(P.hp<=0)die(reason);
 }
-function die(){
+const DEATH_WORDS={
+  thornmaw:'The thorn-maw found you among the roots, and the Hollow is patient — it will let you try again.',
+  heron:'A shadow, a stillness, and a beak like a spear. You never saw the rest of the bird.'
+};
+function die(reason){
+  const why=$('deadwhy');
+  if(why)why.textContent=DEATH_WORDS[reason]||
+    'Your shell grows cold among the roots. The forest is patient — it will let you try again.';
   state='dead';SFX.die();
   document.exitPointerLock();
   show('dead',true);el.hud.classList.remove('on');
@@ -4322,6 +4481,7 @@ async function boot(){
   setLoad(82,'Waking the crows…');await frame();
   spawnCrows(2);buildLeaves();buildFireflies();
   spawnThornmaws(7);
+  spawnMob('heron',P.pos.x,P.pos.z);
   setLoad(88,'Letting in the light…');await frame();
   buildEnvironment();buildShafts();buildMotes();
   collectMaterials();
@@ -4399,7 +4559,7 @@ function placeItems(){
 window.__game={
   P,items,crows,keys,hazards,renderer,scene,camera,sun,hemi,AUDIO,POST,BOOT,
   renderFrame,buildTargets,matComposite,
-  gust:gustU,gustAt,WIND_DIR,THORN,
+  gust:gustU,gustAt,WIND_DIR,THORN,HERON,
   mobs,MOB_TYPES,defineMob,spawnMob,despawnMob,setMobState,mobDist,
   mobStrike,attackTick,playerSheltered,makeThreatShadow,placeThreatShadow,
   get shafts(){return shaftMesh;},get motes(){return moteMesh;},

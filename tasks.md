@@ -40,7 +40,8 @@ mark done tasks like - [X]
 - [X] Rework bushes (main obstacles), make 3 different wariants, use some new tecnhnics to generate them to be more realistic
 - [X] Add adrchitecture to add mobs wtich can interact with player
 - [X] First mob: hostile plant with 3 thorny shoots. Its bit you in some range with some delays, but you can hide in shell. Visualy has to have animations in sync with bites
-- [ ] Heron - Can eats you from above. Firstly you see only shadown of Heron, then you have 2-3 sec to hide in shell. Then you see Heand with long head of Heron, triying to eat you. IF you no in shell - you loose 
+- [X] Heron - Can eats you from above. Firstly you see only shadown of Heron, then you have 2-3 sec to hide in shell. Then you see Heand with long head of Heron, triying to eat you. IF you no in shell - you loose 
+- [ ] hostile plant - add longer delays between bites
 - [ ] Falling glass cup: like heron - shadow, then cup falling cirectly on you. You can move 5 sec untill in breakes, couse you are under the cup
 - [ ] in some glasses with spider  inside, and you have to hide or they weel bite you
 - [ ] Add cat, hides in bushes. It no hostile, but can play with you and tos you, then disapeear
