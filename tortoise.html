@@ -2311,8 +2311,22 @@ const glowGreen=makeGlowSprite('rgba(160,255,190,1)');
 })();
 
 /* --- hedge walls, trees, clutter --- */
-const GEO_BLOB=blobGeo(2);        // 180 faces; the alpha cutout chews the rim
-const GEO_BLOB_SHADOW=blobGeo(1); // 80 faces, shadow caster only
+/* Three densities, because the faceting only shows where a blob is a
+   silhouette. An icosahedron at detail 1 is 80 faces, at 2 it is 320 and at
+   3 it is 1280.
+
+     GEO_BLOB_SMOOTH  what the player sees against the sky -- hedge crowns
+                      and tree canopies, whose whole job is an outline
+     GEO_BLOB         mid distance, the outer wood and the meadow scrub
+     GEO_BLOB_HIDDEN  buried inside a hedge as a light blocker, where the
+                      only thing that matters is that it is opaque
+
+   The cheap one used to be doing the first job as well, and a 20-face facet
+   on a skyline reads as a polygon, not as a plant. */
+const GEO_BLOB_SMOOTH=blobGeo(3);
+const GEO_BLOB=blobGeo(2);
+const GEO_BLOB_HIDDEN=blobGeo(1);
+const GEO_BLOB_SHADOW=GEO_BLOB_HIDDEN;   // old name, buried uses only
 const GEO_ROCK=rockGeo();
 const GEO_GRASS=grassTuftGeo();
 
@@ -2660,8 +2674,14 @@ function buildHedges(){
   const tint=new THREE.Color();
   /* One grown bush, dropped on the ground and turned at random. Wood and
      leaf share the transform so they stay one plant. */
-  const placeBush=(x,z,sc,syy,sp,tc)=>{
-    const y=groundH(x,z)-0.05, rot=rr(0,6.283);
+  /* `sink` buries the plant deeper than its own base. These species carry
+     their mass between 0.8m and 1.2m, which is over a tortoise's head: at
+     eye height, 0.34m, a ray was passing through the thin bottom of every
+     one of them. Dropping the plants on the hedge faces by a third of a
+     metre puts their dense middle on the line the player actually looks
+     along, and costs nothing, because it is the same plant. */
+  const placeBush=(x,z,sc,syy,sp,tc,sink)=>{
+    const y=groundH(x,z)-0.05-(sink||0), rot=rr(0,6.283);
     woodIB[sp].add(x,y,z,0,rot,0,sc,syy,sc,null);
     leafIB[sp].add(x,y,z,0,rot,0,sc,syy,sc,tc);
   };
@@ -2731,16 +2751,10 @@ function buildHedges(){
       const fx=cx+(f[0]?f[0]*out:side), fz=cz+(f[1]?f[1]*out:side);
       const fs=rr(0.78,1.08), fy=fs*rr(0.90,1.22);
       tint.setRGB(rr(0.72,1.18)*autumn[0],rr(0.78,1.14)*autumn[1],rr(0.7,1.1)*autumn[2]);
-      // the grown plants are what the hedge is supposed to look like, so
-      // most faces get one rather than half of them
-      if(RNG()<0.72){
-        const spf=RNG()<0.72?sp0:(sp0+1+(RNG()<0.5?0:1))%3;
-        placeBush(fx,fz,fs,fy,spf,tint.clone());
-      }else{
-        core.add(fx,groundH(fx,fz)+fy*rr(0.5,0.78),fz,
-                 rr(0,6.28),rr(0,6.28),rr(0,6.28),
-                 fs*rr(0.98,1.22),fy,fs*rr(0.98,1.22),tint.clone());
-      }
+      // every face gets a grown plant. There is no cheap version any more:
+      // the cheap version is the thing that looked wrong.
+      const spf=RNG()<0.72?sp0:(sp0+1+(RNG()<0.5?0:1))%3;
+      placeBush(fx,fz,fs,fy,spf,tint.clone(),rr(0.26,0.44));
       if(RNG()<0.5)baseDress(fx,fz,fs*rr(0.26,0.40));
 
       /* ...and a thicket over whichever half of the face that left bare.
@@ -2752,11 +2766,12 @@ function buildHedges(){
          painted wall. The thicket is grown instead, wider than it is deep,
          and laid along the face rather than spun at random, so what fills
          the gap is branches you can see through. */
-      /* ...and a thicket over the half that left bare, but only where the
-         plant above actually sat off to one side. A face whose bush landed
-         in the middle does not need one, and every thicket that is not
-         needed is a plant the player has to look at for nothing. */
-      if(Math.abs(side)>0.30){
+      /* ...and a thicket over the half the plant above left bare, but only
+         where it actually sat off to one side and only sometimes: the face
+         now carries a grown bush of its own, a spray of leaves and a corner
+         plant at each end, so this is the last resort rather than the
+         structure it was when the faces were blobs. */
+      if(Math.abs(side)>0.26){
         const tside=(side>0?-1:1)*rr(0.42,0.78);
         const tout=rr(0.78,0.94);
         const tx=cx+(f[0]?f[0]*tout:tside), tz=cz+(f[1]?f[1]*tout:tside);
@@ -2766,34 +2781,52 @@ function buildHedges(){
         placeAlong(tx,tz,ts,ts*rr(0.92,1.14),ts*rr(0.94,1.12),yaw,THICKET,tint.clone());
       }
 
-      /* A bank of litter along the foot of the face, low and long and turned
-         with it. Branches are see-through by nature, which is the point of
-         them, but a tortoise's eye is 0.34m off the floor and a sight-line
-         at that height slips between twigs: the thicket alone still left a
-         quarter of all directions blocked more than 0.35m before anything
-         visible. This is 0.48m tall against a 2.6m hedge -- the dense base a
-         real hedge has -- so it closes the low line without becoming the
-         wall the blobs became. */
-      const bout=rr(0.80,0.92);
-      const bx2=cx+(f[0]?f[0]*bout:rr(-0.16,0.16)),
-            bz2=cz+(f[1]?f[1]*bout:rr(-0.16,0.16));
-      const bYaw=(f[0]?Math.PI/2:0)+rr(-0.08,0.08);
-      tint.setRGB(rr(0.58,0.86)*autumn[0],rr(0.64,0.92)*autumn[1],rr(0.54,0.84)*autumn[2]);
-      core.add(bx2,groundH(bx2,bz2)+rr(0.06,0.14),bz2,
-               0,bYaw,0, rr(1.80,2.00),rr(0.34,0.42),rr(0.70,0.82),tint.clone());
+      /* A bank of litter along the foot of the face. A tortoise's eye is
+         0.34m off the floor and a sight-line at that height slips between
+         twigs, so something has to close the low line -- but the first
+         version of this was one smooth two-metre lozenge with a leaf texture
+         stretched over it, and measured from in front of a hedge it and its
+         relatives were 46% of everything on screen. Three small lumps at
+         different heights, sunk lower, read as heaped litter rather than as
+         a moulding; the leaves that go over them are the next block. */
+      {
+        const bout=rr(0.78,0.94), along=rr(-0.55,0.55);
+        const bx2=cx+(f[0]?f[0]*bout:along), bz2=cz+(f[1]?f[1]*bout:along);
+        // heaped leaf litter on the soil, which is flat dressing, not a ball
+        baseDress(bx2,bz2,rr(0.34,0.50),true);
+      }
+      /* Leaves along the face at the height a tortoise looks: 24 triangles
+         each and they are leaf-shaped, which is the whole argument against
+         doing this with a sphere and a texture. */
+      for(let k=0;k<6;k++){
+        const lout=rr(0.84,1.14), along=rr(-1.10,1.10);
+        const lx=cx+(f[0]?f[0]*lout:along), lz=cz+(f[1]?f[1]*lout:along);
+        tint.setRGB(rr(0.70,1.28)*autumn[0],rr(0.76,1.22)*autumn[1],rr(0.62,1.10)*autumn[2]);
+        card.add(lx,groundH(lx,lz)+rr(0.06,0.64),lz,
+                 rr(-1.4,1.4),rr(0,6.28),rr(-1.0,1.0),
+                 rr(0.9,1.7),rr(0.9,1.7),1,tint.clone());
+      }
+
     }
 
-    // Corners too: standing at a bend, the tile that blocks you is the
-    // diagonal one, and without this its corner is bare ground.
+    /* Corners too: standing at a bend, the tile that blocks you is the
+       diagonal one, and without this its corner is bare ground.
+
+       These used to be blobs, and measured from in front of a hedge they
+       were 61 of the 114 sphere hits on screen -- more than half of the
+       thing that made the Hollow look like a pile of textured balls. They
+       are grown plants now, like everything else the player can walk up to.
+       A blob is cheap and a bush is not, but a bush is what a hedge is made
+       of, and the triangles are found elsewhere. */
     for(const d of [[1,1],[1,-1],[-1,1],[-1,-1]]){
       if(isSolid(gx+d[0],gy)&&isSolid(gx,gy+d[1]))continue;   // buried inside the wall
       if(isSolid(gx+d[0],gy+d[1]))continue;                   // neighbour fills it
       const kx=cx+d[0]*rr(0.74,0.98), kz=cz+d[1]*rr(0.74,0.98);
-      const ks=rr(0.60,0.86), ky=ks*rr(0.88,1.14);
+      const ks=rr(0.62,0.88), ky=ks*rr(0.92,1.18);
       tint.setRGB(rr(0.72,1.18)*autumn[0],rr(0.78,1.14)*autumn[1],rr(0.7,1.1)*autumn[2]);
-      core.add(kx,groundH(kx,kz)+ky*rr(0.5,0.75),kz,
-               rr(0,6.28),rr(0,6.28),rr(0,6.28),
-               ks*rr(0.98,1.2),ky,ks*rr(0.98,1.2),tint.clone());
+      const spk=RNG()<0.66?sp0:(sp0+1+(RNG()<0.5?0:1))%3;
+      placeBush(kx,kz,ks,ky,spk,tint.clone(),rr(0.22,0.40));
+      if(RNG()<0.45)baseDress(kx,kz,ks*rr(0.22,0.34));
     }
 
     // top layer so the hedge reads as one mass ~2.6m tall -- this is the part
@@ -2803,7 +2836,7 @@ function buildHedges(){
               rr(0.92,1.3),rr(0.62,0.9),rr(0.92,1.3),tint.clone());
     // leaf cards for silhouette
     // leaves that stand proud of the mass, catching light against the gloom
-    for(let i=0;i<6;i++){
+    for(let i=0;i<4;i++){
       const a=rr(0,6.283), rad=rr(1.5,2.05);
       tint.setRGB(rr(0.75,1.35),rr(0.82,1.3),rr(0.6,1.1));
       const px=cx+Math.cos(a)*rad, pz=cz+Math.sin(a)*rad;
@@ -2811,7 +2844,7 @@ function buildHedges(){
                rr(-1.4,1.4),rr(0,6.28),rr(-1.0,1.0),
                rr(1.0,1.8),rr(1.0,1.8),1,tint.clone());
     }
-    for(let i=0;i<7;i++){
+    for(let i=0;i<4;i++){
       const a=rr(0,6.283), rad=rr(1.1,1.75);
       tint.setRGB(rr(0.62,1.25),rr(0.7,1.2),rr(0.55,1.1));
       const lx=cx+Math.cos(a)*rad, lz=cz+Math.sin(a)*rad;
@@ -2841,11 +2874,14 @@ function buildHedges(){
     if(proto[i].leaf) worldGroup.add(leafIB[i].build(proto[i].leaf,matBushLeaf,true,true,40));
   }
   worldGroup.add(core.build(GEO_BLOB_SHADOW,matFoliageCut,true,true));
-  worldGroup.add(crown.build(GEO_BLOB,matFoliageCut,true,true));
+  // the crown is the part that meets the sky, two metres up and never
+  // walked into; the cheap blob is indistinguishable from the corridor floor
+  // the crown is the hedge's outline against the sky: the smooth one
+  worldGroup.add(crown.build(GEO_BLOB_SMOOTH,matFoliageCut,true,true));
   worldGroup.add(trunk.build(new THREE.CylinderGeometry(0.72,1.18,2,20,4),matBark,true,true));
   // tree canopies sit five metres up and are never approached; the cheaper
   // blob is indistinguishable from down here and there are 1500 of them
-  worldGroup.add(canopy.build(GEO_BLOB_SHADOW,matCanopy,true,true));
+  worldGroup.add(canopy.build(GEO_BLOB_SMOOTH,matCanopy,true,true));
   const cardGeo=leafGeo(0.50,0.62,3,4,0.85,0.35);
   worldGroup.add(card.build(cardGeo,matLeafCard,true,true));
 }
