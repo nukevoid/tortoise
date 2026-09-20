@@ -52,9 +52,10 @@ mark done tasks like - [X]
 - [ ] fix direction of marker on mini map
 - [X] Level has to be saved. Generate level offline
 - [ ] investiagate level disign aproaches and generators, implement and test
-- [X] Add different bioms, use them in level generation
-- [ ] Add landscape 
+- [ ] Add different bioms, use them in level generation
+- [X] Add landscape 
 - [ ] Add weather
 - [ ] fliped mechanic to hard at the end. Start is easy but final flip is always missing
 - [ ] Balanse gameplay 
 - [ ] Change had indication: heath - hearts, stamina - leafs. Change all code than use it
+- [ ] increase quality of water, place more water regions

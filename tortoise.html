@@ -1873,8 +1873,28 @@ const GATE_X=tileX(EXIT_GX), GATE_Z=tileZ(EXIT_GY);
    4b. TERRAIN — one analytic height field, sampled by the ground mesh
    AND by every single thing placed on it, so nothing floats or sinks.
    ═══════════════════════════════════════════════════════════════ */
+/* The ground used to ripple by about three quarters of a metre and no
+   more, which at tortoise scale is texture rather than terrain -- you
+   could not tell high ground from low, and nowhere was uphill.
+
+   There is landform under it now: a broad rise across the level, a bank
+   running through it, and a shallow terracing on top of the old ripple.
+   All of it is low frequency, because the hedges are 2.6m tall and stand
+   on this: a slope steep enough to notice from a metre away is steep
+   enough to open a gap under a hedge. The steepest gradient this produces
+   is about 1 in 5, which a tortoise walks up without noticing and a
+   hedge sits on without lifting. */
 function terrainBase(x,z){
-  return 0.42*Math.sin(x*0.058+1.7)*Math.cos(z*0.049-0.4)
+  // the whole level leaning, plus one broad hill
+  const broad = 1.30*Math.sin(x*0.0195+0.42)*Math.cos(z*0.0172-1.08)
+              + 0.85*Math.cos(x*0.0128-0.9)*Math.sin(z*0.0229+0.35);
+  // a bank running roughly north-east, softened so it has shoulders
+  const t = (x*0.62+z*0.78)*0.052;
+  const bank = 0.72*Math.tanh(Math.sin(t)*1.6);
+  // shallow terracing, so slopes read as steps rather than as a ramp
+  const terrace = 0.11*Math.sin(broad*4.1+bank*2.0);
+  return broad + bank + terrace
+       + 0.42*Math.sin(x*0.058+1.7)*Math.cos(z*0.049-0.4)
        + 0.21*Math.sin(x*0.137-2.2)*Math.cos(z*0.121+1.1)
        + 0.10*Math.sin((x+z)*0.31+0.6)*Math.cos((x-z)*0.27)
        + 0.045*Math.sin(x*0.62-1.3)*Math.sin(z*0.57+2.4);
@@ -5772,6 +5792,7 @@ window.__game={
   exportLevel,get levelIsBaked(){return !!LEVEL_USED;},
   analyseGrid,benchGenerators,GEN,
   BIOMES,biomeAt,get biomeSeeds(){return BIOME_SEEDS;},
+  groundH,terrainBase,waterDepth,blocked,
   flipPlayer,unflipPlayer,
   mobs,MOB_TYPES,defineMob,spawnMob,despawnMob,setMobState,mobDist,
   mobStrike,attackTick,playerSheltered,makeThreatShadow,placeThreatShadow,
