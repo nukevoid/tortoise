@@ -2730,6 +2730,157 @@ function buildHazards(){
   worldGroup.add(leafIb.build(lg,leafM,false,true));
 }
 
+
+/* ═══ Mobs ═════════════════════════════════════════════════════════
+   Everything in the Hollow that can act on the tortoise goes through one
+   registry. A type says how it is built, how it thinks and how it reaches
+   the player; the runtime owns spawning, the activity radius, the shared
+   wind-up/strike/recover timing, and the teardown on restart.
+
+   Two rules hold for every mob, because the whole game leans on them:
+
+     1. A mob may only hurt the player through mobStrike(), which refuses
+        while the tortoise is pulled into its shell. The shell is the answer
+        to everything, so nothing is allowed to route around it.
+     2. Every strike is preceded by a telegraph the player has time to read.
+        attackTick() below hands the animation and the damage the same clock,
+        so the lunge you see and the moment it lands cannot drift apart.
+
+   A mob outside its activeRange sleeps: it is not thought about and not
+   drawn. Mobs far across the maze therefore cost almost nothing. */
+
+const MOB_TYPES={};
+const mobs=[];
+
+function defineMob(name,def){
+  const d=Object.assign({
+    activeRange:30,        // past this it sleeps and is hidden
+    build:null,            // build(m) -> fills m.group
+    spawn:null,            // spawn(m) -> once, after build
+    think:null,            // think(m,dt,dist) -> every active frame
+    onState:null,          // onState(m,newState)
+    onWake:null, onSleep:null, onReset:null
+  },def);
+  d.name=name;
+  MOB_TYPES[name]=d;
+  return d;
+}
+
+function spawnMob(name,x,z,opts){
+  const def=MOB_TYPES[name];
+  if(!def){ console.warn('[mob] unknown type',name); return null; }
+  const m={
+    type:name, def, x, z, y:groundH(x,z),
+    t:0, state:'idle', stateT:0, awake:false, dead:false,
+    home:{x,z}, data:{}, _bit:false,
+    group:new THREE.Group()
+  };
+  if(opts)Object.assign(m,opts);
+  m.group.position.set(m.x,m.y,m.z);
+  if(def.build)def.build(m);
+  m.group.visible=false;
+  scene.add(m.group);
+  if(def.spawn)def.spawn(m);
+  mobs.push(m);
+  return m;
+}
+
+function setMobState(m,st){
+  if(m.state===st)return;
+  m.state=st; m.stateT=0; m._bit=false;
+  if(m.def.onState)m.def.onState(m,st);
+}
+function mobDist(m){ return Math.hypot(P.pos.x-m.x,P.pos.z-m.z); }
+
+/* The tortoise is safe once it is properly inside the shell, not merely on
+   the way in -- otherwise tapping the key at the last instant beats anything. */
+function playerSheltered(){ return P.hidden && P.hideAmt>0.55; }
+
+/* The single door through which a mob may hurt the player. Returns whether
+   the blow actually landed, so a mob can react to being foiled. */
+function mobStrike(m,dmg,reason){
+  if(state!=='play')return false;
+  if(playerSheltered())return false;
+  hurt(dmg,reason);
+  return true;
+}
+
+/* Wind-up, strike, recover on one clock. The animation reads windupT/strikeT,
+   damage happens on justBit -- true for exactly one frame. */
+function attackTick(m,windup,strike,recover){
+  const t=m.stateT, total=windup+strike+recover;
+  const stage = t<windup ? 'windup'
+              : t<windup+strike ? 'strike'
+              : t<total ? 'recover' : 'done';
+  let justBit=false;
+  if(stage==='windup')m._bit=false;
+  else if(stage==='strike'&&!m._bit){ m._bit=true; justBit=true; }
+  return {stage, justBit, done:stage==='done',
+          phase:clamp(t/total,0,1),
+          windupT:clamp(t/windup,0,1),
+          strikeT:clamp((t-windup)/strike,0,1),
+          recoverT:clamp((t-windup-strike)/recover,0,1)};
+}
+
+/* A dark patch on the ground is how anything overhead announces itself. Two
+   of the Hollow's threats arrive from above, and the shadow is the whole of
+   the player's warning, so it lives here rather than in either of them. */
+function makeThreatShadow(){
+  const g=new THREE.CircleGeometry(1,22);
+  g.rotateX(-Math.PI/2);
+  const mat=new THREE.MeshBasicMaterial({color:0x0a0c06,transparent:true,
+    opacity:0,depthWrite:false,fog:false});
+  const mesh=new THREE.Mesh(g,mat);
+  mesh.renderOrder=2; mesh.frustumCulled=false; mesh.visible=false;
+  return mesh;
+}
+function placeThreatShadow(mesh,x,z,radius,opacity){
+  mesh.position.set(x,groundH(x,z)+0.035,z);
+  mesh.scale.set(radius,1,radius);
+  mesh.material.opacity=opacity;
+  mesh.visible=opacity>0.003;
+}
+
+function updateMobs(dt){
+  for(let i=0;i<mobs.length;i++){
+    const m=mobs[i];
+    if(m.dead)continue;
+    const d=mobDist(m);
+    const want=d<m.def.activeRange;
+    if(want!==m.awake){
+      m.awake=want;
+      m.group.visible=want;
+      if(want){ if(m.def.onWake)m.def.onWake(m); }
+      else if(m.def.onSleep)m.def.onSleep(m);
+    }
+    if(!m.awake)continue;
+    m.t+=dt; m.stateT+=dt;
+    if(m.def.think)m.def.think(m,dt,d);
+  }
+}
+
+function despawnMob(m){
+  m.dead=true;
+  if(m.group.parent)m.group.parent.remove(m.group);
+  const i=mobs.indexOf(m);
+  if(i>=0)mobs.splice(i,1);
+}
+function clearMobs(){
+  for(const m of mobs.slice()) despawnMob(m);
+}
+/* Restart puts every mob back where it started rather than rebuilding them:
+   the meshes are the expensive part and none of them move home. */
+function resetMobs(){
+  for(const m of mobs){
+    m.x=m.home.x; m.z=m.home.z; m.y=groundH(m.x,m.z);
+    m.group.position.set(m.x,m.y,m.z);
+    m.t=0; m.stateT=0; m._bit=false; m.awake=false;
+    m.group.visible=false;
+    m.state='idle'; m.data={};
+    if(m.def.onReset)m.def.onReset(m);
+  }
+}
+
 /* --- crows --- */
 const crows=[];
 function makeCrow(){
@@ -3269,6 +3420,7 @@ function resetPlayer(){
   P.stones=0;P.berries=0;P.shrooms=0;P.hasLantern=false;P.lanternOn=false;
   P.berriesEaten=0;P.slot=0;P.time=0;
   huntedHintShown=false;gloomHintShown=false;
+  resetMobs();
   gateLocked=true;gateOpenAmt=0;
   if(gateGroup){gateGroup.userData.curtain.position.y=0;
     gateGroup.userData.curtain.visible=true;gateBeam.material.opacity=0;}
@@ -3765,6 +3917,9 @@ function update(dt){
     if(P.hp<=0)die();
   }else if(!inThorns&&el.dmg.style.opacity==='0.5')el.dmg.style.opacity='0';
 
+  /* ---- mobs ---- */
+  updateMobs(dt);
+
   /* ---- crows ---- */
   let anyHunting=false;
   for(const c of crows)updateCrow(c,dt,()=>{anyHunting=true;});
@@ -4045,6 +4200,8 @@ window.__game={
   P,items,crows,keys,hazards,renderer,scene,camera,sun,hemi,AUDIO,POST,BOOT,
   renderFrame,buildTargets,matComposite,
   gust:gustU,gustAt,WIND_DIR,
+  mobs,MOB_TYPES,defineMob,spawnMob,despawnMob,setMobState,mobDist,
+  mobStrike,attackTick,playerSheltered,makeThreatShadow,placeThreatShadow,
   get shafts(){return shaftMesh;},get motes(){return moteMesh;},
 
   press(code,down){keys[code]=!!down;},
