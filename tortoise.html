@@ -82,6 +82,19 @@
   #crosshair{position:absolute;left:50%;top:50%;width:6px;height:6px;margin:-3px 0 0 -3px;
     border-radius:50%;background:rgba(255,255,255,.55);box-shadow:0 0 6px rgba(0,0,0,.8);opacity:.6}
 
+  /* How much longer you can hold your breath in there. It lives under the
+     reticle rather than in the corner because it only matters in the second
+     you are deciding whether to stay in, and it is hidden whenever it is
+     full and you are out -- a meter that is always on screen stops being
+     read. */
+  #breath{position:absolute;left:50%;top:50%;width:104px;height:5px;
+    margin:18px 0 0 -52px;border-radius:3px;background:rgba(255,255,255,.16);
+    border:1px solid rgba(0,0,0,.45);box-sizing:border-box;
+    box-shadow:0 0 6px rgba(0,0,0,.55);opacity:0;transition:opacity .22s ease}
+  #breath>i{display:block;height:100%;width:100%;border-radius:2px;
+    background:linear-gradient(90deg,#cbb98a,#efe3bd);transition:width .08s linear}
+  #breath.low>i{background:linear-gradient(90deg,#b4472e,#e08152)}
+
   #mapwrap{position:absolute;right:18px;top:16px;padding:8px}
   #minimap{display:block;border-radius:8px;image-rendering:auto}
   #mapwrap .cap{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--gold);
@@ -133,6 +146,7 @@
 
   <div id="hud">
     <div id="crosshair"></div>
+    <div id="breath"><i></i></div>
 
     <div id="objective" class="panel">
       <div class="t">Objective</div>
@@ -4306,6 +4320,7 @@ let glassHintShown=false;
    one, is the whole fix -- the mechanic was already right. */
 let thornHintShown=false;
 let restHintShown=false;
+let breathHintShown=false;
 
 
 /* ═══ The cat ══════════════════════════════════════════════════════
@@ -4603,6 +4618,22 @@ function catToss(m){
    nothing and panicking gets you nowhere.
 
    While you are over, nothing shields you. That is the cost. */
+
+/* How long the shell is an answer, and how long it is a hiding place.
+
+   Pulling in used to cost nothing and last forever, so the correct play in
+   any doubt was to sit in the shell and wait. Nine seconds is deliberately
+   longer than every encounter that demands it -- the heron's whole visit is
+   about six, the glass holds you for five and a quarter -- so this never
+   takes away an answer. What it takes away is camping. */
+const SHELL={
+  hold:10.5,       // longer than anything that demands the shell asks for:
+                   // a glass cup shadow to its shatter is 8.67s, the longest
+                   // stretch the game ever needs you pulled in
+  refill:0.85,     // ...and slower to come back than it is to spend
+  lockout:1.1,     // pushed into the open when it runs out
+  rearm:0.34       // and held there until a third of it is back
+};
 
 const FLIP={
   gravity:11.0,         // what pulls the shell back down flat
@@ -5685,6 +5716,7 @@ const P={
      you can see, you can rock, and you can do nothing else until you are
      the right way up again. */
   flipped:false, flipT:0,
+  breath:SHELL.hold, shellLock:0, shellSpent:false,   // how long you can stay in
   flipAngle:0, flipVel:0,          // the pendulum: where it leans, how fast
   flipPhase:'rock', flipRightT:0, flipDir:1,
   flipHeldL:false, flipHeldR:false, flipReload:0,
@@ -5706,6 +5738,7 @@ function resetPlayer(){
   else P.yaw=0;                                    // north
   P.pitch=-0.05;
   P.hp=100;P.sp=100;P.hidden=false;P.hideAmt=0;P.boost=0;P.lastHurt=99;
+  P.breath=SHELL.hold;P.shellLock=0;P.shellSpent=false;
   P.stones=0;P.berries=0;P.shrooms=0;P.hasLantern=false;P.lanternOn=false;
   P.berriesEaten=0;P.slot=0;P.time=0;
   huntedHintShown=false;gloomHintShown=false;heronHintShown=false;glassHintShown=false;
@@ -5759,6 +5792,7 @@ const el={
   hp:$('hp').firstElementChild,sp:$('sp').firstElementChild,
   prompt:$('prompt'),toast:$('toast'),fps:$('fps'),
   dmg:$('damage'),hunted:$('hunted'),shellview:$('shellview'),
+  breath:$('breath'),breathFill:$('breath').firstElementChild,
   slots:document.querySelectorAll('.slot'),
   map:$('minimap').getContext('2d')
 };
@@ -6079,13 +6113,38 @@ function update(dt){
   gustU.value=clamp(gustEnvelope(windU.value)*(1+0.85*WEATHER.wet),0,1.6);
 
   /* ---- hide in shell ---- */
-  const wantHide=!!keys['Space']&&!P.flipped;
+  /* Breath: it runs down while you are pulled in and comes back while you
+     are not. Run it out and you are pushed back into the open for a second,
+     which is the whole point of the clock. */
+  if(P.shellLock>0)P.shellLock=Math.max(0,P.shellLock-dt);
+  if(P.breath<=0){
+    P.shellSpent=true;
+    if(P.shellLock<=0)P.shellLock=SHELL.lockout;
+    if(!breathHintShown){
+      breathHintShown=true;
+      toast('You cannot hold it in there forever — <b>out</b>, and breathe.',3.6);
+    }
+  }
+  /* Spent stays spent until a third of it is back. Without that the player
+     pops in and straight back out again on a sliver, once a frame, which is
+     a meter flickering rather than a decision. */
+  if(P.shellSpent&&P.breath>=SHELL.hold*SHELL.rearm)P.shellSpent=false;
+  const wantHide=!!keys['Space']&&!P.flipped&&P.shellLock<=0&&!P.shellSpent;
+  if(wantHide)P.breath=Math.max(0,P.breath-dt);
+  else P.breath=Math.min(SHELL.hold,P.breath+SHELL.refill*dt);
   if(wantHide!==P.hidden){
     P.hidden=wantHide;
     SFX.shell();
   }
   P.hideAmt=lerp(P.hideAmt,P.hidden?1:0,1-Math.pow(0.0005,dt));
   el.shellview.style.opacity=String(P.hideAmt*0.95);
+  {
+    const f=clamp(P.breath/SHELL.hold,0,1);
+    el.breathFill.style.width=(f*100)+'%';
+    el.breath.classList.toggle('low',f<0.34);
+    // only on screen while it is being spent, or is not yet back
+    el.breath.style.opacity=(P.hideAmt>0.02||f<0.999)?'0.92':'0';
+  }
 
   /* ---- movement ---- */
   fwd.set(-Math.sin(P.yaw),0,-Math.cos(P.yaw));
@@ -6699,7 +6758,7 @@ function placeRiskCaches(){
 window.__game={
   P,items,crows,keys,hazards,renderer,scene,camera,sun,hemi,AUDIO,POST,BOOT,
   renderFrame,buildTargets,matComposite,
-  gust:gustU,gustAt,WIND_DIR,THORN,HERON,GLASS,CAT,FLIP,WEATHER,WASP,BEETLE,
+  gust:gustU,gustAt,WIND_DIR,THORN,HERON,GLASS,CAT,FLIP,WEATHER,WASP,BEETLE,SHELL,
   threatPace,get roused(){return roused;},REST,inRestPocket,
   get rain(){return rainMesh;},
   exportLevel,get levelIsBaked(){return !!LEVEL_USED;},placeRiskCaches,
