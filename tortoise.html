@@ -3352,8 +3352,46 @@ function resetMobs(){
     m.data={};             // parts are deliberately untouched
     if(m.def.onReset)m.def.onReset(m);
   }
+  STAGE.holder=null; STAGE.quiet=0;
 }
 
+
+
+/* ═══ One set piece at a time ══════════════════════════════════════
+   The heron, the falling glass and the cat each run on their own cooldown,
+   and until now nothing stopped two of them from coming due in the same
+   second. That is not difficulty, it is a coin toss: the heron wants you
+   still and hidden, the glass wants you to run, and the cat can flip you
+   onto your back in the middle of either. Overlapped, they ask for two
+   incompatible things and the player loses without having been given a
+   choice.
+
+   So there is one stage and one performer on it. A mob asks for the stage
+   before it starts a set piece and gives it back when it is finished; the
+   others wait their turn, and there is a beat of quiet afterwards so they
+   do not queue up nose to tail. Crows yield to whoever holds it for the
+   same reason -- a dive demands you come out of the shell, which is the
+   one thing a heron overhead makes fatal.
+
+   The thorn-maw and the wasp are deliberately not on it. Neither is a set
+   piece: they are places that cost something to be near, they cannot be
+   avoided by waiting, and 6 points of sting during someone else's scene is
+   pressure rather than an unanswerable demand. */
+const STAGE_GAP=4.0;                      // quiet between two set pieces
+const STAGE={holder:null,quiet:0};
+function stageFree(m){
+  return (STAGE.holder===null||STAGE.holder===m) && STAGE.quiet<=0;
+}
+function stageTake(m){ STAGE.holder=m; }
+function stageRelease(m){
+  if(STAGE.holder===m){ STAGE.holder=null; STAGE.quiet=STAGE_GAP; }
+}
+function stageBusy(m){ return STAGE.holder!==null && STAGE.holder!==m; }
+function updateStage(dt){
+  if(STAGE.quiet>0)STAGE.quiet-=dt;
+  // a performer that was despawned or put to sleep must not hold the stage
+  if(STAGE.holder&&(STAGE.holder.dead||!STAGE.holder.awake))stageRelease(STAGE.holder);
+}
 
 /* ═══ Thornmaw ═════════════════════════════════════════════════════
    A rooted plant with three thorny shoots. It cannot follow you, so it is
@@ -3645,6 +3683,7 @@ defineMob('heron',{
   },
   onReset(m){
     m.data.cd=HERON.firstVisit;
+    stageRelease(m);
     if(m.parts.rig)m.parts.rig.visible=false;
     if(m.parts.shadow)m.parts.shadow.visible=false;
     P.caught=false;
@@ -3667,6 +3706,8 @@ defineMob('heron',{
       rig.visible=false; sh.visible=false;
       m.data.cd-=dt;
       if(m.data.cd<=0){
+        if(!stageFree(m)){ m.data.cd=rr(0.4,1.3); return; }   // jittered, so ties do not always go to the same mob
+        stageTake(m);
         m.data.tx=P_.pos.x; m.data.tz=P_.pos.z;
         setMobState(m,'telegraph');
         SFX.heronCall();
@@ -3745,6 +3786,7 @@ defineMob('heron',{
         pitch=lerp(-0.28,-1.45,k);
         if(k>=1){
           setMobState(m,'wait');
+          stageRelease(m);
           m.data.cd=rr(HERON.cooldownMin,HERON.cooldownMax);
         }
       }
@@ -3934,6 +3976,7 @@ defineMob('glass',{
   },
   onReset(m){
     m.data.cd=GLASS.firstDrop;
+    stageRelease(m);
     if(m.parts.rig)m.parts.rig.visible=false;
     if(m.parts.shadow)m.parts.shadow.visible=false;
     if(m.parts.shards)for(const s of m.parts.shards)s.mesh.visible=false;
@@ -3950,6 +3993,8 @@ defineMob('glass',{
       rig.visible=false; sd.visible=false;
       m.data.cd-=dt;
       if(m.data.cd<=0){
+        if(!stageFree(m)){ m.data.cd=rr(0.4,1.3); return; }   // jittered, so ties do not always go to the same mob
+        stageTake(m);
         m.data.tx=P.pos.x; m.data.tz=P.pos.z;
         m.data.spider=RNG()<GLASS.spiderChance;
         m.data.bite=0; m.data.sa=RNG()*6.283; m.data.sr=0.55;
@@ -4076,6 +4121,7 @@ defineMob('glass',{
       if(t>=1){
         for(const s of m.parts.shards)s.mesh.visible=false;
         setMobState(m,'wait');
+        stageRelease(m);
         m.data.cd=rr(GLASS.cooldownMin,GLASS.cooldownMax);
       }
       return;
@@ -4203,6 +4249,7 @@ defineMob('cat',{
   onReset(m){
     m.data.cd=CAT.firstVisit;
     m.data.plays=0;
+    stageRelease(m);
     if(m.parts.rig)m.parts.rig.visible=false;
     setMobState(m,'away');
   },
@@ -4215,6 +4262,7 @@ defineMob('cat',{
       rig.visible=false;
       m.data.cd-=dt;
       if(m.data.cd<=0){
+        if(!stageFree(m)){ m.data.cd=rr(0.4,1.3); return; }   // jittered, so ties do not always go to the same mob
         /* Somewhere open, off to one side, preferring behind you and
            further away. In a 2.6m corridor most directions are hedge, so
            this has to actually look rather than assume. */
@@ -4229,6 +4277,7 @@ defineMob('cat',{
           if(ex!==null)break;
         }
         if(ex===null){ m.data.cd=5; return; }
+        stageTake(m);
         m.x=ex; m.z=ez; m.data.plays=0; m.data.ring=rr(0,6.283);
         setMobState(m,'stalk'); SFX.catMew();
         if(!catHintShown){
@@ -4297,6 +4346,7 @@ defineMob('cat',{
       catStep(m,m.x+Math.sin(a)*3,m.z+Math.cos(a)*3,CAT.speed*1.2,dt);
       if(m.stateT>1.9||d>12){
         setMobState(m,'away');
+        stageRelease(m);
         m.data.cd=rr(CAT.cooldownMin,CAT.cooldownMax);
       }
     }
@@ -5978,6 +6028,7 @@ function update(dt){
   }else if(!inThorns&&el.dmg.style.opacity==='0.5')el.dmg.style.opacity='0';
 
   /* ---- mobs ---- */
+  updateStage(dt);
   updateMobs(dt);
 
   /* ---- crows ---- */
@@ -6034,7 +6085,7 @@ function updateCrow(c,dt,onHunt){
     if(d.length()<1.6)crowNewWaypoint(c);
     d.normalize().multiplyScalar(3.0);
     c.vel.lerp(d,1-Math.pow(0.04,dt));
-    if(dxz<15&&!P.hidden&&c.cooldown<=0&&
+    if(dxz<15&&!P.hidden&&c.cooldown<=0&&STAGE.holder===null&&
        losClear(m.position.x,m.position.z,P.pos.x,P.pos.z)&&m.position.y<7){
       c.state='hunt';c.t=0;c.hidTime=0;SFX.caw();
     }
@@ -6295,6 +6346,7 @@ window.__game={
   flipPlayer,unflipPlayer,
   mobs,MOB_TYPES,defineMob,spawnMob,despawnMob,setMobState,mobDist,
   mobStrike,attackTick,playerSheltered,makeThreatShadow,placeThreatShadow,
+  STAGE,stageFree,stageBusy,
   get shafts(){return shaftMesh;},get motes(){return moteMesh;},
 
   press(code,down){keys[code]=!!down;},
