@@ -1515,7 +1515,7 @@ function stage(i){ RNG.reseed((DECO_SEED+Math.imul(i,0x9E3779B1))|0); }
    prints, and paste it here. Null means "generate one". */
 /* Generated offline with ?export and pasted here. This is the forest
    the game ships; delete it and the generator grows a fresh one. */
-const LEVEL_BAKED={"v":1,"grid":"/////yOACIjeTVVXLYqoilhV3/U3ooAIaD98XN0AiAiI31h/0COCAADW9V/BrSiAAFpd31+3iIggYt/33dQAKCig/V/fd4OAIAh2/V91LQqIClrV1MW3KqgAYBVUQf8qoACC1XAHdSsoAIhWVXM8jaoCCNpX1f+3oCICaH39fdcAAgCC/////wE=","gloomCell":[9,4],"items":[["stone",7.8,-18.2,0.5],["stone",23.4,28.6,0.5],["stone",39,-39,0.5],["lantern",-39,-33.8,0.12],["berry",-23.842,2.5,0.14],["berry",17.54,-38.488,0.14],["berry",-33.143,33.167,0.14],["berry",38.872,38.297,0.14],["berry",13.443,18.013,0.14],["berry",-29.275,23.084,0.14],["berry",7.04,34.455,0.14],["berry",-28.477,-18.571,0.14],["berry",23.878,18,0.14],["berry",28.446,-28.994,0.14],["berry",39.087,-2.912,0.14],["berry",-18.391,-8.501,0.14],["berry",7.722,-1.924,0.14],["berry",17.52,18.25,0.14],["berry",-13.491,-34.392,0.14],["berry",17.997,-7.058,0.14],["shroom",-28.42,29.21,0.06],["shroom",8.479,-38.38,0.06],["shroom",2.968,-7.804,0.06],["shroom",38.654,23.655,0.06],["shroom",-29.179,13.51,0.06],["shroom",-7.93,33.031,0.06],["shroom",28.116,28.395,0.06],["shroom",13.576,12.285,0.06],["shroom",38.577,-29.19,0.06]],"hazardCells":[[12,15],[10,8],[6,7],[7,7],[15,14],[3,8],[4,2],[13,1],[7,12],[2,6],[8,14],[5,9],[6,10],[1,14]],"thornmaws":[[13.461,-13.474],[23.444,-18.677],[38.563,-17.812],[-3.005,2.509],[-12.881,-7.333],[23.441,-2.619],[-33.717,2.223]]};
+const LEVEL_BAKED={"v":1,"grid":"/////yOACIjeTVVXLYqoilhV3/U3ooAIaD98XN0AiAiI31h/0COCAADW9V/BrSiAAFpd31+3iIggYt/33dQAKCig/V/fd4OAIAh2/V91LQqIClrV1MW3KqgAYBVUQf8qoACC1XAHdSsoAIhWVXM8jaoCCNpX1f+3oCICaH39fdcAAgCC/////wE=","gloomCell":[9,4],"biomes":[[-36.424,-36.349,1],[-2.832,-28.044,2],[21.427,-36.178,3],[1.629,10.874,0],[11.461,17.62,1],[-21.601,-7.412,2],[38.938,16.568,3]],"items":[["stone",7.8,-18.2,0.5],["stone",23.4,28.6,0.5],["stone",39,-39,0.5],["lantern",-39,-33.8,0.12],["berry",-23.842,2.5,0.14],["berry",17.54,-38.488,0.14],["berry",-33.143,33.167,0.14],["berry",38.872,38.297,0.14],["berry",13.443,18.013,0.14],["berry",-29.275,23.084,0.14],["berry",7.04,34.455,0.14],["berry",-28.477,-18.571,0.14],["berry",23.878,18,0.14],["berry",28.446,-28.994,0.14],["berry",39.087,-2.912,0.14],["berry",-18.391,-8.501,0.14],["berry",7.722,-1.924,0.14],["berry",17.52,18.25,0.14],["berry",-13.491,-34.392,0.14],["berry",17.997,-7.058,0.14],["shroom",-28.42,29.21,0.06],["shroom",8.479,-38.38,0.06],["shroom",2.968,-7.804,0.06],["shroom",38.654,23.655,0.06],["shroom",-29.179,13.51,0.06],["shroom",-7.93,33.031,0.06],["shroom",28.116,28.395,0.06],["shroom",13.576,12.285,0.06],["shroom",38.577,-29.19,0.06]],"hazardCells":[[12,15],[10,8],[6,7],[7,7],[15,14],[3,8],[4,2],[13,1],[7,12],[2,6],[8,14],[5,9],[6,10],[1,14]],"thornmaws":[[13.461,-13.474],[23.444,-18.677],[38.563,-17.812],[-3.005,2.509],[-12.881,-7.333],[23.441,-2.619],[-33.717,2.223]]};
 
 let LEVEL_USED=null;               // the level actually in play
 /* Whatever the generator decided this run, so it can be written out. */
@@ -1528,6 +1528,7 @@ function exportLevel(){
     v:LEVEL_VERSION,
     grid:gridToString(),
     gloomCell:LEVEL_REC.gloomCell,
+    biomes:BIOME_SEEDS.map(a=>[q3(a[0]),q3(a[1]),a[2]]),
     items:LEVEL_REC.items,
     hazardCells:LEVEL_REC.hazardCells,
     thornmaws:LEVEL_REC.thornmaws
@@ -1760,6 +1761,74 @@ function benchGenerators(){
 }
 
 const LEVEL_GEN=(location.search.match(/gen=(\w+)/)||[])[1]||'glades';
+
+/* ═══ Biomes ═══════════════════════════════════════════════════════
+   The Hollow was one forest end to end, which made it hard to tell one
+   corner from another -- the maze had landmarks but the planting did not.
+   The level is now divided into patches, each with its own palette and
+   its own idea of what grows there, so where you are looks like somewhere
+   rather than like everywhere else.
+
+   Patches are Voronoi cells around a handful of seeds, which gives
+   irregular borders that follow no grid and so read as natural rather
+   than as tiles. A position belongs to whichever seed is nearest; the
+   border between two is a place where the planting mixes. */
+
+const BIOMES=[
+  { name:'hollow',                       // the ordinary green wood
+    leaf:[1.00,1.00,1.00], ground:[1.00,1.00,1.00],
+    grass:1.00, fern:1.00, tree:1.00, bigLeaf:1.00 },
+  { name:'fen',                          // wet, soft, overgrown underfoot
+    leaf:[0.80,1.02,0.92], ground:[0.84,0.96,0.92],
+    grass:1.45, fern:1.60, tree:0.55, bigLeaf:1.35 },
+  { name:'bramble',                      // turned, rusty, thin on the floor
+    leaf:[1.22,0.84,0.62], ground:[1.10,0.93,0.82],
+    grass:0.62, fern:0.45, tree:0.75, bigLeaf:0.60 },
+  { name:'birch',                        // pale and open, more trunks
+    leaf:[1.10,1.12,0.80], ground:[1.09,1.05,0.92],
+    grass:1.05, fern:0.70, tree:1.55, bigLeaf:0.80 }
+];
+
+let BIOME_SEEDS=[];                      // [x, z, biomeIndex]
+
+function seedBiomes(){
+  BIOME_SEEDS=[];
+  const half=HALF;
+  // one patch of each kind guaranteed, then a few extra for variety
+  const order=[1,2,3,0,1,2,3];
+  for(let i=0;i<order.length;i++){
+    BIOME_SEEDS.push([rr(-half*0.92,half*0.92),rr(-half*0.92,half*0.92),order[i]]);
+  }
+}
+/* Which patch a point belongs to, and how strongly -- the second return
+   value falls off near a border so planting can blend across it. */
+function biomeAt(x,z){
+  let best=0,bd=1e9,second=1e9;
+  for(let i=0;i<BIOME_SEEDS.length;i++){
+    const s=BIOME_SEEDS[i];
+    const d=(x-s[0])*(x-s[0])+(z-s[1])*(z-s[1]);
+    if(d<bd){ second=bd; bd=d; best=i; }
+    else if(d<second) second=d;
+  }
+  const b=BIOMES[BIOME_SEEDS[best][2]];
+  // 0 at a border, 1 well inside a patch
+  const edge=clamp((Math.sqrt(second)-Math.sqrt(bd))/6.0,0,1);
+  return {b,edge};
+}
+/* Biome tint at a point, eased out towards borders so two patches meet in
+   a gradient instead of a line. */
+const _bioC=[1,1,1];
+function biomeLeaf(x,z){
+  const {b,edge}=biomeAt(x,z);
+  const k=0.35+0.65*edge;
+  _bioC[0]=1+(b.leaf[0]-1)*k; _bioC[1]=1+(b.leaf[1]-1)*k; _bioC[2]=1+(b.leaf[2]-1)*k;
+  return _bioC;
+}
+function biomeDensity(x,z,key){
+  const {b,edge}=biomeAt(x,z);
+  return 1+(b[key]-1)*(0.35+0.65*edge);
+}
+
 function generateMaze(){
   (GEN[LEVEL_GEN]||GEN.glades)();
 }
@@ -1773,6 +1842,8 @@ if(!LEVEL_FRESH&&LEVEL_BAKED&&LEVEL_BAKED.v===LEVEL_VERSION&&LEVEL_BAKED.grid){
   generateMaze();
 }
 RNG.reseed(DECO_SEED);
+if(LEVEL_USED&&LEVEL_USED.biomes)BIOME_SEEDS=LEVEL_USED.biomes.map(a=>[a[0],a[1],a[2]]);
+else seedBiomes();
 
 /* BFS distances from start cell */
 const START_CELL=[0,0];
@@ -2362,9 +2433,12 @@ function buildHedges(){
     // each tile leans a little green or a little turned, so the hedge line
     // is not one flat colour from end to end
     const at=RNG();
-    const autumn = at<0.62 ? [1,1,1]
+    const season = at<0.62 ? [1,1,1]
                  : at<0.88 ? [1.12,1.0,0.82]
                            : [1.26,0.92,0.7];
+    // ...and then the patch of forest this tile stands in
+    const bio=biomeLeaf(cx,cz);
+    const autumn=[season[0]*bio[0],season[1]*bio[1],season[2]*bio[2]];
     const faces=[];
     if(!isSolid(gx+1,gy))faces.push([1,0]);
     if(!isSolid(gx-1,gy))faces.push([-1,0]);
@@ -2443,7 +2517,7 @@ function buildHedges(){
                rr(0.7,1.5),rr(0.7,1.5),1,tint.clone());
     }
     // tall trees
-    const treeChance=border?0.30:0.16;
+    const treeChance=(border?0.30:0.16)*biomeDensity(cx,cz,'tree');
     if(RNG()<treeChance){
       const h=rr(4.5,9.5), rad=rr(0.16,0.3);
       const lean=rr(-0.06,0.06);
@@ -2502,7 +2576,7 @@ function buildClutter(){
   for(let gy=1;gy<G-1;gy++)for(let gx=1;gx<G-1;gx++)if(!solid[gi(gx,gy)])openTiles.push([gx,gy]);
   for(const [gx,gy] of openTiles){
     const cx=tileX(gx),cz=tileZ(gy);
-    const n=ri(7,11);
+    const n=Math.max(1,Math.round(ri(7,11)*biomeDensity(cx,cz,'grass')));
     for(let i=0;i<n;i++){
       const sc=rr(0.7,1.25);
       const px=cx+rr(-1.28,1.28), pz=cz+rr(-1.28,1.28);
@@ -5697,6 +5771,7 @@ window.__game={
   gust:gustU,gustAt,WIND_DIR,THORN,HERON,GLASS,CAT,FLIP,
   exportLevel,get levelIsBaked(){return !!LEVEL_USED;},
   analyseGrid,benchGenerators,GEN,
+  BIOMES,biomeAt,get biomeSeeds(){return BIOME_SEEDS;},
   flipPlayer,unflipPlayer,
   mobs,MOB_TYPES,defineMob,spawnMob,despawnMob,setMobState,mobDist,
   mobStrike,attackTick,playerSheltered,makeThreatShadow,placeThreatShadow,
