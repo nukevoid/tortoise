@@ -3796,12 +3796,20 @@ const HERON={
    it leaves the frame, bowed sideways by (bx,bz). */
 const _hnA=new THREE.Vector3(), _hnB=new THREE.Vector3(), _hnD=new THREE.Vector3(),
       _hnQ=new THREE.Quaternion(), _hnUp=new THREE.Vector3(0,1,0);
+/* A cubic, because a quadratic cannot make an S and a heron's neck is an S.
+   The first control point pushes the neck backwards out of the skull, the
+   second brings it back under the vertical, which is the fold this bird is
+   famous for. A quadratic left it a flagpole with the head stuck on the
+   bottom. bx,bz is the backwards direction in the ground plane. */
 function heronNeck(t,hx,hy,hz,sx,sy,sz,bx,bz,out){
-  const mx=(hx+sx)*0.5+bx, my=(hy+sy)*0.5, mz=(hz+sz)*0.5+bz;
-  const u=1-t;
-  out.set(u*u*hx+2*u*t*mx+t*t*sx,
-          u*u*hy+2*u*t*my+t*t*sy,
-          u*u*hz+2*u*t*mz+t*t*sz);
+  const H=Math.max(0.5,sy-hy);
+  const c1x=hx+bx*(0.55+H*0.055), c1y=hy+H*0.20, c1z=hz+bz*(0.55+H*0.055);
+  const c2x=sx+bx*0.55,           c2y=hy+H*0.62, c2z=sz+bz*0.55;
+  const u=1-t, u2=u*u, t2=t*t;
+  const a=u2*u, b=3*u2*t, c=3*u*t2, d=t2*t;
+  out.set(a*hx+b*c1x+c*c2x+d*sx,
+          a*hy+b*c1y+c*c2y+d*sy,
+          a*hz+b*c1z+c*c2z+d*sz);
 }
 const matHeron =new THREE.MeshStandardMaterial({color:0xd8d9d2,roughness:0.72,metalness:0});
 const matHeronB=new THREE.MeshStandardMaterial({color:0xe0c05a,roughness:0.5,metalness:0.05});
@@ -3826,11 +3834,21 @@ defineMob('heron',{
     }
 
     const head=new THREE.Group();
+    /* Yaw first, then pitch about the head's own left-right axis. With the
+       default XYZ order the pitch is applied about the world X axis, so with
+       the bird due east or west of the player -- yaw near a right angle --
+       it came out as roll and the beak swung up into the sky instead of down
+       at the prey. */
+    head.rotation.order='YXZ';
     const skull=new THREE.Mesh(new THREE.SphereGeometry(0.15,14,10),matHeron);
     skull.scale.set(1,0.86,1.25); skull.castShadow=true;
     head.add(skull);
     const beak=new THREE.Mesh(new THREE.ConeGeometry(0.062,0.72,8),matHeronB);
-    beak.rotation.x=-Math.PI*0.5;          // a spear, pointing the way it stabs
+    /* A cone points along +Y. Rotating -90 about X sends it to -Z, which is
+       backwards: the beak was mounted in front of the skull and aimed over
+       the bird's own shoulder, so what the player saw was a spike going up
+       past the head. +90 sends it to +Z, which is where the eyes look. */
+    beak.rotation.x=Math.PI*0.5;
     beak.position.set(0,-0.02,0.40);
     beak.castShadow=true;
     head.add(beak);
@@ -3940,20 +3958,26 @@ defineMob('heron',{
       }
       const hx=m.data.hx!==undefined?m.data.hx:m.data.tx;
       const hz=m.data.hz!==undefined?m.data.hz:m.data.tz;
-      let px=hx, py=gy+HERON.hover, pz=hz, pitch=-0.75;
+      /* Pitch is now nose-down-positive and set from the geometry: the head
+         is aimed at the player, so the angle it needs is roughly how far
+         below it they are. Nine metres up and a metre away is 84 degrees;
+         at the hover it is 46; with the beak on the ground it is almost
+         level. The old numbers were all negative because the beak used to
+         point out of the back of the skull. */
+      let px=hx, py=gy+HERON.hover, pz=hz, pitch=0.80;
 
       if(m.state==='strike'){
         const k=clamp(m.stateT/HERON.descend,0,1);
         const e=k*k*(3-2*k);                         // ease in and settle
         py=lerp(HERON.skyY,gy+HERON.hover,e);
-        pitch=lerp(-1.45,-0.75,e);
+        pitch=lerp(1.45,0.80,e);                     // out of the sky, looking down
         if(k>=1)setMobState(m,'seize');
       }else if(m.state==='seize'){
         const k=clamp(m.stateT/HERON.seize,0,1);
         const e=k*k;                                 // the stab, fast at the end
         px=lerp(hx,m.data.tx,e); pz=lerp(hz,m.data.tz,e);
         py=lerp(gy+HERON.hover,gy+0.26,e);
-        pitch=lerp(-0.75,-0.28,e);
+        pitch=lerp(0.80,0.25,e);                     // levelling as it drives in
         if(k>=1){
           const safe=playerSheltered()||
                      Math.hypot(P_.pos.x-m.data.tx,P_.pos.z-m.data.tz)>1.35;
@@ -3965,19 +3989,19 @@ defineMob('heron',{
         const k=clamp(m.stateT/HERON.feed,0,1);
         px=m.data.tx; pz=m.data.tz;
         py=gy+0.26+k*k*1.25;
-        pitch=-0.28-k*0.5;
+        pitch=lerp(0.25,-0.45,k);                    // head tips back to swallow
         P.pos.x=m.data.tx; P.pos.z=m.data.tz;
         P.pos.y=gy+EYE+k*k*1.05;                     // lifted off the ground
         P.vel.set(0,0,0);
         if(k>=1){ P.caught=false; die('heron'); setMobState(m,'rise'); }
       }else if(m.state==='hold'){
-        px=m.data.tx; pz=m.data.tz; py=gy+0.26; pitch=-0.28;
+        px=m.data.tx; pz=m.data.tz; py=gy+0.26; pitch=0.30;   // beak in the dirt
         if(m.stateT>=HERON.hold)setMobState(m,'rise');
       }else{
         const k=clamp(m.stateT/HERON.rise,0,1);
         px=lerp(m.data.tx,hx,k); pz=lerp(m.data.tz,hz,k);
         py=lerp(gy+0.26,HERON.skyY,k*k);
-        pitch=lerp(-0.28,-1.45,k);
+        pitch=lerp(0.30,1.45,k);                     // and away, still watching
         if(k>=1){
           setMobState(m,'wait');
           stageRelease(m);
@@ -3994,8 +4018,10 @@ defineMob('heron',{
       /* Lay the neck along an arc from the head up out of sight. The bend
          leans away from the head's travel, which is what gives a heron that
          cocked, folded look rather than a flagpole. */
+      /* The fold goes behind the head, i.e. back along the beak's line,
+         which is what makes it read as a neck rather than a mast. */
       const skyX=hx+Math.sin(yaw)*0.6, skyZ=hz+Math.cos(yaw)*0.6;
-      const bx=(px-skyX)*0.9, bz=(pz-skyZ)*0.9;
+      const bx=-Math.sin(yaw)*1.25, bz=-Math.cos(yaw)*1.25;
       const segs=m.parts.neckSegs, n=segs.length;
       for(let i=0;i<n;i++){
         heronNeck(i/n,     px,py,pz, skyX,HERON.skyY+2.0,skyZ, bx,bz, _hnA);
