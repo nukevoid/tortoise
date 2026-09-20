@@ -3094,11 +3094,26 @@ const HERON={
   cooldownMin:44, cooldownMax:82,
   telegraph:2.7,                 // the shadow, i.e. the time you get
   lock:0.5,                      // it stops following you this long before
-  descend:0.42,                  // the stab
-  hold:0.35, rise:1.6,
-  skyY:9.0                       // where the neck disappears upward
+  descend:0.95,                  // the head and neck coming down into view
+  hover:1.05,                    // how high it hangs before it commits
+  seize:0.45,                    // the stab itself
+  feed:1.35,                     // it lifts you while you watch
+  hold:0.30, rise:1.7,
+  skyY:9.0,                      // where the neck disappears upward
+  neckSegs:8
 };
 
+/* A point along the neck's arc: a quadratic bezier from the head up to where
+   it leaves the frame, bowed sideways by (bx,bz). */
+const _hnA=new THREE.Vector3(), _hnB=new THREE.Vector3(), _hnD=new THREE.Vector3(),
+      _hnQ=new THREE.Quaternion(), _hnUp=new THREE.Vector3(0,1,0);
+function heronNeck(t,hx,hy,hz,sx,sy,sz,bx,bz,out){
+  const mx=(hx+sx)*0.5+bx, my=(hy+sy)*0.5, mz=(hz+sz)*0.5+bz;
+  const u=1-t;
+  out.set(u*u*hx+2*u*t*mx+t*t*sx,
+          u*u*hy+2*u*t*my+t*t*sy,
+          u*u*hz+2*u*t*mz+t*t*sz);
+}
 const matHeron =new THREE.MeshStandardMaterial({color:0xd8d9d2,roughness:0.72,metalness:0});
 const matHeronB=new THREE.MeshStandardMaterial({color:0xe0c05a,roughness:0.5,metalness:0.05});
 const matHeronE=new THREE.MeshStandardMaterial({color:0x14100a,roughness:0.35,metalness:0});
@@ -3109,10 +3124,17 @@ defineMob('heron',{
   build(m){
     const rig=new THREE.Group();
 
-    const neck=new THREE.Mesh(new THREE.CylinderGeometry(0.075,0.115,1,8,1),matHeron);
-    neck.geometry.translate(0,0.5,0);      // grows upward from its base
-    neck.castShadow=true;
-    rig.add(neck);
+    /* The neck is a chain of segments rather than one cylinder, so it can
+       arc the way a heron's does instead of being a mast. */
+    const neckSegs=[];
+    for(let i=0;i<HERON.neckSegs;i++){
+      const t=i/HERON.neckSegs;
+      const seg=new THREE.Mesh(
+        new THREE.CylinderGeometry(0.060+0.055*t,0.066+0.055*t,1,7,1),matHeron);
+      seg.geometry.translate(0,0.5,0);
+      seg.castShadow=true;
+      rig.add(seg); neckSegs.push(seg);
+    }
 
     const head=new THREE.Group();
     const skull=new THREE.Mesh(new THREE.SphereGeometry(0.15,14,10),matHeron);
@@ -3130,7 +3152,7 @@ defineMob('heron',{
     }
     rig.add(head);
 
-    m.parts.rig=rig; m.parts.neck=neck; m.parts.head=head;
+    m.parts.rig=rig; m.parts.neckSegs=neckSegs; m.parts.head=head;
     rig.visible=false;
     m.group.position.set(0,0,0);     // this one thinks in world coordinates
     m.group.add(rig);
@@ -3146,11 +3168,19 @@ defineMob('heron',{
     m.data.cd=HERON.firstVisit;
     if(m.parts.rig)m.parts.rig.visible=false;
     if(m.parts.shadow)m.parts.shadow.visible=false;
+    P.caught=false;
     setMobState(m,'wait');
   },
   think(m,dt,d){
     const P_=P, sh=m.parts.shadow, rig=m.parts.rig;
-    if(state!=='play'){ rig.visible=false; sh.visible=false; return; }
+    if(state!=='play'){
+      // keep the bird on screen through the death beat it just caused
+      if(!(state==='dead'&&m.state==='rise'&&m.stateT<0.4)){
+        rig.visible=false; sh.visible=false;
+      }
+      P.caught=false;
+      return;
+    }
 
     if(m.state==='idle')setMobState(m,'wait');
 
@@ -3185,43 +3215,86 @@ defineMob('heron',{
       return;
     }
 
-    if(m.state==='strike'||m.state==='hold'||m.state==='rise'){
+    if(m.state==='strike'||m.state==='seize'||m.state==='feed'||
+       m.state==='hold'||m.state==='rise'){
       const gy=groundH(m.data.tx,m.data.tz);
-      let headY;
+      // It comes down in front of wherever you are looking, so the thing
+      // that kills you is something you watched arrive.
+      if(m.state==='strike'&&m.stateT<0.05){
+        m.data.hx=m.data.tx-Math.sin(P_.yaw)*1.25;
+        m.data.hz=m.data.tz-Math.cos(P_.yaw)*1.25;
+      }
+      const hx=m.data.hx!==undefined?m.data.hx:m.data.tx;
+      const hz=m.data.hz!==undefined?m.data.hz:m.data.tz;
+      let px=hx, py=gy+HERON.hover, pz=hz, pitch=-0.75;
+
       if(m.state==='strike'){
         const k=clamp(m.stateT/HERON.descend,0,1);
-        headY=lerp(HERON.skyY,gy+0.30,k*k);          // accelerating down
+        const e=k*k*(3-2*k);                         // ease in and settle
+        py=lerp(HERON.skyY,gy+HERON.hover,e);
+        pitch=lerp(-1.45,-0.75,e);
+        if(k>=1)setMobState(m,'seize');
+      }else if(m.state==='seize'){
+        const k=clamp(m.stateT/HERON.seize,0,1);
+        const e=k*k;                                 // the stab, fast at the end
+        px=lerp(hx,m.data.tx,e); pz=lerp(hz,m.data.tz,e);
+        py=lerp(gy+HERON.hover,gy+0.26,e);
+        pitch=lerp(-0.75,-0.28,e);
         if(k>=1){
-          // the moment of truth
-          if(playerSheltered()||Math.hypot(P_.pos.x-m.data.tx,P_.pos.z-m.data.tz)>1.35){
-            SFX.heronMiss();
-          }else{
-            die('heron');
-          }
-          setMobState(m,'hold');
+          const safe=playerSheltered()||
+                     Math.hypot(P_.pos.x-m.data.tx,P_.pos.z-m.data.tz)>1.35;
+          if(safe){ SFX.heronMiss(); setMobState(m,'hold'); }
+          else    { SFX.heronStab(); P.caught=true; setMobState(m,'feed'); }
         }
+      }else if(m.state==='feed'){
+        // it has you. You get to watch it lift you before the screen goes.
+        const k=clamp(m.stateT/HERON.feed,0,1);
+        px=m.data.tx; pz=m.data.tz;
+        py=gy+0.26+k*k*1.25;
+        pitch=-0.28-k*0.5;
+        P.pos.x=m.data.tx; P.pos.z=m.data.tz;
+        P.pos.y=gy+EYE+k*k*1.05;                     // lifted off the ground
+        P.vel.set(0,0,0);
+        if(k>=1){ P.caught=false; die('heron'); setMobState(m,'rise'); }
       }else if(m.state==='hold'){
-        headY=gy+0.30;
+        px=m.data.tx; pz=m.data.tz; py=gy+0.26; pitch=-0.28;
         if(m.stateT>=HERON.hold)setMobState(m,'rise');
       }else{
         const k=clamp(m.stateT/HERON.rise,0,1);
-        headY=lerp(gy+0.30,HERON.skyY,k*k);
+        px=lerp(m.data.tx,hx,k); pz=lerp(m.data.tz,hz,k);
+        py=lerp(gy+0.26,HERON.skyY,k*k);
+        pitch=lerp(-0.28,-1.45,k);
         if(k>=1){
           setMobState(m,'wait');
           m.data.cd=rr(HERON.cooldownMin,HERON.cooldownMax);
         }
       }
+
       rig.visible=true;
-      rig.position.set(m.data.tx,0,m.data.tz);
-      // face the strike point so the beak comes down at the player
-      const yaw=Math.atan2(P_.pos.x-m.data.tx,P_.pos.z-m.data.tz);
-      m.parts.head.position.y=headY;
-      m.parts.head.rotation.set(-1.15,yaw,0);
-      m.parts.neck.position.y=headY;
-      m.parts.neck.scale.y=Math.max(0.1,HERON.skyY+2.0-headY);
-      // the shadow shrinks under the descending bird
-      const f=clamp((headY-gy)/HERON.skyY,0,1);
-      placeThreatShadow(sh,m.data.tx,m.data.tz,lerp(0.55,0.85,f),lerp(0.8,0.2,f));
+      rig.position.set(0,0,0);
+      const yaw=Math.atan2(P_.pos.x-px,P_.pos.z-pz);
+      m.parts.head.position.set(px,py,pz);
+      m.parts.head.rotation.set(pitch,yaw,0);
+
+      /* Lay the neck along an arc from the head up out of sight. The bend
+         leans away from the head's travel, which is what gives a heron that
+         cocked, folded look rather than a flagpole. */
+      const skyX=hx+Math.sin(yaw)*0.6, skyZ=hz+Math.cos(yaw)*0.6;
+      const bx=(px-skyX)*0.9, bz=(pz-skyZ)*0.9;
+      const segs=m.parts.neckSegs, n=segs.length;
+      for(let i=0;i<n;i++){
+        heronNeck(i/n,     px,py,pz, skyX,HERON.skyY+2.0,skyZ, bx,bz, _hnA);
+        heronNeck((i+1)/n, px,py,pz, skyX,HERON.skyY+2.0,skyZ, bx,bz, _hnB);
+        _hnD.subVectors(_hnB,_hnA);
+        const len=_hnD.length()||0.001;
+        _hnQ.setFromUnitVectors(_hnUp,_hnD.divideScalar(len));
+        segs[i].position.copy(_hnA);
+        segs[i].quaternion.copy(_hnQ);
+        segs[i].scale.set(1,len,1);
+      }
+
+      const f=clamp((py-gy)/HERON.skyY,0,1);
+      placeThreatShadow(sh,m.data.tx,m.data.tz,lerp(0.55,0.95,f),lerp(0.8,0.2,f));
       return;
     }
   }
@@ -4089,7 +4162,7 @@ function resetPlayer(){
   P.stones=0;P.berries=0;P.shrooms=0;P.hasLantern=false;P.lanternOn=false;
   P.berriesEaten=0;P.slot=0;P.time=0;
   huntedHintShown=false;gloomHintShown=false;heronHintShown=false;glassHintShown=false;
-  P.trap=null;
+  P.trap=null; P.caught=false;
   resetMobs();
   gateLocked=true;gateOpenAmt=0;
   if(gateGroup){gateGroup.userData.curtain.position.y=0;
@@ -4447,6 +4520,7 @@ function update(dt){
   /* Under the glass you may shuffle, but not leave. A clamp rather than a
      wall, so the tortoise can never be wedged into the rim by whatever put
      it there. */
+  if(P.caught){ P.vel.set(0,0,0); }
   if(P.trap){
     const tdx=P.pos.x-P.trap.x, tdz=P.pos.z-P.trap.z;
     const td=Math.hypot(tdx,tdz);
