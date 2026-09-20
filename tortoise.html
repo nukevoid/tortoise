@@ -1631,7 +1631,7 @@ const glowGreen=makeGlowSprite('rgba(160,255,190,1)');
 })();
 
 /* --- hedge walls, trees, clutter --- */
-const GEO_BLOB=blobGeo(2);        // 180 faces; the alpha cutout carries the outline
+const GEO_BLOB=blobGeo(3);        // 320 faces; the alpha cutout chews the rim
 const GEO_ROCK=rockGeo();
 const GEO_GRASS=grassTuftGeo();
 
@@ -1818,7 +1818,7 @@ function buildHedges(){
       }
     }
   }
-  worldGroup.add(bush.build(GEO_BLOB,matFoliage,true,true));
+  worldGroup.add(bush.build(GEO_BLOB,matFoliageCut,true,true));
   worldGroup.add(crown.build(GEO_BLOB,matFoliageCut,true,true));
   worldGroup.add(trunk.build(new THREE.CylinderGeometry(0.72,1.18,2,20,4),matBark,true,true));
   worldGroup.add(canopy.build(GEO_BLOB,matCanopy,true,true));
