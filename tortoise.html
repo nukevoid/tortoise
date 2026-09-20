@@ -1527,7 +1527,7 @@ function stage(i){ RNG.reseed((DECO_SEED+Math.imul(i,0x9E3779B1))|0); }
    prints, and paste it here. Null means "generate one". */
 /* Generated offline with ?export and pasted here. This is the forest
    the game ships; delete it and the generator grows a fresh one. */
-const LEVEL_BAKED={"v":1,"grid":"/////yOACIjeTVVXLYqoilhV3/U3ooAIaD98XN0AiAiI31h/0COCAADW9V/BrSiAAFpd31+3iIggYt/33dQAKCig/V/fd4OAIAh2/V91LQqIClrV1MW3KqgAYBVUQf8qoACC1XAHdSsoAIhWVXM8jaoCCNpX1f+3oCICaH39fdcAAgCC/////wE=","gloomCell":[9,4],"biomes":[[-36.424,-36.349,1],[-2.832,-28.044,2],[21.427,-36.178,3],[1.629,10.874,0],[11.461,17.62,1],[-21.601,-7.412,2],[38.938,16.568,3]],"items":[["stone",7.8,-18.2,0.5],["stone",23.4,28.6,0.5],["stone",39,-39,0.5],["lantern",-39,-33.8,0.12],["berry",-23.842,2.5,0.14],["berry",17.54,-38.488,0.14],["berry",-33.143,33.167,0.14],["berry",38.872,38.297,0.14],["berry",13.443,18.013,0.14],["berry",-29.275,23.084,0.14],["berry",7.04,34.455,0.14],["berry",-28.477,-18.571,0.14],["berry",23.878,18,0.14],["berry",28.446,-28.994,0.14],["berry",39.087,-2.912,0.14],["berry",-18.391,-8.501,0.14],["berry",7.722,-1.924,0.14],["berry",17.52,18.25,0.14],["berry",-13.491,-34.392,0.14],["berry",17.997,-7.058,0.14],["shroom",-28.42,29.21,0.06],["shroom",8.479,-38.38,0.06],["shroom",2.968,-7.804,0.06],["shroom",38.654,23.655,0.06],["shroom",-29.179,13.51,0.06],["shroom",-7.93,33.031,0.06],["shroom",28.116,28.395,0.06],["shroom",13.576,12.285,0.06],["shroom",38.577,-29.19,0.06]],"hazardCells":[[12,15],[10,8],[6,7],[7,7],[15,14],[3,8],[4,2],[13,1],[7,12],[2,6],[8,14],[5,9],[6,10],[1,14]],"thornmaws":[[13.461,-13.474],[23.444,-18.677],[38.563,-17.812],[-3.005,2.509],[-12.881,-7.333],[23.441,-2.619],[-33.717,2.223]]};
+const LEVEL_BAKED={"v":1,"grid":"/////yOACIjeTVVXLYqoilhV3/U3ooAIaD98XN0AiAiI31h/0COCAADW9V/BrSiAAFpd31+3iIggYt/33dQAKCig/V/fd4OAIAh2/V91LQqIClrV1MW3KqgAYBVUQf8qoACC1XAHdSsoAIhWVXM8jaoCCNpX1f+3oCICaH39fdcAAgCC/////wE=","gloomCell":[9,4],"biomes":[[-36.424,-36.349,1],[-2.832,-28.044,2],[21.427,-36.178,3],[1.629,10.874,0],[11.461,17.62,1],[-21.601,-7.412,2],[38.938,16.568,3]],"items":[["stone",7.8,-18.2,0.5],["stone",23.4,28.6,0.5],["stone",39,-39,0.5],["lantern",-39,-33.8,0.12],["berry",-23.842,2.5,0.14],["berry",17.54,-38.488,0.14],["berry",-33.143,33.167,0.14],["berry",38.872,38.297,0.14],["berry",13.443,18.013,0.14],["berry",-29.275,23.084,0.14],["berry",7.04,34.455,0.14],["berry",-28.477,-18.571,0.14],["shroom",23.878,18,0.06],["shroom",33.191,-12.254,0.06],["shroom",2.206,-8.325,0.06],["berry",16.656,-13.041,0.14],["shroom",16.323,-13.297,0.06],["berry",35.416,-18.963,0.14],["berry",35.626,-18.917,0.14],["shroom",36.309,-19.004,0.06],["berry",21.204,-20.386,0.14],["berry",21.188,-20.497,0.14],["shroom",21.683,-20.619,0.06],["berry",-0.371,2.566,0.14],["shroom",0.167,2.643,0.06],["berry",-10.237,-7.945,0.14],["shroom",-10.458,-7.334,0.06],["berry",26.012,-2.808,0.14],["shroom",26.75,-2.722,0.06]],"hazardCells":[[12,15],[10,8],[6,7],[7,7],[15,14],[3,8],[4,2],[13,1],[7,12],[2,6],[8,14],[5,9],[6,10],[1,14]],"thornmaws":[[13.461,-13.474],[23.444,-18.677],[38.563,-17.812],[-3.005,2.509],[-12.881,-7.333],[23.441,-2.619],[-33.717,2.223]]};
 
 let LEVEL_USED=null;               // the level actually in play
 /* Whatever the generator decided this run, so it can be written out. */
@@ -3699,6 +3699,7 @@ defineMob('heron',{
   },
   onReset(m){
     m.data.cd=HERON.firstVisit;
+    m.data.omen=0;
     stageRelease(m);
     if(m.parts.rig)m.parts.rig.visible=false;
     if(m.parts.shadow)m.parts.shadow.visible=false;
@@ -3720,6 +3721,27 @@ defineMob('heron',{
 
     if(m.state==='wait'){
       rig.visible=false; sh.visible=false;
+      /* One omen, once a run, half a minute before the first visit: a call
+         from somewhere behind the hedges and a shadow that crosses well off
+         to one side and does not come back. Inside three seconds this game
+         telegraphs well; across three minutes it told the player nothing, so
+         the first heron was a surprise rather than a dread. */
+      if(!m.data.omen && m.data.cd<28){ m.data.omen=1; m.data.omenT=0; SFX.heronCall(); }
+      if(m.data.omen===1){
+        m.data.omenT+=dt;
+        const t=m.data.omenT/3.6;
+        if(t>=1)m.data.omen=2;
+        else{
+          /* Close enough to cross the corridor you are standing in -- a
+             shadow nineteen metres away is behind a hedge and might as well
+             not exist -- but offset, and it never slows down. */
+          const along=lerp(-9,9,t), off=3.6, lim=HALF-2;
+          placeThreatShadow(sh,
+            clamp(P_.pos.x+WIND_DIR.x*along-WIND_DIR.y*off,-lim,lim),
+            clamp(P_.pos.z+WIND_DIR.y*along+WIND_DIR.x*off,-lim,lim),
+            3.6, 0.17*Math.sin(t*Math.PI));
+        }
+      }
       m.data.cd-=dt;
       if(m.data.cd<=0){
         if(!stageFree(m)){ m.data.cd=rr(0.4,1.3); return; }   // jittered, so ties do not always go to the same mob
@@ -3803,7 +3825,7 @@ defineMob('heron',{
         if(k>=1){
           setMobState(m,'wait');
           stageRelease(m);
-          m.data.cd=rr(HERON.cooldownMin,HERON.cooldownMax);
+          m.data.cd=rr(HERON.cooldownMin,HERON.cooldownMax)*threatPace();
         }
       }
 
@@ -4138,13 +4160,21 @@ defineMob('glass',{
         for(const s of m.parts.shards)s.mesh.visible=false;
         setMobState(m,'wait');
         stageRelease(m);
-        m.data.cd=rr(GLASS.cooldownMin,GLASS.cooldownMax);
+        m.data.cd=rr(GLASS.cooldownMin,GLASS.cooldownMax)*threatPace();
       }
       return;
     }
   }
 });
 let glassHintShown=false;
+/* The maw can already be beaten by moving, and always could: over a sweep of
+   eighteen crossings spread across its whole 7.5s cycle, a sprint got through
+   untouched every single time and a walk got through clean twice. Nobody was
+   ever told, so the shell stayed the answer to the one threat the shell does
+   not actually solve. One hint, the first time a player stands in front of
+   one, is the whole fix -- the mechanic was already right. */
+let thornHintShown=false;
+let restHintShown=false;
 
 
 /* ═══ The cat ══════════════════════════════════════════════════════
@@ -4363,7 +4393,7 @@ defineMob('cat',{
       if(m.stateT>1.9||d>12){
         setMobState(m,'away');
         stageRelease(m);
-        m.data.cd=rr(CAT.cooldownMin,CAT.cooldownMax);
+        m.data.cd=rr(CAT.cooldownMin,CAT.cooldownMax)*threatPace();
       }
     }
 
@@ -4655,6 +4685,84 @@ function updateWeather(dt){
 }
 let rainHintShown=false;
 
+
+
+/* ═══ Hollows: the quiet, made recognisable ════════════════════════
+   43.5% of this level's 572 open cells are more than 12m from anything that
+   stands and bites. That is a lot of room to breathe, and it is correct that
+   it exists -- but it was wherever the generator happened not to place, so a
+   player could not tell a rest from a lull, and got the cost of the empty
+   space without the benefit of it.
+
+   Five of the most isolated of those cells are marked instead: a flat mossy
+   stone, a ring of pale caps that carry in the dark, and the only place in
+   the Hollow besides a sunberry where a lost heart comes back. Health regen
+   is otherwise capped at the heart you are standing in, so these are
+   somewhere to go rather than somewhere to notice. */
+const REST={radius:2.6, rate:7.0, spots:[]};
+const matMoss=new THREE.MeshStandardMaterial({color:0x5c6a48,roughness:0.95,metalness:0});
+const matRestCap=new THREE.MeshStandardMaterial({
+  color:0xe8e3c4,roughness:0.55,metalness:0,emissive:0x6f7a3a,emissiveIntensity:0.9});
+
+function placeRestPockets(n){
+  const standing=mobs.filter(m=>m.type==='thornmaw'||m.type==='wasp')
+                     .map(m=>[m.home.x,m.home.z]);
+  if(!standing.length)return;
+  const scored=[];
+  for(const c of openCells){
+    if(dist[c[1]*N+c[0]]<4)continue;                 // not on the doorstep
+    // ...and not in the outermost ring, which is the quietest place on any
+    // maze and also the one a player is least likely to walk down
+    if(c[0]<1||c[1]<1||c[0]>N-2||c[1]>N-2)continue;
+    const p=cellCenter(c[0],c[1]);
+    if(blocked(p.x,p.z))continue;
+    let d=1e9;
+    for(const t of standing)d=Math.min(d,Math.hypot(t[0]-p.x,t[1]-p.z));
+    if(d<10)continue;                                // must actually be quiet
+    scored.push({x:p.x,z:p.z,d});
+  }
+  scored.sort((a,b)=>b.d-a.d);
+  const taken=[];
+  for(const c of scored){
+    if(taken.length>=n)break;
+    if(taken.some(t=>Math.hypot(t.x-c.x,t.z-c.z)<16))continue;
+    taken.push(c);
+  }
+  for(const c of taken){
+    const g2=new THREE.Group();
+    const gy=groundH(c.x,c.z);
+    /* Three mossy stones rather than one slab: a single flattened blob read
+       as a green pancake laid on the floor, which is not a landmark. */
+    for(let k=0;k<3;k++){
+      const a=k*2.094+rr(-0.3,0.3), rad=k?rr(0.42,0.62):0;
+      const sx=c.x+Math.cos(a)*rad, sz=c.z+Math.sin(a)*rad;
+      const sy=groundH(sx,sz);
+      const st=new THREE.Mesh(GEO_BLOB_SHADOW,matMoss);
+      st.position.set(sx,sy+rr(-0.04,0.02),sz);
+      const w=k?rr(0.30,0.44):rr(0.50,0.62);
+      st.scale.set(w,w*rr(0.52,0.72),w*rr(0.86,1.12));
+      st.rotation.set(rr(-0.2,0.2),rr(0,6.28),rr(-0.2,0.2));
+      st.castShadow=true; st.receiveShadow=true; g2.add(st);
+    }
+    for(let i=0;i<7;i++){
+      const a=(i/7)*6.283+rr(-0.2,0.2), rad=rr(1.45,1.9);
+      const mx=c.x+Math.cos(a)*rad, mz=c.z+Math.sin(a)*rad;
+      const my=groundH(mx,mz);
+      const stem=new THREE.Mesh(new THREE.CylinderGeometry(0.018,0.026,0.15,5),matMoss);
+      stem.position.set(mx,my+0.075,mz); g2.add(stem);
+      const cap=new THREE.Mesh(new THREE.SphereGeometry(0.075,9,6,0,6.283,0,1.4),matRestCap);
+      cap.position.set(mx,my+0.15,mz); cap.scale.y=0.72; g2.add(cap);
+    }
+    worldGroup.add(g2);
+    REST.spots.push({x:c.x,z:c.z,quiet:+c.d.toFixed(1)});
+  }
+  return REST.spots.length;
+}
+function inRestPocket(x,z){
+  for(const r of REST.spots)
+    if(Math.hypot(r.x-x,r.z-z)<REST.radius)return true;
+  return false;
+}
 
 /* ═══ Wasps, and beetles ═══════════════════════════════════════════
    Every threat so far has the same answer: get in the shell. The thorn-maw,
@@ -5383,6 +5491,12 @@ const SFX={
   step(){noiseHit(0.13,rr(420,780),1.3,0.075);tone(rr(70,100),0.09,'sine',0.05);},
   pickup(){tone(680,0.14,'sine',0.14);tone(1020,0.22,'sine',0.11,null,0.08);},
   stone(){tone(523,0.3,'sine',0.16);tone(784,0.35,'sine',0.14,null,0.1);tone(1046,0.6,'sine',0.13,null,0.2);},
+  /* The Hollow tightening, heard rather than read: one drone per stone taken,
+     lower and longer each time. It is the only warning that the clocks have
+     just moved, and it lands under the pickup chime. */
+  hollowStirs(n){ const k=clamp(n,1,3);
+    tone(96-k*13,0.9+k*0.5,'sawtooth',0.05+k*0.018,58-k*8,0.35);
+    tone(150-k*18,0.7+k*0.4,'triangle',0.035+k*0.012,90-k*10,0.42); },
   eat(){noiseHit(0.18,300,0.8,0.12,'lowpass');tone(240,0.16,'triangle',0.07,180);},
   hurt(){noiseHit(0.3,180,0.6,0.22,'lowpass');tone(140,0.35,'sawtooth',0.1,60);},
   caw(){tone(rr(700,900),0.16,'sawtooth',0.1,rr(380,520));
@@ -5686,6 +5800,7 @@ $('win').addEventListener('click',restart);
 
 function restart(){
   show('dead',false);show('win',false);
+  roused=false;
   resetPlayer();
   state='menu';show('menu',true);el.hud.classList.remove('on');
 }
@@ -5699,7 +5814,7 @@ function tryPickup(){
   const it=nearItem;
   it.collected=true;it.mesh.visible=false;
   if(it.type==='stone'){
-    P.stones++;SFX.stone();
+    P.stones++;SFX.stone();SFX.hollowStirs(P.stones);
     toast(`<b>Sunstone</b> recovered — ${P.stones} of 3`,3.2);
     if(P.stones>=3)openGate();
     updateObjective();
@@ -5737,9 +5852,29 @@ function toggleLantern(){
   tone(P.lanternOn?880:440,0.16,'sine',0.09);
   updateHotbar();
 }
+/* Every set-piece cooldown is multiplied by this. The clocks used to be flat
+   from the first minute to the last, so the tenth heron arrived on the same
+   schedule as the first and the curve never rose. Tying the factor to stones
+   rather than to elapsed time means a player who explores slowly is not
+   punished for exploring, and a fast one still gets the build. */
+const THREAT_PACE=[1.0,0.78,0.58,0.58];
+function threatPace(){ return THREAT_PACE[clamp(P.stones,0,3)]; }
+
+/* W3: the last stone opens the gate and wakes the Hollow. The walk back is
+   the longest leg of the run -- 224m on the shipping level -- and until now
+   it was also the safest, so the game ended on its quietest note. */
+let roused=false;
 function openGate(){
   gateLocked=false;SFX.gate();
   toast('A deep hum rolls through the roots — the <b>Sun Gate</b> has opened to the <b>east</b>',5);
+  if(!roused){
+    roused=true;
+    // something overhead notices at once, and the crows stop being careful
+    const h=mobs.find(m=>m.type==='heron');
+    if(h&&h.data)h.data.cd=Math.min(h.data.cd,7);
+    setTimeout(()=>{ if(state==='play')
+      toast('The Hollow has felt it. <b>Something is awake above the hedges.</b>',4.5); },5200);
+  }
 }
 function hurt(dmg,reason){
   if(P.hp<=0)return;
@@ -5880,9 +6015,23 @@ function update(dt){
   else P.sp=clamp(P.sp+(P.hidden?26:(spd>0.2?9:16))*dt,0,100);
   if(P.boost>0)P.boost-=dt;
 
-  /* health regen */
+  /* Health regen, up to the top of the heart you are in and no further.
+
+     It used to climb back to full, which meant nothing that happened to you
+     survived thirty seconds of standing still: the run was a sawtooth with
+     no trend, and the tenth bad encounter cost exactly what the first one
+     did. A lost heart now stays lost until a berry buys it back, and there
+     are sixteen berries on the board, so this is a cost rather than a wall. */
   P.lastHurt+=dt;
-  if(P.lastHurt>6&&P.hp<100)P.hp=clamp(P.hp+2.4*dt,0,100);
+  const resting=inRestPocket(P.pos.x,P.pos.z);
+  if(P.lastHurt>6){
+    const cap=resting?100:Math.min(100,Math.ceil(P.hp/(100/PIPS))*(100/PIPS));
+    if(P.hp<cap)P.hp=clamp(P.hp+(resting?REST.rate:2.4)*dt,0,cap);
+  }
+  if(resting&&!restHintShown){
+    restHintShown=true;
+    toast('A hollow in the roots — nothing comes here. <b>Rest, and it will mend.</b>',4.4);
+  }
 
   /* ---- head bob + footsteps ---- */
   const prevBob=P.bob;
@@ -6046,6 +6195,15 @@ function update(dt){
   /* ---- mobs ---- */
   updateStage(dt);
   updateMobs(dt);
+  if(!thornHintShown&&state==='play'){
+    for(const m of mobs){
+      if(m.type!=='thornmaw'||!m.awake)continue;
+      if(mobDist(m)>THORN.sense+0.9)continue;
+      thornHintShown=true;
+      toast('Thorns cannot catch what does not stop — <b>hold SHIFT</b> and go straight through.',4.6);
+      break;
+    }
+  }
 
   /* ---- crows ---- */
   let anyHunting=false;
@@ -6102,7 +6260,7 @@ function updateCrow(c,dt,onHunt){
     d.normalize().multiplyScalar(3.0);
     c.vel.lerp(d,1-Math.pow(0.04,dt));
     if(dxz<15&&!P.hidden&&c.cooldown<=0&&STAGE.holder===null&&
-       losClear(m.position.x,m.position.z,P.pos.x,P.pos.z)&&m.position.y<7){
+       (roused||losClear(m.position.x,m.position.z,P.pos.x,P.pos.z))&&m.position.y<7){
       c.state='hunt';c.t=0;c.hidTime=0;SFX.caw();
     }
   }else if(c.state==='hunt'){
@@ -6261,6 +6419,8 @@ async function boot(){
   stage(10); spawnThornmaws(7);
   stage(13); spawnWasps(WASP.nests);
   stage(14); spawnBeetles(BEETLE.count);
+  stage(15); placeRestPockets(5);
+  stage(16); placeRiskCaches();
   stage(11);
   spawnMob('heron',P.pos.x,P.pos.z);
   spawnMob('glass',P.pos.x,P.pos.z);
@@ -6336,17 +6496,64 @@ function placeItems(){
   addItem('lantern',lp.x,lp.z,0.12);
   taken.add(lan[1]*N+lan[0]);
   // --- berries & glowcaps ---
+  /* Most of the food is still scattered, but not all of it -- see
+     placeRiskCaches, which puts the rest where the teeth are. Scattering
+     everything uniformly made pickups wallpaper: 25 of them over 572 cells
+     with no relation to where the danger was, so there was never a moment
+     of deciding whether something was worth going after. */
   const pool=openCells.filter(c=>dist[c[1]*N+c[0]]>1&&!taken.has(c[1]*N+c[0]));
-  for(let i=0;i<16&&pool.length;i++){
+  for(let i=0;i<8&&pool.length;i++){
     const c=pool.splice(Math.floor(RNG()*pool.length),1)[0];
     const p=cellCenter(c[0],c[1]);
     addItem('berry',p.x+rr(-0.8,0.8),p.z+rr(-0.8,0.8),0.14);
   }
-  for(let i=0;i<9&&pool.length;i++){
+  for(let i=0;i<3&&pool.length;i++){
     const c=pool.splice(Math.floor(RNG()*pool.length),1)[0];
     const p=cellCenter(c[0],c[1]);
     addItem('shroom',p.x+rr(-0.8,0.8),p.z+rr(-0.8,0.8),0.06);
   }
+}
+
+/* The rest of the food, put where it costs something to reach. This runs
+   after the standing threats exist, because it needs to know where they are:
+   each cache sits inside a thorn-maw's notice or a wasp's patch, close enough
+   that taking it is a decision and not a detour. */
+function placeRiskCaches(){
+  if(LEVEL_USED&&LEVEL_USED.items)return 0;
+  /* Six sites, not twelve: this moves food, it does not add it. Eleven
+     berries and three glowcaps are scattered as before, and the six caches
+     put back the eleven that were taken out. */
+  const standing=mobs.filter(m=>m.type==='thornmaw'||m.type==='wasp')
+    .map(m=>({m,d:dist[worldToGZ(m.home.z)*N+worldToGX(m.home.x)]}))
+    .sort((a,b)=>(a.d<0?1e9:a.d)-(b.d<0?1e9:b.d))    // the ones on the way first
+    .slice(0,6).map(o=>o.m);
+  if(!standing.length)return 0;
+  let placed=0;
+  const used=[];
+  for(const m of standing){
+    // a spot just inside its notice, on open ground, that it can see you take
+    let sx=null,sz=null;
+    const a0=RNG()*6.283;
+    for(const rad of [2.9,3.4,2.4,3.9]){
+      for(let k=0;k<12&&sx===null;k++){
+        const a=a0+k*0.524;
+        const cx=m.home.x+Math.sin(a)*rad, cz=m.home.z+Math.cos(a)*rad;
+        if(blocked(cx,cz))continue;
+        if(used.some(u=>Math.hypot(u[0]-cx,u[1]-cz)<3))continue;
+        sx=cx; sz=cz;
+      }
+      if(sx!==null)break;
+    }
+    if(sx===null)continue;
+    used.push([sx,sz]);
+    // a cluster, not a single berry: worth the walk in
+    const n=1+(RNG()<0.55?1:0);
+    for(let i=0;i<n;i++)
+      addItem('berry',sx+rr(-0.45,0.45),sz+rr(-0.45,0.45),0.14);
+    if(RNG()<0.95)addItem('shroom',sx+rr(-0.5,0.5),sz+rr(-0.5,0.5),0.06);
+    placed++;
+  }
+  return placed;
 }
 
 /* dev hooks (handy for testing) */
@@ -6354,8 +6561,9 @@ window.__game={
   P,items,crows,keys,hazards,renderer,scene,camera,sun,hemi,AUDIO,POST,BOOT,
   renderFrame,buildTargets,matComposite,
   gust:gustU,gustAt,WIND_DIR,THORN,HERON,GLASS,CAT,FLIP,WEATHER,WASP,BEETLE,
+  threatPace,get roused(){return roused;},REST,inRestPocket,
   get rain(){return rainMesh;},
-  exportLevel,get levelIsBaked(){return !!LEVEL_USED;},
+  exportLevel,get levelIsBaked(){return !!LEVEL_USED;},placeRiskCaches,
   analyseGrid,benchGenerators,GEN,
   BIOMES,biomeAt,get biomeSeeds(){return BIOME_SEEDS;},
   groundH,terrainBase,waterDepth,blocked,

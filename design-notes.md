@@ -181,3 +181,31 @@ around 40%, and total pickup count does not change.
 
 *Measurements in section 1 were taken in-game on the baked level; the raycast
 and BFS probes used to take them are not part of the build.*
+
+---
+
+## 6. What happened when it was built
+
+| | outcome |
+|---|---|
+| W1 regen stops at the heart | built. 47 hp settles at 60 after a minute of standing still, not 100. |
+| W2 clocks tighten with stones | built. Cooldown assignments measured at ×1.00, ×0.78, ×0.58 of the raw range. |
+| W3 climax on the last stone | built. The third stone sets `roused`: the heron's clock drops to 7s and crows stop needing line of sight. |
+| W4 the quiet, marked | built. Five hollows, 20-29m from any standing threat, none in the outer ring, 16m apart. Health climbs past the heart cap only inside one. |
+| W5 a second answer | **the mechanic was already right.** Over 18 crossings swept across the maw's whole 7.5s cycle, a sprint got through untouched 18 times out of 18 and a walk got through clean twice, costing 9 on average. Nobody was told, so the shell stayed the answer. The fix is a hint, not a change. |
+| W6 foreshadow | built. One call and one shadow crossing 4m off, 28s before the first visit, once a run; a drone under the pickup chime on each stone. |
+| W7 reward behind risk | built and re-baked. 16 berries and 9 glowcaps as before; the share within 4m of a standing threat goes from 8% to 56%. |
+
+Two things tried and reverted, both measured rather than argued:
+
+- Making the thorn-maw stay alert while a sheltered player sat inside its
+  reach. The intent was to stop the shell walking you through it. The shell
+  never did: over the same 18-crossing sweep it changed the cost of crossing
+  by less than the sampling noise, and the boredom counter did not behave the
+  way the change assumed.
+- Driving each shoot's phase off the plant's clock instead of accumulating
+  it, to stop the three drifting into step. The drift was an artefact of
+  crows landing 17-damage strikes during the measurement, not of the maw.
+  The change cut a walking player's cost from 11 to 3 and broke the clean
+  sprint, so it went back.
+
