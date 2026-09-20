@@ -1665,7 +1665,17 @@ function buildHedges(){
     const cx=tileX(gx),cz=tileZ(gy);
     const gy0=groundH(cx,cz);
     const border=(gx===0||gy===0||gx===G-1||gy===G-1);
-    const n=border?5:4;
+    /* Which sides of this wall tile face open corridor? Collision treats the
+       whole 2.6 m tile as solid, so if the leaves only fill the middle of it
+       the player is stopped with a metre of bare ground still ahead. Lean the
+       grounded blobs towards the open faces so the wall meets the floor on
+       the line the player is actually blocked at. */
+    const faces=[];
+    if(!isSolid(gx+1,gy))faces.push([1,0]);
+    if(!isSolid(gx-1,gy))faces.push([-1,0]);
+    if(!isSolid(gx,gy+1))faces.push([0,1]);
+    if(!isSolid(gx,gy-1))faces.push([0,-1]);
+    const n=border?3:2;
     for(let i=0;i<n;i++){
       const ox=rr(-0.95,0.95),oz=rr(-0.95,0.95);
       const sc=rr(0.72,1.14);
@@ -1679,6 +1689,33 @@ function buildHedges(){
                sc*rr(0.95,1.25),sy,sc*rr(0.95,1.25),tint.clone());
       if(grounded&&RNG()<0.26)baseDress(cx+ox,cz+oz,sc*rr(0.26,0.40));
     }
+    // One blob per open face, bedded at the tile edge. Collision treats the
+    // whole tile as solid, so without these the player is stopped with bare
+    // ground still ahead on whichever side the random cluster left thin.
+    for(const f of faces){
+      const out=rr(0.92,1.20), side=rr(-0.85,0.85);
+      const fx=cx+(f[0]?f[0]*out:side), fz=cz+(f[1]?f[1]*out:side);
+      const fs=rr(0.74,1.06), fy=fs*rr(0.82,1.1);
+      tint.setRGB(rr(0.72,1.18),rr(0.78,1.14),rr(0.7,1.1));
+      bush.add(fx,groundH(fx,fz)+fy*rr(0.5,0.78),fz,
+               rr(0,6.28),rr(0,6.28),rr(0,6.28),
+               fs*rr(0.98,1.22),fy,fs*rr(0.98,1.22),tint.clone());
+      if(RNG()<0.5)baseDress(fx,fz,fs*rr(0.26,0.40));
+    }
+
+    // Corners too: standing at a bend, the tile that blocks you is the
+    // diagonal one, and without this its corner is bare ground.
+    for(const d of [[1,1],[1,-1],[-1,1],[-1,-1]]){
+      if(isSolid(gx+d[0],gy)&&isSolid(gx,gy+d[1]))continue;   // buried inside the wall
+      if(isSolid(gx+d[0],gy+d[1]))continue;                   // neighbour fills it
+      const kx=cx+d[0]*rr(0.80,1.05), kz=cz+d[1]*rr(0.80,1.05);
+      const ks=rr(0.66,0.94), ky=ks*rr(0.8,1.06);
+      tint.setRGB(rr(0.72,1.18),rr(0.78,1.14),rr(0.7,1.1));
+      bush.add(kx,groundH(kx,kz)+ky*rr(0.5,0.75),kz,
+               rr(0,6.28),rr(0,6.28),rr(0,6.28),
+               ks*rr(0.98,1.2),ky,ks*rr(0.98,1.2),tint.clone());
+    }
+
     // top layer so the hedge reads as one mass ~2.6m tall
     tint.setRGB(rr(0.8,1.2),rr(0.85,1.2),rr(0.75,1.05));
     bush.add(cx+rr(-0.4,0.4),gy0+rr(1.75,2.1),cz+rr(-0.4,0.4),rr(0,6.28),rr(0,6.28),rr(0,6.28),
@@ -2387,7 +2424,7 @@ const SFX={
 /* ═══════════════════════════════════════════════════════════════
    10. PLAYER / GAME STATE
    ═══════════════════════════════════════════════════════════════ */
-const EYE=0.34, RADIUS=0.40;
+const EYE=0.34, RADIUS=0.33;
 const P={
   pos:new THREE.Vector3(),vel:new THREE.Vector3(),
   yaw:0,pitch:0,bob:0,
