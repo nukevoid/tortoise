@@ -1155,7 +1155,8 @@ addEventListener('resize',()=>{
    ═══════════════════════════════════════════════════════════════ */
 const POST={on:true,bloom:true,exposure:1.38,bloomAmount:0.60,
             vignette:0.38,grain:0.011,sat:0.86,samples:0,fxaa:true,
-            ao:true,aoStrength:0.95,aoRadius:0.42,bounce:0.17};
+            ao:true,aoStrength:0.95,aoRadius:0.42,bounce:0.17,
+            adaptive:false};
 let rtScene=null, bloomRT=[], aoRT=null, aoBlurRT=null, quadMesh=null;
 const quadCam=new THREE.OrthographicCamera(-1,1,1,-1,0,1);
 const quadScene=new THREE.Scene();
@@ -3899,47 +3900,99 @@ function catToss(m){
    While you are over, nothing shields you. That is the cost. */
 
 const FLIP={
-  perSwing:0.175,       // how much each alternating swing buys you
-  decay:0.20,           // ...and how fast it drains if you dither
-  rockEase:0.14,
-  camHeight:1.02,       // just above the shell, looking down at it
-  camBack:0.85
+  gravity:11.0,         // what pulls the shell back down flat
+  impulse:2.30,         // one heave, given once per press -- not while held
+  reload:0.30,          // and a tortoise cannot heave faster than this
+  damp:0.34,            // how much swing survives a second of doing nothing
+  tipAngle:1.12,        // lean past this and it goes over
+  maxVel:8.0,
+  rightTime:0.52,       // the roll onto its feet
+  lift:0.30,            // the upturned shell rests ON the ground, not in it
+  hop:0.13,             // ...and lifts as it pivots over its edge
+  camHeight:1.05,
+  camBack:0.62,
+  camPitch:-0.88
 };
 
 function flipPlayer(){
   if(P.flipped||state!=='play')return false;
-  P.flipped=true; P.flipEnergy=0; P.flipRock=0; P.flipLast=0; P.flipT=0;
+  P.flipped=true; P.flipT=0;
+  P.flipAngle=0; P.flipVel=0; P.flipPhase='rock'; P.flipRightT=0; P.flipDir=1;
+  P.flipHeldL=false; P.flipHeldR=false; P.flipReload=0;
   P.hidden=false;
   P.vel.set(0,0,0);
   SFX.flipOver();
-  toast('On your back! <b>A</b> and <b>D</b>, left and right, rock yourself over!',4.5);
+  toast('On your back! Rock with <b>A</b> and <b>D</b> — <b>in time with the swing</b>.',4.8);
   return true;
 }
 function unflipPlayer(){
   if(!P.flipped)return;
-  P.flipped=false; P.flipEnergy=0; P.flipRock=0; P.flipLast=0;
-  SFX.flipBack();
+  P.flipped=false; P.flipAngle=0; P.flipVel=0; P.flipPhase='rock'; P.flipRightT=0;
 }
 
-/* Returns true when it has taken over the frame. */
+/* A pendulum, not a counter.
+
+   The shell hangs on its curved back with gravity pulling it flat, and a
+   keypress is a shove. Shove the way it is already swinging and you add
+   energy and the swing grows; shove against it and you kill it. So the way
+   out is to find the rhythm, not to hammer the keys -- mashing both ways at
+   random cancels itself out, and holding one side just leans against
+   gravity and stops.
+
+   Returns true when it has taken over the frame. */
 function updateFlip(dt){
   if(!P.flipped)return false;
   P.flipT+=dt;
+
+  if(P.flipPhase==='right'){
+    P.flipRightT+=dt;
+    if(P.flipRightT>=FLIP.rightTime){ SFX.flipBack(); unflipPlayer(); return false; }
+    return true;
+  }
+
+  /* A heave, not a hold. The shove lands on the press, so leaning on one
+     key gives you exactly one of them and then nothing -- you have to keep
+     pressing, and press in time. */
   const L=!!(keys['KeyA']||keys['ArrowLeft']);
   const R=!!(keys['KeyD']||keys['ArrowRight']);
-  const dir=(L&&!R)?-1:((R&&!L)?1:0);
-  // only a swing in the OTHER direction does anything
-  if(dir!==0&&dir!==P.flipLast){
-    P.flipEnergy=clamp(P.flipEnergy+FLIP.perSwing,0,1.2);
-    P.flipLast=dir;
-    SFX.rock();
+  P.flipReload=Math.max(0,P.flipReload-dt);
+  if(P.flipReload<=0){
+    if(L&&!P.flipHeldL){ P.flipVel-=FLIP.impulse; P.flipReload=FLIP.reload; }
+    else if(R&&!P.flipHeldR){ P.flipVel+=FLIP.impulse; P.flipReload=FLIP.reload; }
   }
-  P.flipEnergy=Math.max(0,P.flipEnergy-dt*FLIP.decay);
-  // the visible rocking follows the effort, so progress is legible
-  const want=dir*(0.35+0.75*P.flipEnergy);
-  P.flipRock=lerp(P.flipRock,want,1-Math.pow(FLIP.rockEase,dt));
-  if(P.flipEnergy>=1){ unflipPlayer(); return false; }
+  P.flipHeldL=L; P.flipHeldR=R;
+
+  const before=P.flipVel;
+  // gravity always hauls it back towards lying flat
+  P.flipVel+=(-FLIP.gravity*Math.sin(P.flipAngle))*dt;
+  P.flipVel*=Math.pow(FLIP.damp,dt);
+  P.flipVel=clamp(P.flipVel,-FLIP.maxVel,FLIP.maxVel);
+  P.flipAngle+=P.flipVel*dt;
+
+  // a scrape each time it rolls through the bottom of the swing
+  if(before<0&&P.flipVel>=0||before>0&&P.flipVel<=0)SFX.rock();
+
+  if(Math.abs(P.flipAngle)>=FLIP.tipAngle){
+    P.flipDir=P.flipAngle<0?-1:1;
+    P.flipAngle=P.flipDir*FLIP.tipAngle;
+    P.flipPhase='right'; P.flipRightT=0;
+    SFX.flipOver();
+  }
   return true;
+}
+
+/* How far the body is rolled right now, and how far off the ground it is:
+   flat on its back at PI, tipping to the side, then over onto its feet. */
+function flipRoll(){
+  if(P.flipPhase!=='right')return Math.PI+P.flipAngle;
+  const k=clamp(P.flipRightT/FLIP.rightTime,0,1);
+  const e=k*k*(3-2*k);
+  return Math.PI+P.flipDir*lerp(FLIP.tipAngle,Math.PI,e);
+}
+function flipLift(){
+  if(P.flipPhase!=='right')return FLIP.lift*Math.cos(P.flipAngle*0.5);
+  const k=clamp(P.flipRightT/FLIP.rightTime,0,1);
+  return FLIP.lift*(1-k)+Math.sin(k*Math.PI)*FLIP.hop;
 }
 
 /* --- crows --- */
@@ -4490,7 +4543,10 @@ const P={
   /* On your back. The one thing a tortoise genuinely cannot shrug off:
      you can see, you can rock, and you can do nothing else until you are
      the right way up again. */
-  flipped:false, flipEnergy:0, flipRock:0, flipLast:0, flipT:0,
+  flipped:false, flipT:0,
+  flipAngle:0, flipVel:0,          // the pendulum: where it leans, how fast
+  flipPhase:'rock', flipRightT:0, flipDir:1,
+  flipHeldL:false, flipHeldR:false, flipReload:0,
   camLift:0
 };
 let state='loading';                // loading | menu | play | pause | dead | win
@@ -4513,7 +4569,9 @@ function resetPlayer(){
   P.berriesEaten=0;P.slot=0;P.time=0;
   huntedHintShown=false;gloomHintShown=false;heronHintShown=false;glassHintShown=false;
   P.trap=null; P.caught=false; P.tumble=0;
-  P.flipped=false; P.flipEnergy=0; P.flipRock=0; P.flipLast=0; P.camLift=0;
+  P.flipped=false; P.flipAngle=0; P.flipVel=0;
+  P.flipPhase='rock'; P.flipRightT=0; P.camLift=0;
+  P.flipHeldL=false; P.flipHeldR=false; P.flipReload=0;
   catHintShown=false;
   resetMobs();
   gateLocked=true;gateOpenAmt=0;
@@ -4914,10 +4972,10 @@ function update(dt){
   if(P.flipped){
     /* Out and above, looking back down at yourself. The camera rolls with
        the rocking so the swing is something you feel, not just watch. */
-    camera.position.set(P.pos.x+P.flipRock*0.16,
+    camera.position.set(P.pos.x+P.flipAngle*0.10,
                         gH+FLIP.camHeight,
-                        P.pos.z+FLIP.camBack*0.34);
-    camera.rotation.set(-1.18,P.flipRock*0.10,P.flipRock*0.26);
+                        P.pos.z+FLIP.camBack);
+    camera.rotation.set(FLIP.camPitch,0,P.flipAngle*0.16);
   }else{
     camera.position.set(P.pos.x-Math.sin(P.yaw)*eyeFwd+bobX*0.4,
                        gH+EYE+bobY-hideDrop+P.camLift,
@@ -4945,12 +5003,15 @@ function update(dt){
   });
 
   /* body rig: rides the ground, leans with the slope, never follows the pitch */
-  bodyRig.position.set(P.pos.x,gH+bobY*0.45,P.pos.z);
+  /* Upturned, the rig has to ride ABOVE the ground: rotating it about its
+     own base would otherwise bury the shell and push the legs through the
+     floor. */
+  bodyRig.position.set(P.pos.x,gH+(P.flipped?flipLift():bobY*0.45),P.pos.z);
   groundNormal(P.pos.x,P.pos.z,_bodyN);
   _tiltQ.setFromUnitVectors(_upAxis,_bodyN);
   _yawQ.setFromAxisAngle(_upAxis,P.yaw);
   _rollQ.setFromAxisAngle(_zAxis,
-    P.flipped ? Math.PI+P.flipRock*0.55
+    P.flipped ? flipRoll()
               : Math.sin(P.bob*0.5)*0.035*clamp(spd/(WALK_SPEED*0.98),0,1));
   bodyRig.quaternion.copy(_tiltQ).multiply(_yawQ).multiply(_rollQ);
   const walk=clamp(spd/(WALK_SPEED*1.07),0,1);
@@ -5180,7 +5241,12 @@ let fpsAcc=0,fpsCount=0,mapAcc=0,ripple=null;
    asking the player to fiddle with settings. */
 const MAX_DPR=Math.min(devicePixelRatio,1.25);
 let quality=1, qAcc=0, qFrames=0, qCooldown=2.5, shadowsTrimmed=false;
+/* Off by default. It kept the framerate up by quietly rendering fewer
+   pixels and switching effects off, which reads as the picture going soft
+   for no reason the player can see. A slower but sharp frame is the better
+   trade here; POST.adaptive turns it back on. */
 function adaptQuality(dt){
+  if(!POST.adaptive)return;
   qAcc+=dt;qFrames++;
   if(qCooldown>0){qCooldown-=dt;return;}
   if(qAcc<1.6)return;
