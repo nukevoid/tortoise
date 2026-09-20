@@ -66,7 +66,7 @@ mark done tasks like - [X]
 - [X] implement results of Game Desing research
 - [X] In some places water edge is under the ground
 - [X] In fliped state mouse rotate the shell but don't have to
-- [ ] return bushes before fixing the "In many places wisualy looks like we can go but we cant, and in map we see obstackle " . Now thay look boring green solid wall. Just put in wholes some new type of semi filled bushes
+- [X] return bushes before fixing the "In many places wisualy looks like we can go but we cant, and in map we see obstackle " . Now thay look boring green solid wall. Just put in wholes some new type of semi filled bushes
 - [ ] Add timeout how long we can be in shell with indicator and restore time
 - [ ] cat\ Heron just came one by one, no time to  flip over. And this is first encounter. Introduse enemies slowly, one by one with increasing of dificulty
 - [ ] Fix Heron model 
@@ -75,4 +75,5 @@ mark done tasks like - [X]
 - [ ] slow down tortoise
 - [ ] in fog ski is just blue
 - [ ] change wind with weather and wind sound
-- [ ] rain sound 
+- [ ] rain sound
+- [ ] stamina has to have histeresis. Now it shakes at the end 
