@@ -386,6 +386,33 @@ function makeGroundTextures(){
   return {map,rough,nrm,height:hgt};
 }
 
+/* Close up the soil is magnified roughly 30x: at 7 mm per texel a tortoise
+   standing on it sees mush. A detail layer tiled every 40 cm supplies the
+   grain and grit that survives that magnification, without needing a 2048 map
+   or a base tiling small enough to read as wallpaper. */
+function makeDetailTextures(){
+  const S=256;
+  const fine=fbm(S,110,3,mulberry32(2024));
+  const spec=fbm(S,190,2,mulberry32(3131));
+  const col=cnv(S),c=col.getContext('2d'),img=c.createImageData(S,S);
+  const hgt=cnv(S),h=hgt.getContext('2d'),himg=h.createImageData(S,S);
+  for(let i=0;i<S*S;i++){
+    let v=0.78+fine[i]*0.46;
+    if(spec[i]>0.86)v*=1.22;            // grit catching the light
+    if(spec[i]<0.12)v*=0.74;            // little pits
+    const o=i*4, b=clamp(v*255,0,255);
+    img.data[o]=b;img.data[o+1]=b;img.data[o+2]=b;img.data[o+3]=255;
+    const hv=clamp((fine[i]*0.65+spec[i]*0.35)*255,0,255);
+    himg.data[o]=himg.data[o+1]=himg.data[o+2]=hv;himg.data[o+3]=255;
+  }
+  c.putImageData(img,0,0);h.putImageData(himg,0,0);
+  const map=new THREE.CanvasTexture(col);
+  map.wrapS=map.wrapT=THREE.RepeatWrapping;map.anisotropy=8;
+  const nrm=normalFromCanvas(hgt,5);
+  nrm.anisotropy=8;
+  return {map,nrm};
+}
+
 /* large, slow colour drift that hides the tiling of the ground texture */
 function makeMacroTexture(){
   const S=256;
@@ -1526,6 +1553,7 @@ const texBark=makeBarkTextures();
 const texLeaf=makeLeafTexture('leaf'), leafTex=texLeaf.map;
 const texFernT=makeLeafTexture('fern'), fernTex=texFernT.map;
 const macroTex=makeMacroTexture();
+const texDetail=makeDetailTextures();
 const litterTex=makeLitterTexture();
 const flowerTex=makeFlowerTexture();
 const glowWarm=makeGlowSprite('rgba(255,214,120,1)');
@@ -1533,9 +1561,9 @@ const glowGreen=makeGlowSprite('rgba(160,255,190,1)');
 
 /* --- ground --- */
 (function buildGround(){
-  texGround.map.repeat.set(40,40);
-  texGround.rough.repeat.set(40,40);
-  texGround.nrm.repeat.set(40,40);
+  texGround.map.repeat.set(62,62);
+  texGround.rough.repeat.set(62,62);
+  texGround.nrm.repeat.set(62,62);
   const SEG=180;
   const g=new THREE.PlaneGeometry(300,300,SEG,SEG);
   const p=g.attributes.position;
@@ -1577,12 +1605,24 @@ const glowGreen=makeGlowSprite('rgba(160,255,190,1)');
      40x-repeated soil texture reads as wallpaper */
   gmat.onBeforeCompile=sh=>{
     sh.uniforms.uMacro={value:macroTex};
-    sh.vertexShader='varying vec2 vMacroUv;\n'+sh.vertexShader.replace(
+    sh.uniforms.uDetail={value:texDetail.map};
+    sh.uniforms.uDetailN={value:texDetail.nrm};
+    sh.vertexShader='varying vec2 vMacroUv;varying vec2 vDetUv;\n'+sh.vertexShader.replace(
       '#include <begin_vertex>',
-      '#include <begin_vertex>\n vMacroUv=(modelMatrix*vec4(transformed,1.0)).xz*0.0052;');
-    sh.fragmentShader='uniform sampler2D uMacro;\nvarying vec2 vMacroUv;\n'+
-      sh.fragmentShader.replace('#include <map_fragment>',
-      '#include <map_fragment>\n diffuseColor.rgb*=texture2D(uMacro,vMacroUv).rgb*1.15;');
+      '#include <begin_vertex>\n'+
+      ' vec2 wxz=(modelMatrix*vec4(transformed,1.0)).xz;\n'+
+      ' vMacroUv=wxz*0.0052;\n vDetUv=wxz*2.5;');
+    sh.fragmentShader='uniform sampler2D uMacro;uniform sampler2D uDetail;'+
+      'uniform sampler2D uDetailN;\nvarying vec2 vMacroUv;varying vec2 vDetUv;\n'+
+      sh.fragmentShader
+        .replace('#include <map_fragment>',
+          '#include <map_fragment>\n'+
+          ' diffuseColor.rgb*=texture2D(uMacro,vMacroUv).rgb*1.15;\n'+
+          ' diffuseColor.rgb*=mix(vec3(1.0),texture2D(uDetail,vDetUv).rgb*1.0,0.8);')
+        .replace('#include <normal_fragment_maps>',
+          '#include <normal_fragment_maps>\n'+
+          ' { vec3 dn=texture2D(uDetailN,vDetUv).xyz*2.0-1.0;\n'+
+          '   normal=normalize(normal+vec3(dn.xy*0.42,0.0)); }');
   };
   gmat.customProgramCacheKey=()=>'groundMacro';
   const m=new THREE.Mesh(g,gmat);

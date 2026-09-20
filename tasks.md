@@ -28,6 +28,6 @@ mark done tasks like - [X]
 - [X] Fix problem when player can move formad becose upper body is toching something, but direct view is cler
 - [X] Bushes and trees still polygonal, fix them
 - [X] Fix "in the shell" view
-- [ ] Fix terrain texture resolution 
+- [X] Fix terrain texture resolution 
 - [ ] Add water, creeks, pudles, lake
 - [ ] make falling leaf animation realistinc (rotation, dwings etc) 
