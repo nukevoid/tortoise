@@ -4523,6 +4523,7 @@ let glassHintShown=false;
 let thornHintShown=false;
 let restHintShown=false;
 let breathHintShown=false;
+let wetShellHintShown=false;
 
 
 /* ═══ The cat ══════════════════════════════════════════════════════
@@ -4829,6 +4830,10 @@ function catToss(m){
    about six, the glass holds you for five and a quarter -- so this never
    takes away an answer. What it takes away is camping. */
 const SHELL={
+  wetMax:0.10,     /* standing water this deep and the shell is not an option.
+                      Chosen against the heron: from the middle of the worst
+                      marsh in the maze, dry ground is close enough to reach
+                      inside its 2.7s shadow. */
   hold:10.5,       // longer than anything that demands the shell asks for:
                    // a glass cup shadow to its shatter is 8.67s, the longest
                    // stretch the game ever needs you pulled in
@@ -6028,6 +6033,7 @@ function resetPlayer(){
   P.stones=0;P.berries=0;P.shrooms=0;P.hasLantern=false;P.lanternOn=false;
   P.berriesEaten=0;P.slot=0;P.time=0;
   huntedHintShown=false;gloomHintShown=false;heronHintShown=false;glassHintShown=false;
+  wetShellHintShown=false;
   P.trap=null; P.caught=false; P.tumble=0;
   WEATHER.wet=0; WEATHER.want=0; WEATHER.hold=26; rainHintShown=false;
   P.flipped=false; P.flipAngle=0; P.flipVel=0;
@@ -6437,7 +6443,18 @@ function update(dt){
      pops in and straight back out again on a sliver, once a frame, which is
      a meter flickering rather than a decision. */
   if(P.shellSpent&&P.breath>=SHELL.hold*SHELL.rearm)P.shellSpent=false;
-  const wantHide=!!keys['Space']&&!P.flipped&&P.shellLock<=0&&!P.shellSpent;
+  /* Not in water. A tortoise that pulls in has its head below the rim of
+     its own shell, which is fine on dry ground and not fine in a puddle --
+     and it gave the player somewhere to sit out every threat in the game
+     without ever having to read the ground. A puddle is a metre across;
+     one step is all it costs to be somewhere you can hide. */
+  const standingIn=waterDepth(P.pos.x,P.pos.z);
+  const tooWet=standingIn>SHELL.wetMax;
+  if(tooWet&&!!keys['Space']&&!P.flipped&&!wetShellHintShown){
+    wetShellHintShown=true;
+    toast('You cannot pull in with your head under water — <b>get out of it first</b>.',3.8);
+  }
+  const wantHide=!!keys['Space']&&!P.flipped&&P.shellLock<=0&&!P.shellSpent&&!tooWet;
   if(wantHide)P.breath=Math.max(0,P.breath-dt);
   else P.breath=Math.min(SHELL.hold,P.breath+SHELL.refill*dt);
   if(wantHide!==P.hidden){
