@@ -62,5 +62,5 @@ mark done tasks like - [X]
 - [X] Do mobs that in same time wont be Heron and Glass, or other 
 - [ ] increase quality of water, place more water regions
 - [X] In many places wisualy looks like we can go but we cant, and in map we see obstackle 
-- [ ] do research how to play mobs and realm and other items usig Game Designt technicas and keep player attention + give plaer emotional swing
+- [X] do research how to play mobs and realm and other items usig Game Designt technicas and keep player attention + give plaer emotional swing
 - [ ] implement results of Game Desing research
