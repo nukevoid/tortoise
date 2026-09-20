@@ -3335,6 +3335,11 @@ const _sunF=new THREE.Vector3(),_sunR=new THREE.Vector3(),_sunU=new THREE.Vector
 const _bodyN=new THREE.Vector3(),_tiltQ=new THREE.Quaternion(),_yawQ=new THREE.Quaternion(),
       _rollQ=new THREE.Quaternion(),_upAxis=new THREE.Vector3(0,1,0),
       _zAxis=new THREE.Vector3(0,0,1);
+/* A tortoise plods. The walk is the pace the whole animation rig is tuned
+   around -- bob, roll and leg swing are all measured against it below, so
+   changing it here keeps the gait looking like a full walk rather than a
+   shuffle. Sprint stays a real burst, paid for out of stamina. */
+const WALK_SPEED=1.35, SPRINT_SPEED=3.5;
 let chirpTimer=3,nearChime=0,huntedHintShown=false,gloomHintShown=false;
 let envCur=ENV_BASE;
 
@@ -3373,8 +3378,8 @@ function update(dt){
   if(mag>0){ix/=mag;iz/=mag;}
   const sprinting=(!!keys['ShiftLeft']||!!keys['ShiftRight'])&&mag>0&&P.sp>1&&!P.hidden;
   const boosted=P.boost>0;
-  let speed=2.05;
-  if(sprinting)speed=3.5;
+  let speed=WALK_SPEED;
+  if(sprinting)speed=SPRINT_SPEED;
   if(boosted)speed*=1.35;
   if(P.hp<30)speed*=0.82;
 
@@ -3406,8 +3411,9 @@ function update(dt){
   const prevBob=P.bob;
   P.bob+=spd*dt*3.4;
   if(spd>0.25&&Math.floor(P.bob/Math.PI)!==Math.floor(prevBob/Math.PI))SFX.step();
-  const bobY=Math.sin(P.bob)*0.028*clamp(spd/2,0,1.3);
-  const bobX=Math.cos(P.bob*0.5)*0.022*clamp(spd/2,0,1.3);
+  const gait=clamp(spd/(WALK_SPEED*0.98),0,1.3);   // 1.0 at a full walk
+  const bobY=Math.sin(P.bob)*0.028*gait;
+  const bobX=Math.cos(P.bob*0.5)*0.022*gait;
   const hideDrop=P.hideAmt*0.16;
 
   const eyeFwd=-P.hideAmt*0.40;              // pulling in draws the eyes back into the shell
@@ -3442,9 +3448,9 @@ function update(dt){
   groundNormal(P.pos.x,P.pos.z,_bodyN);
   _tiltQ.setFromUnitVectors(_upAxis,_bodyN);
   _yawQ.setFromAxisAngle(_upAxis,P.yaw);
-  _rollQ.setFromAxisAngle(_zAxis,Math.sin(P.bob*0.5)*0.035*clamp(spd/2,0,1));
+  _rollQ.setFromAxisAngle(_zAxis,Math.sin(P.bob*0.5)*0.035*clamp(spd/(WALK_SPEED*0.98),0,1));
   bodyRig.quaternion.copy(_tiltQ).multiply(_yawQ).multiply(_rollQ);
-  const walk=clamp(spd/2.2,0,1);
+  const walk=clamp(spd/(WALK_SPEED*1.07),0,1);
   for(let i=0;i<legs.length;i++){
     const g=legs[i];
     const ph=P.bob+(i%2?Math.PI:0)+(g.userData.front?0:Math.PI);
