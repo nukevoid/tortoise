@@ -4274,10 +4274,11 @@ function catToss(m){
 
 const FLIP={
   gravity:11.0,         // what pulls the shell back down flat
-  impulse:2.30,         // one heave, given once per press -- not while held
-  reload:0.30,          // and a tortoise cannot heave faster than this
-  damp:0.34,            // how much swing survives a second of doing nothing
-  tipAngle:1.12,        // lean past this and it goes over
+  impulse:2.55,         // one heave, given once per press -- not while held
+  reload:0.38,          // and a tortoise cannot heave faster than this
+  damp:0.17,            // how much swing survives a second of doing nothing
+  tipAngle:1.05,        // lean past this and it is over
+  commit:0.88,          // ...and past this fraction of it, gravity helps
   maxVel:8.0,
   rightTime:0.52,       // the roll onto its feet
   lift:0.30,            // the upturned shell rests ON the ground, not in it
@@ -4336,8 +4337,18 @@ function updateFlip(dt){
   P.flipHeldL=L; P.flipHeldR=R;
 
   const before=P.flipVel;
-  // gravity always hauls it back towards lying flat
-  P.flipVel+=(-FLIP.gravity*Math.sin(P.flipAngle))*dt;
+  const lean=Math.abs(P.flipAngle)/FLIP.tipAngle;
+  let grav;
+  if(lean<FLIP.commit){
+    // below the balance point: weight pulls it back down flat, and the
+    // nearer the point the less it resists
+    grav=-FLIP.gravity*Math.sin(P.flipAngle)*(1-0.18*(lean/FLIP.commit)*(lean/FLIP.commit));
+  }else{
+    // over the point: the same weight now carries it the rest of the way
+    const k=(lean-FLIP.commit)/(1-FLIP.commit);
+    grav=FLIP.gravity*1.15*k*(P.flipAngle<0?-1:1);
+  }
+  P.flipVel+=grav*dt;
   P.flipVel*=Math.pow(FLIP.damp,dt);
   P.flipVel=clamp(P.flipVel,-FLIP.maxVel,FLIP.maxVel);
   P.flipAngle+=P.flipVel*dt;

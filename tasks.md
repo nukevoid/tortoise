@@ -55,7 +55,7 @@ mark done tasks like - [X]
 - [X] make minimap map aliitle larger
 - [X] fix direction of marker on mini map
 - [X] Add weather
-- [ ] fliped mechanic to hard at the end. Start is easy but final flip is always missing
+- [X] fliped mechanic to hard at the end. Start is easy but final flip is always missing
 - [ ] Balanse gameplay 
 - [ ] Change had indication: heath - hearts, stamina - leafs. Change all code than use it
 - [ ] increase quality of water, place more water regions
