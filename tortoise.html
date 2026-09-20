@@ -129,7 +129,7 @@
     </div>
 
     <div id="mapwrap" class="panel">
-      <canvas id="minimap" width="340" height="340" style="width:170px;height:170px"></canvas>
+      <canvas id="minimap" width="440" height="440" style="width:220px;height:220px"></canvas>
       <div class="cap">The Hollow</div>
     </div>
 
@@ -4396,7 +4396,7 @@ const WEATHER_SPELLS=[
 let rainMesh=null, rainData=[];
 function buildRain(){
   const N_=WEATHER.drops;
-  const geo=new THREE.PlaneGeometry(0.015,0.46);
+  const geo=new THREE.PlaneGeometry(0.009,0.40);
   const mat=new THREE.MeshBasicMaterial({
     color:0xbcd2de, transparent:true, opacity:0.5,
     depthWrite:false, side:THREE.DoubleSide, fog:true});
@@ -4409,9 +4409,10 @@ function buildRain(){
     rainData.push({x:rr(-11,11),y:rr(0,9),z:rr(-11,11),v:rr(9,15),sw:rr(0,6.283)});
   scene.add(rainMesh);
 }
-const _rnM=new THREE.Matrix4(), _rnQ=new THREE.Quaternion(),
-      _rnP=new THREE.Vector3(), _rnS=new THREE.Vector3(1,1,1),
-      _rnE=new THREE.Euler();
+const _rnM=new THREE.Matrix4(), _rnP=new THREE.Vector3(), _rnS=new THREE.Vector3(1,1,1),
+      _rnVel=new THREE.Vector3(), _rnAxis=new THREE.Vector3(),
+      _rnToCam=new THREE.Vector3(), _rnRight=new THREE.Vector3(),
+      _rnFace=new THREE.Vector3();
 function updateRain(dt){
   if(!rainMesh)return;
   const wet=WEATHER.wet;
@@ -4419,14 +4420,17 @@ function updateRain(dt){
   if(!rainMesh.visible)return;
   const live=Math.floor(WEATHER.drops*clamp(wet,0,1));
   rainMesh.count=live;
-  rainMesh.material.opacity=0.20+0.42*wet;
+  rainMesh.material.opacity=0.16+0.34*wet;
   // rain leans with the wind, and harder when it is gusting
   const lean=(0.18+0.5*gustU.value);
+  const fall=0.7+0.5*wet;
   for(let i=0;i<live;i++){
     const d=rainData[i];
-    d.y-=d.v*dt*(0.7+0.5*wet);
-    d.x+=WIND_DIR.x*lean*dt*d.v*0.25;
-    d.z+=WIND_DIR.y*lean*dt*d.v*0.25;
+    // the velocity this drop is actually moving with, this frame
+    _rnVel.set(WIND_DIR.x*lean*d.v*0.25, -d.v*fall, WIND_DIR.y*lean*d.v*0.25);
+    d.y+=_rnVel.y*dt;
+    d.x+=_rnVel.x*dt;
+    d.z+=_rnVel.z*dt;
     const gy=groundH(d.x,d.z);
     if(d.y<gy-0.1||Math.abs(d.x-P.pos.x)>12||Math.abs(d.z-P.pos.z)>12){
       d.x=P.pos.x+rr(-11,11);
@@ -4434,12 +4438,19 @@ function updateRain(dt){
       d.y=groundH(d.x,d.z)+rr(6,10);
       d.v=rr(9,15);
     }
-    _rnE.set(lean*0.9,0,-WIND_DIR.x*lean*0.9);
-    _rnQ.setFromEuler(_rnE);
     _rnP.set(d.x,d.y,d.z);
     const near=Math.min(1,Math.max(0,(_rnP.distanceTo(camera.position)-0.55)/0.9));
-    _rnS.set(near,(0.7+1.5*wet)*near,near);
-    _rnM.compose(_rnP,_rnQ,_rnS);
+    /* The quad is tall in its own +Y, so +Y must point back up the fall
+       line, and the quad must turn about that line to face the camera --
+       otherwise a streak edge-on to you disappears. */
+    _rnAxis.copy(_rnVel).normalize().negate();          // up the streak
+    _rnToCam.subVectors(camera.position,_rnP);
+    _rnRight.crossVectors(_rnAxis,_rnToCam);
+    if(_rnRight.lengthSq()<1e-8)_rnRight.set(1,0,0); else _rnRight.normalize();
+    _rnFace.crossVectors(_rnRight,_rnAxis).normalize();
+    _rnM.makeBasis(_rnRight,_rnAxis,_rnFace);
+    _rnM.scale(_rnS.set(near,(0.6+1.0*wet)*near,near));
+    _rnM.setPosition(_rnP.x,_rnP.y,_rnP.z);
     rainMesh.setMatrixAt(i,_rnM);
   }
   rainMesh.instanceMatrix.needsUpdate=true;
@@ -5153,9 +5164,9 @@ function drawMap(){
   }
   // player
   const px=(P.pos.x+HALF)/T*cell,py=(P.pos.z+HALF)/T*cell;
-  ctx.save();ctx.translate(px,py);ctx.rotate(-P.yaw+Math.PI/2);
+  ctx.save();ctx.translate(px,py);ctx.rotate(-P.yaw);
   ctx.fillStyle='#e8c56a';
-  ctx.beginPath();ctx.moveTo(0,-7);ctx.lineTo(5,6);ctx.lineTo(0,3);ctx.lineTo(-5,6);
+  ctx.beginPath();ctx.moveTo(0,-9);ctx.lineTo(6.5,7.5);ctx.lineTo(0,4);ctx.lineTo(-6.5,7.5);
   ctx.closePath();ctx.fill();
   ctx.restore();
 }

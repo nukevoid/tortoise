@@ -52,8 +52,8 @@ mark done tasks like - [X]
 - [X] investiagate level disign aproaches and generators, implement and test
 - [X] Add different bioms, use them in level generation
 - [X] Add landscape 
-- [ ] make minimap map aliitle larger
-- [ ] fix direction of marker on mini map
+- [X] make minimap map aliitle larger
+- [X] fix direction of marker on mini map
 - [X] Add weather
 - [ ] fliped mechanic to hard at the end. Start is easy but final flip is always missing
 - [ ] Balanse gameplay 
