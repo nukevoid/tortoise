@@ -2772,7 +2772,10 @@ function spawnMob(name,x,z,opts){
   const m={
     type:name, def, x, z, y:groundH(x,z),
     t:0, state:'idle', stateT:0, awake:false, dead:false,
-    home:{x,z}, data:{}, _bit:false,
+    home:{x,z},
+    parts:{},              // built once, survives a restart
+    data:{},               // per-run scratch, cleared by resetMobs
+    _bit:false,
     group:new THREE.Group()
   };
   if(opts)Object.assign(m,opts);
@@ -2876,9 +2879,199 @@ function resetMobs(){
     m.group.position.set(m.x,m.y,m.z);
     m.t=0; m.stateT=0; m._bit=false; m.awake=false;
     m.group.visible=false;
-    m.state='idle'; m.data={};
+    m.state='idle';
+    m.data={};             // parts are deliberately untouched
     if(m.def.onReset)m.def.onReset(m);
   }
+}
+
+
+/* ═══ Thornmaw ═════════════════════════════════════════════════════
+   A rooted plant with three thorny shoots. It cannot follow you, so it is
+   a place rather than a chase: the corridor it sits in costs something to
+   walk down. Each shoot runs its own wind-up/strike/recover clock, offset
+   from its siblings, so the heads snap one after another and there is a
+   readable gap between bites rather than a wall of damage.
+
+   Every shoot's lunge and its damage come from the same attackTick() call,
+   so the head is always at full stretch on exactly the frame the bite
+   lands. Pulling into the shell refuses the bite (mobStrike does that for
+   us), and a few seconds of finding nothing to bite makes the plant lose
+   interest and fold back down -- otherwise hiding would only ever be a
+   stalemate you could not walk away from. */
+
+const THORN={
+  sense:3.15,        // it notices you this far out
+  reach:1.95,        // ...but can only land a bite this close
+  damage:9,
+  windup:0.62, strike:0.18, recover:0.62,
+  gap:2.50,          // long enough that only one head is ever mid-lunge
+  boredom:2.2        // seconds of a sheltered player before it gives up
+};
+
+const matThornStem=new THREE.MeshStandardMaterial({color:0x53602a,roughness:0.86,metalness:0});
+const matThornMaw =new THREE.MeshStandardMaterial({color:0x6d1f2c,roughness:0.62,metalness:0,
+                                                   emissive:0x2a0a10,emissiveIntensity:0.5});
+const matThornSpike=new THREE.MeshStandardMaterial({color:0xcfc8a8,roughness:0.5,metalness:0});
+const matThornBulb=new THREE.MeshStandardMaterial({color:0x3f4a20,roughness:0.9,metalness:0});
+patchFoliage(matThornStem,0.05,0.35);
+
+const GEO_THORN_STEM=(()=>{ const g=new THREE.CylinderGeometry(0.035,0.085,1,6,1);
+                            g.translate(0,0.5,0); return g; })();
+const GEO_THORN_SPIKE=new THREE.ConeGeometry(0.030,0.115,4);
+const GEO_THORN_JAW=new THREE.ConeGeometry(0.105,0.235,7,1,true);
+
+const _tmUp=new THREE.Vector3(0,1,0), _tmDir=new THREE.Vector3(),
+      _tmWorld=new THREE.Vector3(), _tmQ=new THREE.Quaternion(), _tmQ2=new THREE.Quaternion();
+
+defineMob('thornmaw',{
+  activeRange:24,
+  build(m){
+    const bulb=new THREE.Mesh(new THREE.IcosahedronGeometry(0.34,1),matThornBulb);
+    bulb.scale.set(1,0.62,1); bulb.position.y=0.05;
+    bulb.castShadow=true; bulb.receiveShadow=true;
+    m.group.add(bulb);
+    m.parts.shoots=[];
+    for(let i=0;i<3;i++){
+      const a=(i/3)*6.283+rr(-0.3,0.3);
+      const pivot=new THREE.Group();
+      pivot.position.set(Math.cos(a)*0.20,0.11,Math.sin(a)*0.20);
+      const stem=new THREE.Mesh(GEO_THORN_STEM,matThornStem);
+      stem.castShadow=true; stem.scale.y=0.6;
+      pivot.add(stem);
+      // spikes cling to the base of the shoot, where the stalk is thickest
+      for(let k=0;k<3;k++){
+        const sp=new THREE.Mesh(GEO_THORN_SPIKE,matThornSpike);
+        const ang=rr(0,6.283), hh=rr(0.10,0.30);
+        sp.position.set(Math.cos(ang)*0.055,hh,Math.sin(ang)*0.055);
+        sp.rotation.set(Math.PI*0.5*rr(0.6,1.0),ang,0);
+        pivot.add(sp);
+      }
+      const head=new THREE.Group();
+      const upper=new THREE.Mesh(GEO_THORN_JAW,matThornMaw);
+      upper.rotation.x=Math.PI; upper.position.y=0.10; upper.castShadow=true;
+      const lower=new THREE.Mesh(GEO_THORN_JAW,matThornMaw);
+      lower.rotation.x=Math.PI; lower.position.y=0.10; lower.castShadow=true;
+      head.add(upper); head.add(lower);
+      for(let k=0;k<5;k++){
+        const fang=new THREE.Mesh(GEO_THORN_SPIKE,matThornSpike);
+        const ang=(k/5)*6.283;
+        fang.position.set(Math.cos(ang)*0.072,0.13,Math.sin(ang)*0.072);
+        fang.rotation.set(Math.PI,0,0);
+        fang.scale.setScalar(0.72);
+        head.add(fang);
+      }
+      pivot.add(head);
+      m.group.add(pivot);
+      m.parts.shoots.push({
+        pivot, stem, head, upper, lower,
+        restDir:new THREE.Vector3(Math.cos(a)*0.52,1,Math.sin(a)*0.52).normalize(),
+        stateT:rr(0,THORN.gap), _bit:false,
+        phase:i*((THORN.windup+THORN.strike+THORN.recover+THORN.gap)/3),
+        len:0.6, swayP:rr(0,6.283)
+      });
+      // start each shoot at a different point in the cycle so they stagger
+      m.parts.shoots[i].stateT=-m.parts.shoots[i].phase;
+    }
+    m.data.bored=0;
+  },
+  onReset(m){
+    m.data.bored=0;
+    for(const sh of m.parts.shoots){ sh.stateT=-sh.phase; sh._bit=false; sh.len=0.6; }
+  },
+  think(m,dt,d){
+    const sh3=m.parts.shoots;
+    const cycle=THORN.windup+THORN.strike+THORN.recover+THORN.gap;
+    // It only works itself up when there is something to bite. A player in
+    // the shell is nothing to bite, so it winds down and lets you leave.
+    const hunting = d<THORN.sense && state==='play' && !playerSheltered();
+    if(hunting) m.data.bored=0; else m.data.bored+=dt;
+    const active = hunting || m.data.bored<THORN.boredom;
+
+    for(let i=0;i<sh3.length;i++){
+      const sh=sh3[i];
+      sh.stateT+=dt;
+      let aim=null, open=0.12, len=0.6;
+
+      if(active&&sh.stateT>=0){
+        if(sh.stateT>cycle){ sh.stateT-=cycle; sh._bit=false; }
+        const a=attackTick(sh,THORN.windup,THORN.strike,THORN.recover);
+        if(a.stage==='windup'){
+          const w=a.windupT;
+          if(w<0.60){
+            // coil back and gape: the tell, and the only warning you get
+            const k=w/0.60;
+            len=0.60-0.18*k; open=0.12+0.78*k; aim=-0.42*k;
+          }else{
+            // ...then throw the head out, arriving as the strike window opens
+            const k=(w-0.60)/0.40;
+            len=0.42+0.94*k; open=0.90-0.16*k; aim=-0.42+1.42*k;
+          }
+        }else if(a.stage==='strike'){
+          len=1.36;                                // already at full stretch
+          open=0.74*Math.max(0,1-a.strikeT*3.0);   // jaws slam shut on contact
+          aim=1;
+          if(a.justBit){
+            if(d<THORN.reach){
+              if(mobStrike(m,THORN.damage,'thornmaw')) SFX.thornBite(true);
+              else SFX.thornBite(false);
+            }else SFX.thornBite(false);
+          }
+        }else if(a.stage==='recover'){
+          len=1.36-0.76*a.recoverT;
+          open=0.07+0.05*a.recoverT;
+          aim=1-a.recoverT;
+        }else{ len=0.60; open=0.12; aim=0; }
+      }
+
+      // where the head wants to point
+      _tmDir.copy(sh.restDir);
+      if(aim!==null&&aim!==0){
+        sh.pivot.getWorldPosition(_tmWorld);
+        const tx=P.pos.x-_tmWorld.x, ty=(P.pos.y-0.30)-_tmWorld.y, tz=P.pos.z-_tmWorld.z;
+        const L=Math.hypot(tx,ty,tz)||1;
+        const k=clamp(aim,-1,1);
+        _tmDir.set(sh.restDir.x+(tx/L-sh.restDir.x)*k,
+                   sh.restDir.y+(ty/L-sh.restDir.y)*k,
+                   sh.restDir.z+(tz/L-sh.restDir.z)*k).normalize();
+      }else{
+        // idle sway, so it is alive even when it has not noticed you
+        const sw=Math.sin(windU.value*0.9+sh.swayP)*0.09;
+        _tmDir.set(sh.restDir.x+sw,sh.restDir.y,sh.restDir.z+sw*0.6).normalize();
+      }
+      _tmQ.setFromUnitVectors(_tmUp,_tmDir);
+      sh.pivot.quaternion.slerp(_tmQ,1-Math.pow(0.0009,dt));
+
+      // everywhere but the strike, the shoot eases; during the strike it is
+      // pinned, so the frame that scores the bite is the frame at full stretch
+      if(active&&sh.stateT>=0&&sh.stateT>=THORN.windup&&
+         sh.stateT<THORN.windup+THORN.strike) sh.len=len;
+      else sh.len=lerp(sh.len,len,1-Math.pow(0.0004,dt));
+      sh.stem.scale.y=sh.len;
+      sh.head.position.y=sh.len;
+      sh.upper.rotation.x=Math.PI-open*0.6;
+      sh.lower.rotation.x=Math.PI+open*0.6;
+    }
+  }
+});
+
+/* Thornmaws guard corridors. They are kept off the start cell and away from
+   the Sunstones, so nothing the player must reach is behind a wall of teeth. */
+function spawnThornmaws(n){
+  const far=openCells.filter(c=>dist[c[1]*N+c[0]]>5);
+  const taken=[];
+  let placed=0, guard=0;
+  while(placed<n && guard++<n*40 && far.length){
+    const c=far[Math.floor(RNG()*far.length)];
+    const p=cellCenter(c[0],c[1]);
+    // not on top of an item, and not shoulder to shoulder with another one
+    if(items.some(it=>Math.hypot(it.x-p.x,it.z-p.z)<2.2))continue;
+    if(taken.some(t=>Math.hypot(t[0]-p.x,t[1]-p.z)<9))continue;
+    taken.push([p.x,p.z]);
+    spawnMob('thornmaw',p.x+rr(-0.5,0.5),p.z+rr(-0.5,0.5));
+    placed++;
+  }
+  return placed;
 }
 
 /* --- crows --- */
@@ -3385,7 +3578,13 @@ const SFX={
   die(){[392,330,262,196].forEach((f,i)=>tone(f,0.9,'triangle',0.14,null,i*0.22));},
   chirp(){const f=rr(2200,3600);tone(f,0.07,'sine',0.045,f*1.5);
           tone(f*1.2,0.06,'sine',0.035,f*0.8,0.09);},
-  near(){tone(1320,0.5,'sine',0.045);}
+  near(){tone(1320,0.5,'sine',0.045);},
+  /* a wet snap when the jaws find you, a dry clack when they shut on air --
+     the difference is the feedback that tells you the shell worked */
+  thornBite(hit){
+    if(hit){ tone(150,0.12,'square',0.16,60); tone(420,0.07,'sawtooth',0.09,120,0.01); }
+    else   { tone(118,0.09,'square',0.07,55); }
+  }
 };
 
 /* ═══════════════════════════════════════════════════════════════
@@ -4122,6 +4321,7 @@ async function boot(){
   buildGroundDressing();
   setLoad(82,'Waking the crows…');await frame();
   spawnCrows(2);buildLeaves();buildFireflies();
+  spawnThornmaws(7);
   setLoad(88,'Letting in the light…');await frame();
   buildEnvironment();buildShafts();buildMotes();
   collectMaterials();
@@ -4199,7 +4399,7 @@ function placeItems(){
 window.__game={
   P,items,crows,keys,hazards,renderer,scene,camera,sun,hemi,AUDIO,POST,BOOT,
   renderFrame,buildTargets,matComposite,
-  gust:gustU,gustAt,WIND_DIR,
+  gust:gustU,gustAt,WIND_DIR,THORN,
   mobs,MOB_TYPES,defineMob,spawnMob,despawnMob,setMobState,mobDist,
   mobStrike,attackTick,playerSheltered,makeThreatShadow,placeThreatShadow,
   get shafts(){return shaftMesh;},get motes(){return moteMesh;},
