@@ -1086,11 +1086,19 @@ const skyMat=new THREE.ShaderMaterial({
     uMid:{value:new THREE.Color(0x9dc2e6)},
     uBot:{value:new THREE.Color(0xa7bba6)},
     uSunCol:{value:new THREE.Color(0xffe6b0)},
-    uSunDir:{value:SUN_DIR.clone()}
+    uSunDir:{value:SUN_DIR.clone()},
+    /* A ShaderMaterial gets no fog unless it asks for it, so the dome stayed
+       a clean blue gradient however thick the air got: rain could grey out
+       the whole forest and leave a bright summer sky sitting on top of it.
+       The band is driven from the real fog density below. */
+    uFogCol:{value:new THREE.Color(0xa7bba6)},
+    uFogAmt:{value:0.55},
+    uFogSpan:{value:0.30}
   },
   vertexShader:`varying vec3 vDir;void main(){vDir=normalize(position);
     gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
-  fragmentShader:`varying vec3 vDir;uniform vec3 uTop,uMid,uBot,uSunCol,uSunDir;
+  fragmentShader:`varying vec3 vDir;uniform vec3 uTop,uMid,uBot,uSunCol,uSunDir,uFogCol;
+    uniform float uFogAmt,uFogSpan;
     void main(){
       vec3 d=normalize(vDir);
       float h=clamp(d.y*0.5+0.5,0.0,1.0);
@@ -1098,6 +1106,11 @@ const skyMat=new THREE.ShaderMaterial({
       col=mix(col,uTop,smoothstep(0.55,0.96,h));
       float s=max(dot(d,normalize(uSunDir)),0.0);
       col+=uSunCol*(pow(s,220.0)*3.0+pow(s,18.0)*0.30+pow(s,4.0)*0.06);
+      // the sun burns through thinning air, so it survives the haze a little
+      float sunKeep=pow(s,18.0)*0.45;
+      // thick at the horizon and thinning with height, which is what air does
+      float band=1.0-smoothstep(0.0,uFogSpan,max(d.y,0.0));
+      col=mix(col,uFogCol,clamp(band*uFogAmt*(1.0-sunKeep),0.0,1.0));
       gl_FragColor=vec4(col,1.0);
       #include <tonemapping_fragment>
       #include <colorspace_fragment>
@@ -6429,6 +6442,14 @@ function update(dt){
      the rest, and rain darkens whatever it falls on. */
   const wet=WEATHER.wet;
   scene.fog.density=lerp(FOG_BASE,0.115,gl)*(lanternLit?0.82:1)*(1+1.7*wet);
+  /* ...and the sky is made of the same air. Thicker fog reaches further up
+     the dome and takes more of the blue out of it. */
+  {
+    const fk=clamp((scene.fog.density-FOG_BASE)/(0.115-FOG_BASE),0,1);
+    skyMat.uniforms.uFogCol.value.copy(scene.fog.color);
+    skyMat.uniforms.uFogAmt.value=lerp(0.55,1.0,Math.max(fk,wet));
+    skyMat.uniforms.uFogSpan.value=lerp(0.30,0.95,Math.max(fk,wet*0.9));
+  }
   hemi.intensity=lerp(0.20,0.03,gl)*(1+0.8*wet);
   amb.intensity=lerp(0.06,0.01,gl)*(1+0.9*wet);
   sun.intensity=lerp(3.8,0.34,gl)*(1-0.72*wet);
