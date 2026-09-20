@@ -2477,22 +2477,78 @@ function crowNewWaypoint(c){
 /* ═══════════════════════════════════════════════════════════════
    7. PARTICLES (falling leaves + fireflies)
    ═══════════════════════════════════════════════════════════════ */
-let leafPoints,leafData=[];
+/* A falling leaf does not drift straight down like a dot: it stalls, slips
+   sideways, flips over and tumbles, because it keeps shedding the vortex that
+   holds it up. Point sprites cannot rotate at all, so these are real instanced
+   quads with their own orientation. */
+let leafMesh=null, leafData=[];
+const _lq=new THREE.Quaternion(), _lq2=new THREE.Quaternion(),
+      _lax=new THREE.Vector3(), _lz=new THREE.Vector3(0,0,1);
+function seedLeaf(d,x,y,z){
+  d.x=x; d.y=y; d.z=z;
+  d.t=rr(0,20);
+  d.vy=rr(0.22,0.55);                    // terminal fall, slow for a light leaf
+  d.fw=rr(1.1,2.4);                      // flutter rate
+  d.fp=rr(0,6.283);                      // flutter phase
+  d.fa=rr(0.18,0.62);                    // flutter reach
+  d.spin=rr(-2.6,2.6);                   // tumble rate
+  d.flip=rr(0.7,1.5);                    // how hard it flips with each slip
+  d.sc=rr(0.7,1.25);
+  _lax.set(rr(-1,1),rr(-0.35,0.35),rr(-1,1));
+  if(_lax.lengthSq()<0.01)_lax.set(1,0,0.3);
+  _lax.normalize();
+  d.ax=_lax.x; d.ay=_lax.y; d.az=_lax.z;
+  return d;
+}
 function buildLeaves(){
-  const N_=360;
-  const pos=new Float32Array(N_*3);
+  const N_=300;
+  const geo=leafGeo(0.125,0.175,2,3,0.8,0.30);
+  geo.translate(0,-0.088,0);             // pivot near the middle so it tumbles
+  const mat=new THREE.MeshStandardMaterial({
+    map:leafTex,normalMap:texLeaf.nrm,normalScale:new THREE.Vector2(0.6,0.6),
+    alphaTest:0.45,side:THREE.DoubleSide,roughness:0.78,metalness:0});
+  patchFoliage(mat,0,0.85);              // backlit leaves glow as they fall
+  leafMesh=new THREE.InstancedMesh(geo,mat,N_);
+  leafMesh.frustumCulled=false;
+  leafMesh.castShadow=false; leafMesh.receiveShadow=true;
+  const col=new THREE.Color();
   for(let i=0;i<N_;i++){
-    const d={x:rr(-25,25),y:rr(0,14),z:rr(-25,25),vy:rr(0.25,0.7),
-             sx:rr(0,6.28),sp:rr(0.6,1.7),amp:rr(0.2,0.7)};
+    const d=seedLeaf({},rr(-14,14),rr(0,12),rr(-14,14));
     leafData.push(d);
-    pos[i*3]=d.x;pos[i*3+1]=d.y;pos[i*3+2]=d.z;
+    // autumn spread: most still green, some turned
+    const t=RNG();
+    if(t<0.45)col.setRGB(rr(0.55,0.95),rr(0.75,1.1),rr(0.35,0.6));
+    else if(t<0.8)col.setRGB(rr(1.0,1.35),rr(0.8,1.05),rr(0.3,0.5));
+    else col.setRGB(rr(1.1,1.5),rr(0.55,0.8),rr(0.25,0.4));
+    leafMesh.setColorAt(i,col);
   }
-  const g=new THREE.BufferGeometry();
-  g.setAttribute('position',new THREE.BufferAttribute(pos,3));
-  const m=new THREE.PointsMaterial({map:leafTex,size:0.24,transparent:true,alphaTest:0.4,
-    depthWrite:false,color:0xd8a44a,sizeAttenuation:true});
-  leafPoints=new THREE.Points(g,m);leafPoints.frustumCulled=false;
-  scene.add(leafPoints);
+  leafMesh.instanceColor.needsUpdate=true;
+  scene.add(leafMesh);
+}
+function updateLeaves(dt){
+  if(!leafMesh)return;
+  for(let i=0;i<leafData.length;i++){
+    const d=leafData[i];
+    d.t+=dt;
+    const sw=Math.sin(d.t*d.fw+d.fp);
+    const sw2=Math.cos(d.t*d.fw*0.77+d.fp*1.3);
+    // sideways slip is fastest at the middle of each swing, like a real leaf
+    const x=d.x+sw*d.fa, z=d.z+sw2*d.fa*0.7;
+    // it falls slower while it is sliding sideways and drops as it flips over
+    d.y-=d.vy*(0.65+0.5*Math.abs(Math.cos(d.t*d.fw+d.fp)))*dt;
+    const gy=groundH(x,z);
+    if(d.y<gy-0.2||Math.abs(x-P.pos.x)>16||Math.abs(z-P.pos.z)>16){
+      seedLeaf(d,P.pos.x+rr(-14,14),gy+rr(5,12),P.pos.z+rr(-14,14));
+      continue;
+    }
+    _lax.set(d.ax,d.ay,d.az);
+    _lq.setFromAxisAngle(_lax,d.t*d.spin);
+    _lq2.setFromAxisAngle(_lz,sw*d.flip);
+    _lq.multiply(_lq2);
+    _m4.compose(_v.set(x,d.y,z),_lq,_s.set(d.sc,d.sc,d.sc));
+    leafMesh.setMatrixAt(i,_m4);
+  }
+  leafMesh.instanceMatrix.needsUpdate=true;
 }
 let fireflyPoints,fireflyData=[];
 function buildFireflies(){
@@ -3325,22 +3381,6 @@ function updateCrow(c,dt,onHunt){
   }
 }
 
-function updateLeaves(dt){
-  const p=leafPoints.geometry.attributes.position;
-  for(let i=0;i<leafData.length;i++){
-    const d=leafData[i];
-    d.y-=d.vy*dt;d.sx+=d.sp*dt;
-    if(d.y<groundH(d.x,d.z)-0.35){
-      d.y=groundH(d.x,d.z)+rr(9,15);
-      d.x=P.pos.x+rr(-22,22);d.z=P.pos.z+rr(-22,22);
-    }
-    // recycle around the player
-    if(Math.abs(d.x-P.pos.x)>26)d.x=P.pos.x+rr(-22,22);
-    if(Math.abs(d.z-P.pos.z)>26)d.z=P.pos.z+rr(-22,22);
-    p.setXYZ(i,d.x+Math.sin(d.sx)*d.amp,d.y,d.z+Math.cos(d.sx*0.8)*d.amp);
-  }
-  p.needsUpdate=true;
-}
 function updateFireflies(dt){
   const p=fireflyPoints.geometry.attributes.position;
   for(let i=0;i<fireflyData.length;i++){

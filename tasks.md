@@ -30,7 +30,7 @@ mark done tasks like - [X]
 - [X] Fix "in the shell" view
 - [X] Fix terrain texture resolution 
 - [X] Add water, creeks, pudles, lake
-- [ ] make falling leaf animation realistinc (rotation, dwings etc) 
+- [X] make falling leaf animation realistinc (rotation, dwings etc) 
 - [ ] Crteate optimisation plan
 - [ ] Do optimisation
 - [ ] Make bushed more realistic 
