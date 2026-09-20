@@ -3605,6 +3605,285 @@ defineMob('glass',{
 });
 let glassHintShown=false;
 
+
+/* ═══ The cat ══════════════════════════════════════════════════════
+   Not a predator. A cat that has found something interesting in the
+   hedge and wants to see what it does if you push it. It waits out of
+   sight, comes out when you are near, circles, crouches, pounces, and
+   knocks you skidding across the path -- then, when it has had its fun,
+   walks off into a bush and is gone.
+
+   It costs no health, which is the point: the worst thing it does to you
+   is take away your control for a second, somewhere you might not want to
+   be standing. */
+
+const CAT={
+  firstVisit:55,
+  cooldownMin:70, cooldownMax:140,
+  noticeRange:9.0,      // how close you must come for it to bother
+  ringRadius:2.6,       // the distance it circles at
+  stalk:3.2,            // seconds of sizing you up
+  crouch:0.75,          // haunches down, tail going: the tell
+  pounce:0.42,
+  recover:1.1,
+  plays:3,              // how many times before it loses interest
+  tossSpeed:5.2,        // how hard you are sent skidding
+  tumble:0.95,          // how long you have no say in the matter
+  speed:2.4
+};
+
+const matCat  =new THREE.MeshStandardMaterial({color:0x4b423a,roughness:0.9,metalness:0});
+const matCatD =new THREE.MeshStandardMaterial({color:0x332d27,roughness:0.92,metalness:0});
+const matCatEye=new THREE.MeshStandardMaterial({color:0xbfd85a,roughness:0.25,metalness:0,
+                                                emissive:0x2c3a08,emissiveIntensity:0.6});
+const matCatNose=new THREE.MeshStandardMaterial({color:0xc08a86,roughness:0.6,metalness:0});
+
+defineMob('cat',{
+  activeRange:Infinity,
+  worldSpace:true,
+  build(m){
+    const rig=new THREE.Group();
+
+    /* Proportions matter more than parts here. A cat is long, narrow and
+       leggy, standing well clear of the ground, with the head carried low
+       and forward. Built round a 0.33m shoulder, which next to a tortoise
+       whose eye is at 0.34m makes it loom exactly as much as it should. */
+    const SH=0.33;                         // shoulder height
+
+    const body=new THREE.Mesh(new THREE.CapsuleGeometry(0.098,0.30,6,12),matCat);
+    body.rotation.z=Math.PI*0.5; body.position.set(0,SH,-0.01);
+    body.castShadow=true; rig.add(body);
+    const chest=new THREE.Mesh(new THREE.SphereGeometry(0.108,12,10),matCat);
+    chest.scale.set(0.95,1,1.05); chest.position.set(0,SH-0.005,0.155);
+    chest.castShadow=true; rig.add(chest);
+    const haunch=new THREE.Mesh(new THREE.SphereGeometry(0.122,12,10),matCat);
+    haunch.scale.set(0.95,1.05,1); haunch.position.set(0,SH+0.012,-0.175);
+    haunch.castShadow=true; rig.add(haunch);
+
+    // the head rides low and forward, on a short neck
+    const headG=new THREE.Group(); headG.position.set(0,SH+0.055,0.285);
+    const neck=new THREE.Mesh(new THREE.CylinderGeometry(0.058,0.070,0.11,8),matCat);
+    neck.rotation.x=0.85; neck.position.set(0,-0.035,-0.055); headG.add(neck);
+    const head=new THREE.Mesh(new THREE.SphereGeometry(0.098,12,10),matCat);
+    head.scale.set(1.05,0.94,1.0); head.castShadow=true; headG.add(head);
+    const muzzle=new THREE.Mesh(new THREE.SphereGeometry(0.056,8,7),matCat);
+    muzzle.scale.set(1.1,0.72,1.05); muzzle.position.set(0,-0.035,0.070); headG.add(muzzle);
+    const nose=new THREE.Mesh(new THREE.SphereGeometry(0.015,6,5),matCatNose);
+    nose.position.set(0,-0.030,0.118); headG.add(nose);
+    for(const ex of [-1,1]){
+      const ear=new THREE.Mesh(new THREE.ConeGeometry(0.044,0.095,4),matCatD);
+      ear.position.set(ex*0.058,0.092,-0.012); ear.rotation.z=ex*0.20; headG.add(ear);
+      const eye=new THREE.Mesh(new THREE.SphereGeometry(0.023,8,6),matCatEye);
+      eye.scale.set(1,0.8,0.65); eye.position.set(ex*0.048,0.012,0.079); headG.add(eye);
+      // whiskers, because the silhouette needs something fine in it
+      const wh=new THREE.Mesh(new THREE.CylinderGeometry(0.0022,0.0012,0.15,3),matCatD);
+      wh.position.set(ex*0.055,-0.030,0.090);
+      wh.rotation.set(1.45,0,ex*0.95); headG.add(wh);
+    }
+    rig.add(headG);
+
+    /* Legs reaching the floor from the shoulder, front pair under the chest
+       and back pair under the haunches, with a visible hock on the back
+       legs so they fold the way a cat's do. */
+    const legs=[];
+    const upperGeo=new THREE.CapsuleGeometry(0.030,0.14,4,7);
+    const lowerGeo=new THREE.CapsuleGeometry(0.024,0.13,4,7);
+    for(let i=0;i<4;i++){
+      const front=i<2, ex=(i%2)?1:-1;
+      const leg=new THREE.Group();
+      leg.position.set(ex*0.072,SH-0.03,front?0.155:-0.175);
+      const up=new THREE.Mesh(upperGeo,matCat);
+      up.position.y=-0.075; up.castShadow=true; leg.add(up);
+      const lo=new THREE.Mesh(lowerGeo,matCat);
+      lo.position.set(0,-0.205,front?0.010:-0.014);
+      lo.rotation.x=front?-0.10:0.14; lo.castShadow=true; leg.add(lo);
+      const paw=new THREE.Mesh(new THREE.SphereGeometry(0.032,7,6),matCat);
+      paw.scale.set(1,0.72,1.2); paw.position.set(0,-0.285,front?0.020:-0.024);
+      leg.add(paw);
+      leg.userData.front=front; leg.userData.phase=(front?0:Math.PI)+(ex>0?Math.PI:0);
+      rig.add(leg); legs.push(leg);
+    }
+
+    // a tail that can actually swish
+    const tail=[];
+    for(let i=0;i<6;i++){
+      const t=i/6;
+      const seg=new THREE.Mesh(
+        new THREE.CylinderGeometry(0.029-0.015*t,0.033-0.015*t,0.10,6),matCat);
+      seg.geometry.translate(0,0.05,0);        // grows upward from its base
+      seg.castShadow=true; rig.add(seg); tail.push(seg);
+    }
+
+    rig.visible=false;
+    m.group.position.set(0,0,0);
+    m.group.add(rig);
+    m.parts.rig=rig; m.parts.head=headG; m.parts.legs=legs; m.parts.tail=tail;
+    m.data.cd=CAT.firstVisit;
+  },
+  onReset(m){
+    m.data.cd=CAT.firstVisit;
+    m.data.plays=0;
+    if(m.parts.rig)m.parts.rig.visible=false;
+    setMobState(m,'away');
+  },
+  think(m,dt,d){
+    const rig=m.parts.rig;
+    if(state!=='play'){ rig.visible=false; return; }
+    if(m.state==='idle')setMobState(m,'away');
+
+    if(m.state==='away'){
+      rig.visible=false;
+      m.data.cd-=dt;
+      if(m.data.cd<=0){
+        /* Somewhere open, off to one side, preferring behind you and
+           further away. In a 2.6m corridor most directions are hedge, so
+           this has to actually look rather than assume. */
+        let ex=null, ez=null;
+        const a0=P.yaw+rr(0,6.283);
+        for(const rad of [3.4,2.6,1.9,1.4]){
+          for(let k=0;k<10 && ex===null;k++){
+            const a=a0+k*0.628;
+            const cx=P.pos.x+Math.sin(a)*rad, cz=P.pos.z+Math.cos(a)*rad;
+            if(!blocked(cx,cz)){ ex=cx; ez=cz; }
+          }
+          if(ex!==null)break;
+        }
+        if(ex===null){ m.data.cd=5; return; }
+        m.x=ex; m.z=ez; m.data.plays=0; m.data.ring=rr(0,6.283);
+        setMobState(m,'stalk'); SFX.catMew();
+        if(!catHintShown){
+          catHintShown=true;
+          toast('Something is watching you from the hedge…',3.4);
+        }
+      }
+      return;
+    }
+
+    rig.visible=true;
+    const gy=groundH(m.x,m.z);
+    let lean=0, crouchAmt=0, lift=0;
+
+    if(m.state==='stalk'){
+      // circle at a respectful distance, closing slowly
+      m.data.ring+=dt*0.85;
+      const want=CAT.ringRadius*(1-0.22*clamp(m.stateT/CAT.stalk,0,1));
+      const tx=P.pos.x+Math.sin(m.data.ring)*want;
+      const tz=P.pos.z+Math.cos(m.data.ring)*want;
+      catStep(m,tx,tz,CAT.speed*0.7,dt);
+      if(m.stateT>=CAT.stalk)setMobState(m,'crouch');
+    }else if(m.state==='crouch'){
+      const k=clamp(m.stateT/CAT.crouch,0,1);
+      crouchAmt=k;                       // haunches down: the warning
+      if(m.stateT>=CAT.crouch){
+        setMobState(m,'pounce');
+        m.data.px=P.pos.x; m.data.pz=P.pos.z;
+        m.data.fx=m.x; m.data.fz=m.z;
+        SFX.catPounce();
+      }
+    }else if(m.state==='pounce'){
+      const k=clamp(m.stateT/CAT.pounce,0,1);
+      m.x=lerp(m.data.fx,m.data.px,k);
+      m.z=lerp(m.data.fz,m.data.pz,k);
+      lift=Math.sin(k*Math.PI)*0.45;     // the arc of the leap
+      crouchAmt=0.35*(1-k);
+      if(k>=1){
+        // the shove. No damage: it is playing.
+        if(!playerSheltered()&&!P.trap&&state==='play'){
+          let dx=P.pos.x-m.data.fx, dz=P.pos.z-m.data.fz;
+          let L=Math.hypot(dx,dz);
+          if(L<0.05){ dx=Math.sin(m.t*3.1); dz=Math.cos(m.t*3.1); L=1; }
+          P.vel.x+=dx/L*CAT.tossSpeed;
+          P.vel.z+=dz/L*CAT.tossSpeed;
+          P.tumble=CAT.tumble;
+          catToss(m);
+          SFX.catToss();
+        }else SFX.catMew();
+        m.data.plays++;
+        setMobState(m,'recover');
+      }
+    }else if(m.state==='recover'){
+      // skitter back out of reach, pleased with itself
+      const a=Math.atan2(m.x-P.pos.x,m.z-P.pos.z);
+      const tx=P.pos.x+Math.sin(a)*CAT.ringRadius*1.15;
+      const tz=P.pos.z+Math.cos(a)*CAT.ringRadius*1.15;
+      catStep(m,tx,tz,CAT.speed,dt);
+      if(m.stateT>=CAT.recover){
+        if(m.data.plays>=CAT.plays)setMobState(m,'leave');
+        else setMobState(m,'stalk');
+      }
+    }else if(m.state==='leave'){
+      // off into the hedge, and gone
+      const a=Math.atan2(m.x-P.pos.x,m.z-P.pos.z);
+      catStep(m,m.x+Math.sin(a)*3,m.z+Math.cos(a)*3,CAT.speed*1.2,dt);
+      if(m.stateT>1.9||d>12){
+        setMobState(m,'away');
+        m.data.cd=rr(CAT.cooldownMin,CAT.cooldownMax);
+      }
+    }
+
+    // ---- pose ----
+    rig.position.set(m.x,gy+lift,m.z);
+    const face=Math.atan2(P.pos.x-m.x,P.pos.z-m.z);
+    const turn=(m.state==='stalk')?Math.atan2(m.data.vx||0,m.data.vz||1):face;
+    rig.rotation.y=lerpAngle(rig.rotation.y,turn,1-Math.pow(0.001,dt));
+    rig.position.y-=crouchAmt*0.075;
+    m.parts.head.position.y=0.40-crouchAmt*0.055;
+    m.parts.head.rotation.x=crouchAmt*0.22;
+
+    const moving=(m.state==='stalk'||m.state==='recover'||m.state==='leave')?1:0;
+    for(const leg of m.parts.legs){
+      leg.rotation.x=Math.sin(m.t*9+leg.userData.phase)*0.5*moving
+                    -crouchAmt*0.35;
+    }
+    /* The tail: a lazy curl that goes rigid and flicks hard before a pounce.
+       Segments are laid end to end along a curve rather than posed one by
+       one, so it stays a tail instead of a row of sticks. */
+    const flick=(m.state==='crouch')?3.6:1.0;
+    const amp=(m.state==='crouch')?1.8:1.0;
+    const tailN=m.parts.tail.length;
+    const curve=(u,out)=>{
+      const sw=Math.sin(m.t*2.3*flick-u*2.6)*(0.05+0.22*u)*amp;
+      out.set(sw,
+              0.36+0.20*u-0.34*u*u-crouchAmt*0.05,
+              -0.28-0.34*u);
+    };
+    for(let i=0;i<tailN;i++){
+      curve(i/tailN,_ctA); curve((i+1)/tailN,_ctB);
+      _ctD.subVectors(_ctB,_ctA);
+      const L=_ctD.length()||0.001;
+      _ctQ.setFromUnitVectors(_ctUp,_ctD.divideScalar(L));
+      m.parts.tail[i].position.copy(_ctA);
+      m.parts.tail[i].quaternion.copy(_ctQ);
+      m.parts.tail[i].scale.set(1,L/0.10,1);
+    }
+  }
+});
+let catHintShown=false;
+
+const _ctA=new THREE.Vector3(), _ctB=new THREE.Vector3(), _ctD=new THREE.Vector3(),
+      _ctQ=new THREE.Quaternion(), _ctUp=new THREE.Vector3(0,1,0);
+/* Shortest way round between two angles -- turning a cat through +pi should
+   not spin it the long way. */
+function lerpAngle(a,b,t){
+  let d=(b-a)%6.283185307;
+  if(d>3.141592653)d-=6.283185307;
+  if(d<-3.141592653)d+=6.283185307;
+  return a+d*t;
+}
+/* Walk the cat towards a point, refusing to walk into hedges. */
+function catStep(m,tx,tz,sp,dt){
+  const dx=tx-m.x, dz=tz-m.z;
+  const L=Math.hypot(dx,dz);
+  if(L<0.02)return;
+  const vx=dx/L*sp, vz=dz/L*sp;
+  m.data.vx=vx; m.data.vz=vz;
+  const nx=m.x+vx*dt, nz=m.z+vz*dt;
+  if(!blocked(nx,m.z))m.x=nx;
+  if(!blocked(m.x,nz))m.z=nz;
+}
+/* Hook for the tumble that a toss causes; the flip mechanic extends this. */
+function catToss(m){}
+
 /* --- crows --- */
 const crows=[];
 function makeCrow(){
@@ -4111,6 +4390,10 @@ const SFX={
           tone(f*1.2,0.06,'sine',0.035,f*0.8,0.09);},
   near(){tone(1320,0.5,'sine',0.045);},
   heronCall(){ tone(340,0.5,'sawtooth',0.10,150); tone(250,0.4,'square',0.05,110,0.12); },
+  catMew(){ tone(rr(620,760),0.28,'sine',0.07,rr(380,470)); },
+  catPounce(){ noiseHit(0.10,700,1.6,0.05,'lowpass'); },
+  catToss(){ noiseHit(0.22,420,1.1,0.13,'lowpass');
+             tone(rr(500,640),0.22,'sine',0.08,rr(260,340)); },
   glassHum(){ tone(1180,0.8,'sine',0.05); tone(1760,0.7,'sine',0.03,null,0.1); },
   glassDown(){ noiseHit(0.18,520,1.2,0.14,'lowpass'); tone(210,0.30,'sine',0.11,120); },
   spiderBite(hit){
@@ -4162,7 +4445,8 @@ function resetPlayer(){
   P.stones=0;P.berries=0;P.shrooms=0;P.hasLantern=false;P.lanternOn=false;
   P.berriesEaten=0;P.slot=0;P.time=0;
   huntedHintShown=false;gloomHintShown=false;heronHintShown=false;glassHintShown=false;
-  P.trap=null; P.caught=false;
+  P.trap=null; P.caught=false; P.tumble=0;
+  catHintShown=false;
   resetMobs();
   gateLocked=true;gateOpenAmt=0;
   if(gateGroup){gateGroup.userData.curtain.position.y=0;
@@ -4496,6 +4780,9 @@ function update(dt){
   if(keys['ArrowUp'])P.pitch=clamp(P.pitch+look*0.7,-1.25,1.05);
   if(keys['ArrowDown'])P.pitch=clamp(P.pitch-look*0.7,-1.25,1.05);
 
+  /* Tossed: for a moment the tortoise is skidding and the controls are not
+     connected to anything. Health is untouched -- the cat is playing. */
+  if(P.tumble>0){ P.tumble=Math.max(0,P.tumble-dt); ix=0; iz=0; }
   const mag=Math.hypot(ix,iz);
   if(mag>0){ix/=mag;iz/=mag;}
   const sprinting=(!!keys['ShiftLeft']||!!keys['ShiftRight'])&&mag>0&&P.sp>1&&!P.hidden;
@@ -4888,6 +5175,7 @@ async function boot(){
   spawnThornmaws(7);
   spawnMob('heron',P.pos.x,P.pos.z);
   spawnMob('glass',P.pos.x,P.pos.z);
+  spawnMob('cat',P.pos.x,P.pos.z);
   setLoad(88,'Letting in the light…');await frame();
   buildEnvironment();buildShafts();buildMotes();
   collectMaterials();
@@ -4965,7 +5253,7 @@ function placeItems(){
 window.__game={
   P,items,crows,keys,hazards,renderer,scene,camera,sun,hemi,AUDIO,POST,BOOT,
   renderFrame,buildTargets,matComposite,
-  gust:gustU,gustAt,WIND_DIR,THORN,HERON,GLASS,
+  gust:gustU,gustAt,WIND_DIR,THORN,HERON,GLASS,CAT,
   mobs,MOB_TYPES,defineMob,spawnMob,despawnMob,setMobState,mobDist,
   mobStrike,attackTick,playerSheltered,makeThreatShadow,placeThreatShadow,
   get shafts(){return shaftMesh;},get motes(){return moteMesh;},
