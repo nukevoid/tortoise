@@ -75,6 +75,7 @@ mark done tasks like - [X]
 - [X] slow down tortoise
 - [X] in fog ski is just blue
 - [X] change wind with weather and wind sound
-- [ ] rain sound
+- [X] rain sound
 - [ ] stamina has to have histeresis. Now it shakes at the end 
- -[ ] do level desing around POI and coridors between them 
+- [ ] do level desing around POI and coridors between them 
+- [ ] water has to block ablility to hide in shelter

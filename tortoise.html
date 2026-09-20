@@ -5705,6 +5705,10 @@ function noiseBuf(sec){
    gustU, the number the hedges bend to, so what you hear and what you see
    are the same weather. */
 let windGain, windFilt, windHiGain;
+/* Rain is two layers as well, for the same reason the wind is. The hiss is
+   the drops themselves and lives high up; the patter is what they land on,
+   and without it rain sounds like tape noise rather than like weather. */
+let rainHiss, rainBody, rainHissFilt;
 function startAmbience(){
   const ctx=AUDIO.ctx;
   const src=ctx.createBufferSource();
@@ -5730,6 +5734,27 @@ function startAmbience(){
   const lfo2=ctx.createOscillator();lfo2.frequency.value=0.11;
   const lg2=ctx.createGain();lg2.gain.value=520;
   lfo2.connect(lg2);lg2.connect(hp.frequency);lfo2.start();
+
+  // --- rain: a hiss of drops, and the patter of what they land on ---
+  const rs=ctx.createBufferSource();
+  rs.buffer=noiseBuf(4); rs.loop=true;
+  const rf=ctx.createBiquadFilter(); rf.type='highpass';
+  rf.frequency.value=2200; rf.Q.value=0.5;
+  rainHiss=ctx.createGain(); rainHiss.gain.value=0;
+  rs.connect(rf); rf.connect(rainHiss); rainHiss.connect(AUDIO.master);
+  rs.start(); rainHissFilt=rf;
+
+  const rb=ctx.createBufferSource();
+  rb.buffer=noiseBuf(4); rb.loop=true;
+  const rbf=ctx.createBiquadFilter(); rbf.type='bandpass';
+  rbf.frequency.value=620; rbf.Q.value=0.7;
+  rainBody=ctx.createGain(); rainBody.gain.value=0;
+  rb.connect(rbf); rbf.connect(rainBody); rainBody.connect(AUDIO.master);
+  rb.start();
+  // the patter is not steady: a slow wobble keeps it from sitting still
+  const lfo3=ctx.createOscillator(); lfo3.frequency.value=0.23;
+  const lg3=ctx.createGain(); lg3.gain.value=180;
+  lfo3.connect(lg3); lg3.connect(rbf.frequency); lfo3.start();
 }
 function tone(freq,dur,type,vol,slideTo,delay){
   if(!AUDIO.ready||AUDIO.muted)return;
@@ -5775,6 +5800,10 @@ const SFX={
   near(){tone(1320,0.5,'sine',0.045);},
   heronCall(){ tone(340,0.5,'sawtooth',0.10,150); tone(250,0.4,'square',0.05,110,0.12); },
   catMew(){ tone(rr(620,760),0.28,'sine',0.07,rr(380,470)); },
+  /* One drop off a leaf, close by. The rain bed is a wash; these are what
+     make it sound like it is happening near you rather than on a recording. */
+  drip(){ tone(rr(1500,2600),0.055,'sine',0.055,rr(700,1200));
+          noiseHit(0.035,rr(2600,4200),1.6,0.03); },
   waspBuzz(){ tone(rr(210,260),0.55,'sawtooth',0.045,rr(180,230)); },
   waspSting(){ tone(900,0.08,'square',0.10,380); noiseHit(0.07,1500,2.2,0.07); },
   flipOver(){ noiseHit(0.30,300,0.9,0.16,'lowpass'); tone(150,0.40,'triangle',0.11,70); },
@@ -6217,6 +6246,7 @@ const _bodyN=new THREE.Vector3(),_tiltQ=new THREE.Quaternion(),_yawQ=new THREE.Q
    this number down on their own. */
 const WALK_SPEED=1.05, SPRINT_SPEED=2.75;
 let chirpTimer=3,nearChime=0,huntedHintShown=false,gloomHintShown=false;
+let dripTimer=1.0, dripCount=0;
 let envCur=ENV_BASE;
 
 function update(dt){
@@ -6572,6 +6602,17 @@ function update(dt){
   if(chirpTimer<=0){chirpTimer=rr(2.5,8);if(RNG()<0.75)SFX.chirp();}
   // the wind is heard where it is felt: the gust that bends the hedges is
   // the same one that rises in the ambience
+  /* Rain, heard as hard as it is falling. */
+  if(rainHiss){
+    const wet=WEATHER.wet;
+    rainHiss.gain.value=lerp(rainHiss.gain.value,wet*wet*0.085,dt*1.5);
+    rainBody.gain.value=lerp(rainBody.gain.value,wet*0.055,dt*1.5);
+    if(rainHissFilt)rainHissFilt.frequency.value=lerp(rainHissFilt.frequency.value,
+        2600-wet*700, dt*1.2);
+    dripTimer-=dt*(0.2+wet*1.4);
+    if(dripTimer<=0){ dripTimer=rr(0.6,2.2);
+      if(WEATHER.wet>0.12){ SFX.drip(); dripCount++; } }
+  }
   if(windGain){
     const w=clamp(gustU.value,0,1.6), wet=WEATHER.wet;
     windGain.gain.value=lerp(windGain.gain.value,
@@ -6913,6 +6954,11 @@ window.__game={
     body:+windGain.gain.value.toFixed(4),
     cutoff:+windFilt.frequency.value.toFixed(0),
     edge:+windHiGain.gain.value.toFixed(4)}:null; },
+  get rainLevels(){ return rainHiss?{
+    hiss:+rainHiss.gain.value.toFixed(4),
+    patter:+rainBody.gain.value.toFixed(4),
+    hissCut:+rainHissFilt.frequency.value.toFixed(0),
+    drips:dripCount}:null; },
   exportLevel,get levelIsBaked(){return !!LEVEL_USED;},placeRiskCaches,
   analyseGrid,benchGenerators,GEN,
   BIOMES,biomeAt,get biomeSeeds(){return BIOME_SEEDS;},
