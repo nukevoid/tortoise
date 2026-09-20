@@ -2962,6 +2962,79 @@ function makeWaterMaterial(){
   return m;
 }
 
+
+/* A shoreline, rather than a circle.
+
+   groundH carves each basin by blending its floor in with a smoothstep that
+   only reaches zero at the basin's nominal radius, so the ground does not
+   come back up to the water level until well inside that radius. A disc
+   drawn at 0.95r therefore had its entire rim buried: measured across 35
+   basins, the ground sat 0.10-0.24m ABOVE the water plane at the rim in most
+   directions, and in nine of them in all 48 directions tested. The water did
+   not meet the land, it ended inside it.
+
+   Each rim vertex is walked outward instead, by bisection, to the radius
+   where the carved ground actually crosses the water level. That is what a
+   waterline is, and because it is solved per direction it follows a sloping
+   bank instead of cutting across it. */
+function shorelineGeometry(b,segs){
+  const LIMIT=b.r*1.12;                 // never search past the basin's reach
+  const n=segs+1;
+  const pos=new Float32Array(n*3), uv=new Float32Array(n*2), nrm=new Float32Array(n*3);
+  const clip=new Uint8Array(n);
+  const idx=[];
+  let clipped=0;
+  uv[0]=0.5; uv[1]=0.5;
+  /* March out and take the FIRST crossing. Bisecting the whole ray looks
+     tidier and is wrong: the terrain under a basin is not monotonic, so
+     neighbouring rays settle on different crossings and the rim jumps by
+     metres between adjacent vertices -- on the lake it jumped 3.7m, which
+     draws as a spike of water hanging over dry ground. */
+  const rad=new Float32Array(segs);
+  const step=Math.max(0.04,b.r/60);
+  for(let i=0;i<segs;i++){
+    const a=i/segs*Math.PI*2;
+    // local +X,+Y become world +x,-z once the disc is laid down
+    const wx=Math.cos(a), wz=-Math.sin(a);
+    let lo=0, hi=-1;
+    for(let d=step;d<=LIMIT;d+=step){
+      if(groundH(b.x+wx*d,b.z+wz*d)>=b.level){ hi=d; break; }
+      lo=d;
+    }
+    if(hi<0){ rad[i]=LIMIT; clip[i+1]=1; clipped++; continue; }
+    for(let k=0;k<12;k++){
+      const mid=(lo+hi)*0.5;
+      if(groundH(b.x+wx*mid,b.z+wz*mid)<b.level)lo=mid; else hi=mid;
+    }
+    rad[i]=Math.max(b.r*0.2,lo);
+  }
+  // one pass of 1-2-1 around the ring, to take the stagger off the rim
+  const sm=new Float32Array(segs);
+  for(let i=0;i<segs;i++){
+    const a=rad[(i-1+segs)%segs], c=rad[i], d=rad[(i+1)%segs];
+    sm[i]=(a+2*c+d)*0.25;
+  }
+  for(let i=0;i<segs;i++){
+    const a=i/segs*Math.PI*2, r=sm[i], j=i+1;
+    pos[j*3]=Math.cos(a)*r; pos[j*3+1]=Math.sin(a)*r;
+    uv[j*2]=Math.cos(a)*r/(2*b.r)+0.5; uv[j*2+1]=Math.sin(a)*r/(2*b.r)+0.5;
+    idx.push(0,j,i===segs-1?1:j+1);
+  }
+  for(let i=0;i<n;i++)nrm[i*3+2]=1;     // +Z here is +Y once rotated flat
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  geo.setAttribute('uv',new THREE.BufferAttribute(uv,2));
+  geo.setAttribute('normal',new THREE.BufferAttribute(nrm,3));
+  geo.setIndex(idx);
+  /* A ray that never found its shore ran out at the basin's reach, with the
+     ground still under water. That is a real puddle spilling past the bowl,
+     but drawn to a hard stop it reads as a sheet of glass lying on the dirt,
+     so those vertices are given zero depth and the shader fades them out. */
+  geo.userData.clip=clip;
+  geo.userData.clipped=clipped;
+  return geo;
+}
+
 /* Depth at every vertex, so the shader can tell a puddle from a lake. */
 function tagWaterDepth(geo,level,ox,oz){
   const pos=geo.attributes.position;
@@ -2969,7 +3042,8 @@ function tagWaterDepth(geo,level,ox,oz){
   for(let i=0;i<pos.count;i++){
     // the plane is built flat in XY then laid down, so Y here is world Z
     const wx=ox+pos.getX(i), wz=oz-pos.getY(i);
-    d[i]=Math.max(0,level-groundH(wx,wz));
+    d[i]=(geo.userData.clip&&geo.userData.clip[i])?0
+         :Math.max(0,level-groundH(wx,wz));
   }
   geo.setAttribute('aDepth',new THREE.BufferAttribute(d,1));
   return geo;
@@ -2981,7 +3055,7 @@ function buildWater(){
   group.renderOrder=2;
 
   // --- the lake ---
-  const lakeGeo=tagWaterDepth(new THREE.CircleGeometry(POND.r*0.97,56),POND.level,POND.x,POND.z);
+  const lakeGeo=tagWaterDepth(shorelineGeometry(POND,72),POND.level,POND.x,POND.z);
   const lake=new THREE.Mesh(lakeGeo,mat);
   lake.rotation.x=-Math.PI/2;
   lake.position.set(POND.x,POND.level,POND.z);
@@ -2991,7 +3065,7 @@ function buildWater(){
   // --- puddles ---
   for(const b of PUDDLES){
     const d=new THREE.Mesh(
-      tagWaterDepth(new THREE.CircleGeometry(b.r*0.95,20),b.level,b.x,b.z),mat);
+      tagWaterDepth(shorelineGeometry(b,28),b.level,b.x,b.z),mat);
     d.rotation.x=-Math.PI/2;
     d.position.set(b.x,b.level,b.z);
     group.add(d);
@@ -6566,7 +6640,7 @@ window.__game={
   exportLevel,get levelIsBaked(){return !!LEVEL_USED;},placeRiskCaches,
   analyseGrid,benchGenerators,GEN,
   BIOMES,biomeAt,get biomeSeeds(){return BIOME_SEEDS;},
-  groundH,terrainBase,waterDepth,blocked,
+  groundH,terrainBase,waterDepth,blocked,BASINS,CREEK,
   flipPlayer,unflipPlayer,
   mobs,MOB_TYPES,defineMob,spawnMob,despawnMob,setMobState,mobDist,
   mobStrike,attackTick,playerSheltered,makeThreatShadow,placeThreatShadow,
