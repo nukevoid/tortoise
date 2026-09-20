@@ -3541,6 +3541,12 @@ function resetMobs(){
 const STAGE_GAP=4.0;                      // quiet between two set pieces
 const STAGE={holder:null,quiet:0};
 function stageFree(m){
+  /* Not while the player is upturned, and not for a few seconds after. The
+     cat can put you on your back and the rock-off takes two to four seconds
+     of both hands; a heron arriving into that asks for the shell at a moment
+     when the shell is not available, which is not a difficulty curve, it is
+     a coin toss. */
+  if(P.flipped)return false;
   return (STAGE.holder===null||STAGE.holder===m) && STAGE.quiet<=0;
 }
 function stageTake(m){ STAGE.holder=m; }
@@ -3550,6 +3556,8 @@ function stageRelease(m){
 function stageBusy(m){ return STAGE.holder!==null && STAGE.holder!==m; }
 function updateStage(dt){
   if(STAGE.quiet>0)STAGE.quiet-=dt;
+  // and the quiet does not start running down until you are back on your feet
+  if(P.flipped)STAGE.quiet=Math.max(STAGE.quiet,STAGE_GAP*0.8);
   // a performer that was despawned or put to sleep must not hold the stage
   if(STAGE.holder&&(STAGE.holder.dead||!STAGE.holder.awake))stageRelease(STAGE.holder);
 }
@@ -3768,7 +3776,10 @@ function spawnThornmaws(n){
    moment, so backing away buys a little and hiding is the real answer. */
 
 const HERON={
-  firstVisit:62,                 // seconds of play before it ever comes
+  /* Last of the three to arrive, and the only one that kills outright. By
+     the time it comes the player has met the cat and the glass and has been
+     taught, twice, that pulling in is the answer. */
+  firstVisit:172,                // seconds of play before it ever comes
   cooldownMin:95, cooldownMax:170,
   telegraph:2.7,                 // the shadow, i.e. the time you get
   lock:0.5,                      // it stops following you this long before
@@ -4018,7 +4029,7 @@ let heronHintShown=false;
    tortoise never ends up wedged inside geometry when it lands. */
 
 const GLASS={
-  firstDrop:80,
+  firstDrop:112,                 // second of the three: move, or sit it out
   cooldownMin:85, cooldownMax:150,
   telegraph:2.0,
   fall:0.42,
@@ -4335,7 +4346,7 @@ let breathHintShown=false;
    be standing. */
 
 const CAT={
-  firstVisit:55,
+  firstVisit:55,                 // first of the three, and the harmless one
   cooldownMin:70, cooldownMax:140,
   noticeRange:9.0,      // how close you must come for it to bother
   ringRadius:2.6,       // the distance it circles at
