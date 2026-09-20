@@ -988,6 +988,7 @@ renderer.outputColorSpace=THREE.SRGBColorSpace;
 renderer.toneMapping=THREE.NoToneMapping;   // the composite pass grades instead
 renderer.shadowMap.enabled=true;
 renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.shadowMap.autoUpdate=false;   // driven by hand, see renderFrame
 
 const scene=new THREE.Scene();
 const FOG_BASE=0.019;
@@ -1000,7 +1001,7 @@ scene.add(camera);
 const SUN_DIR=new THREE.Vector3(0.50,0.78,0.38).normalize();   // high enough to reach the corridor floor
 const sun=new THREE.DirectionalLight(0xfff0d4,3.8);
 sun.castShadow=true;
-sun.shadow.mapSize.set(2048,2048);
+sun.shadow.mapSize.set(1536,1536);   // 1.7 cm texels; edges are seen at grazing angles
 sun.shadow.camera.near=1;sun.shadow.camera.far=120;
 sun.shadow.camera.left=-13;sun.shadow.camera.right=13;
 sun.shadow.camera.top=13;sun.shadow.camera.bottom=-13;
@@ -1336,7 +1337,7 @@ function buildTargets(){
     rtScene.depthTexture.format=THREE.DepthFormat;
     rtScene.depthTexture.type=THREE.UnsignedIntType;
   }
-  const aw=Math.max(2,Math.floor(w/3)), ah=Math.max(2,Math.floor(h/3));
+  const aw=Math.max(2,Math.floor(w/4)), ah=Math.max(2,Math.floor(h/4));
   aoRT=new THREE.WebGLRenderTarget(aw,ah,{minFilter:THREE.LinearFilter,
     magFilter:THREE.LinearFilter,depthBuffer:false,stencilBuffer:false});
   aoBlurRT=new THREE.WebGLRenderTarget(aw,ah,{minFilter:THREE.LinearFilter,
@@ -1357,7 +1358,12 @@ function fsPass(mat,target){
   renderer.setRenderTarget(target||null);
   renderer.render(quadScene,quadCam);
 }
+let shadowTick=0;
+const SHADOW_EVERY=2;
 function renderFrame(){
+  // re-render the shadow map on alternate frames only
+  shadowTick++;
+  renderer.shadowMap.needsUpdate=(shadowTick%SHADOW_EVERY)===0;
   if(!POST.on||!rtScene){renderer.setRenderTarget(null);renderer.render(scene,camera);return;}
   renderer.setRenderTarget(rtScene);
   renderer.clear();
@@ -1720,7 +1726,8 @@ const glowGreen=makeGlowSprite('rgba(160,255,190,1)');
 })();
 
 /* --- hedge walls, trees, clutter --- */
-const GEO_BLOB=blobGeo(3);        // 320 faces; the alpha cutout chews the rim
+const GEO_BLOB=blobGeo(2);        // 180 faces; the alpha cutout chews the rim
+const GEO_BLOB_SHADOW=blobGeo(1); // 80 faces, shadow caster only
 const GEO_ROCK=rockGeo();
 const GEO_GRASS=grassTuftGeo();
 
@@ -3082,6 +3089,8 @@ function losClear(ax,az,bx,bz){
    14. UPDATE
    ═══════════════════════════════════════════════════════════════ */
 const fwd=new THREE.Vector3(),right=new THREE.Vector3();
+const _sunF=new THREE.Vector3(),_sunR=new THREE.Vector3(),_sunU=new THREE.Vector3(),
+      _sunT=new THREE.Vector3();
 const _bodyN=new THREE.Vector3(),_tiltQ=new THREE.Quaternion(),_yawQ=new THREE.Quaternion(),
       _rollQ=new THREE.Quaternion(),_upAxis=new THREE.Vector3(0,1,0),
       _zAxis=new THREE.Vector3(0,0,1);
@@ -3212,8 +3221,20 @@ function update(dt){
   head.position.y+=Math.sin(P.bob)*0.008*walk;
 
   /* ---- sun follows the player so shadows stay crisp ---- */
-  sun.position.set(P.pos.x,gH,P.pos.z).addScaledVector(SUN_DIR,60);
-  sun.target.position.set(P.pos.x,gH,P.pos.z);
+  /* Snap the shadow camera to whole shadow-map texels. Without this the
+     shadow map resamples every frame as the rig slides and every shadow edge
+     crawls; with it the map is bit-identical until the player crosses a texel,
+     which is also what makes re-rendering it on alternate frames invisible. */
+  const texel=(sun.shadow.camera.right-sun.shadow.camera.left)/sun.shadow.mapSize.x;
+  _sunF.copy(SUN_DIR).negate();                       // light looks this way
+  _sunR.set(0,1,0).cross(_sunF).normalize();
+  _sunU.copy(_sunF).cross(_sunR).normalize();
+  _sunT.set(P.pos.x,gH,P.pos.z);
+  const du=Math.round(_sunT.dot(_sunR)/texel)*texel - _sunT.dot(_sunR);
+  const dv=Math.round(_sunT.dot(_sunU)/texel)*texel - _sunT.dot(_sunU);
+  _sunT.addScaledVector(_sunR,du).addScaledVector(_sunU,dv);
+  sun.position.copy(_sunT).addScaledVector(SUN_DIR,60);
+  sun.target.position.copy(_sunT);
   sun.target.updateMatrixWorld();
   sky.position.copy(camera.position);
 

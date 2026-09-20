@@ -102,3 +102,51 @@ These were tried or measured and did not pay. Do not redo them:
 Target on this machine: **≤ 25 ms at 0.85 scale** (40 fps), from 41.4 ms.
 P1 + P2 + P3 together are projected at −10 to −16 ms. If they land, the
 adaptive scaler stops having to drop below 0.85 in normal play.
+
+---
+
+# Results
+
+Measured interleaved against the parent commit, same camera, medians of 5 runs.
+
+| Render scale | Before | After | Gain |
+|---|---:|---:|---:|
+| 0.60 | 31.93 ms | 23.70 ms | −8.23 ms |
+| **0.85** | **41.79 ms** | **32.74 ms** | **−9.05 ms (−21.7%)** |
+| 1.10 | 57.49 ms | 46.11 ms | −11.38 ms |
+
+Triangles 2,305,794 → 1,066,394. Draw calls 349 → 238.
+
+Individual contributions, isolated by runtime toggle:
+
+| Change | Gain |
+|---|---:|
+| Blob detail 3 → 2 (320 → 180 faces) | −3.8 ms |
+| Shadow map on alternate frames | −4.23 ms |
+| Shadow map 2048 → 1536 | −1.52 ms |
+| SSAO 1/3 → 1/4 resolution | −1.07 ms |
+
+**The 25 ms target was not reached at 0.85 scale; it was reached at 0.60.**
+
+Two corrections to the plan, found by measuring rather than assuming:
+
+- **P1a was wrong.** It assumed most blobs are buried inside the wall and could
+  drop to 80 faces. They are not: the face, corner and crown blobs *are* the
+  visible surface, and only ~700 of 3197 are buried. The real lever was that
+  the alpha cutout carries the silhouette well enough that every blob can drop
+  to 180 faces, verified at 0.58 m where the rim still reads as leaves.
+- **The shadow cadence needed texel snapping** to be usable. Snapping the
+  shadow camera to whole shadow-map texels in light space makes the map
+  bit-identical until the player crosses a texel, which is what makes updating
+  it on alternate frames invisible — and it removes the edge crawl that was
+  there before, at every frame rate. Verified: the light-space coordinates of
+  the shadow target land on exact integers while walking.
+
+## Still on the table
+
+- Split the bush layer into surface and buried; buried at 80 faces and not
+  casting shadows. ~700 instances, so worth roughly 1 ms. Low priority.
+- Merge small chunks to cut the remaining 238 draw calls.
+- Shader-compile boot cost (~800 ms) is untouched.
+- Fill rate is now the larger half of the frame again; the next real gain is
+  reducing alpha-tested overdraw, not triangles.
