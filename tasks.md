@@ -74,7 +74,7 @@ mark done tasks like - [X]
 - [X] improve swing animation - now it rotates at the center of mass but has to roll on the ground
 - [X] slow down tortoise
 - [X] in fog ski is just blue
-- [ ] change wind with weather and wind sound
+- [X] change wind with weather and wind sound
 - [ ] rain sound
 - [ ] stamina has to have histeresis. Now it shakes at the end 
  -[ ] do level desing around POI and coridors between them 
