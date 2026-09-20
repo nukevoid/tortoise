@@ -5817,7 +5817,12 @@ addEventListener('keydown',e=>{
 addEventListener('keyup',e=>{keys[e.code]=false;});
 const isLocked=()=>document.pointerLockElement===canvas;
 addEventListener('mousemove',e=>{
-  if(state!=='play')return;
+  /* On your back the mouse does nothing. The flip camera already ignores
+     yaw and pitch, but the body rig does not: it is turned by P.yaw every
+     frame, so moving the mouse spun the upturned shell on the spot while
+     the view stayed put. Being flipped is a rhythm problem, and looking
+     around is not part of it. */
+  if(state!=='play'||P.flipped)return;
   const s=isLocked()?0.0022:0.0016;      // unlocked fallback: steer with plain mouse motion
   P.yaw-=(e.movementX||0)*s;
   P.pitch=clamp(P.pitch-(e.movementY||0)*s,-1.25,1.05);
@@ -6035,12 +6040,15 @@ function update(dt){
     if(keys['KeyD'])ix+=1;
     if(keys['KeyA'])ix-=1;
   }
-  // arrow keys also steer (works without a captured mouse)
+  /* Arrow keys also steer (works without a captured mouse) -- but not while
+     upturned, where left and right are the swing itself. */
   const look=2.0*dt;
-  if(keys['ArrowLeft'])P.yaw+=look;
-  if(keys['ArrowRight'])P.yaw-=look;
-  if(keys['ArrowUp'])P.pitch=clamp(P.pitch+look*0.7,-1.25,1.05);
-  if(keys['ArrowDown'])P.pitch=clamp(P.pitch-look*0.7,-1.25,1.05);
+  if(!P.flipped){
+    if(keys['ArrowLeft'])P.yaw+=look;
+    if(keys['ArrowRight'])P.yaw-=look;
+    if(keys['ArrowUp'])P.pitch=clamp(P.pitch+look*0.7,-1.25,1.05);
+    if(keys['ArrowDown'])P.pitch=clamp(P.pitch-look*0.7,-1.25,1.05);
+  }
 
   /* Tossed: for a moment the tortoise is skidding and the controls are not
      connected to anything. Health is untouched -- the cat is playing. */
