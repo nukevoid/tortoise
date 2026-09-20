@@ -37,12 +37,14 @@ mark done tasks like - [X]
 - [X] Do color corection to more calm and realistic
 - [X] Add nice sunlight and gust on air
 - [X] Dafault speed has to be slower
-- [ ] Rework bushes (main obstacles), make 3 different wariants, use some new tecnhnics to generate them to be more realistic
+- [X] Rework bushes (main obstacles), make 3 different wariants, use some new tecnhnics to generate them to be more realistic
 - [ ] Add adrchitecture to add mobs wtich can interact with player
 - [ ] First mob: hostile plant with 3 thorny shoots. Its bit you in some range with some delays, but you can hide in shell. Visualy has to have animations in sync with bites
 - [ ] Heron - Can eats you from above. Firstly you see only shadown of Heron, then you have 2-3 sec to hide in shell. Then you see Heand with long head of Heron, triying to eat you. IF you no in shell - you loose 
 - [ ] Falling glass cup: like heron - shadow, then cup falling cirectly on you. You can move 5 sec untill in breakes, couse you are under the cup
 - [ ] in some glasses with spider  inside, and you have to hide or they weel bite you
+- [ ] Add cat, hides in bushes. It no hostile, but can play with you and tos you, then disapeear
+- [ ] Add mechani then you can be fliped (you see then shell otside), and you have to swing by left\right keys to stay normal. Can can flip you during tha play
 - [ ] Level has to be saved. Generate level offline
 - [ ] investiagate level disign aproaches and generators, implement and test
 - [ ] Add different bioms, use them in level generation

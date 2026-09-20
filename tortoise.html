@@ -1805,6 +1805,13 @@ const matRock=new THREE.MeshStandardMaterial({color:0x4b473f,roughness:1.0,metal
 patchFoliage(matGrass,0.55,0.55);
 patchFoliage(matFern,0.28,0.85);
 patchFoliage(matLeafCard,0,0.75);
+/* The grown bushes get their own pair. Wood and leaf sway by the SAME
+   amplitude: they share one instance transform, so equal amplitude keeps
+   every leaf attached to the twig it grew on. */
+const matBushWood=matBark.clone();
+const matBushLeaf=matLeafCard.clone();
+patchFoliage(matBushWood,0.10,0);
+patchFoliage(matBushLeaf,0.10,0.80);
 patchFoliage(matFoliage,0,0.30);
 patchFoliage(matFoliageCut,0,0.30,true);
 patchFoliage(matCanopy,0,0.40,true);
@@ -1869,9 +1876,226 @@ const worldGroup=new THREE.Group();scene.add(worldGroup);
 
 const treeBases=[];
 const _twUp=new THREE.Vector3(0,1,0), _twDir=new THREE.Vector3(), _twQ=new THREE.Quaternion();
+
+/* ═══ Bushes, grown rather than stacked ════════════════════════════
+   The old hedge was a pile of displaced spheres, and it read as one. These
+   are grown by space colonisation: a cloud of attraction points is scattered
+   through an envelope, every branch tip reaches towards the points nearest
+   it, and points are spent as they are reached. Branches therefore fork
+   where the cloud is wide, compete for the same space, and thin out where
+   the envelope closes -- the structure a plant actually has. Three species
+   are grown once at load and instanced across the maze, so the cost of
+   growing them is paid a single time.
+
+   The species differ in envelope, leaf and colour, not merely in scale: a
+   dense boxwood, a taller open broadleaf, and a low sprawling bramble. */
+
+const _mgV=new THREE.Vector3(), _mgN=new THREE.Matrix3();
+function mergeGeos(parts){
+  let vc=0, ic=0;
+  for(const q of parts){
+    vc+=q.geo.attributes.position.count;
+    ic+=q.geo.index?q.geo.index.count:q.geo.attributes.position.count;
+  }
+  const pos=new Float32Array(vc*3), nrm=new Float32Array(vc*3), uv=new Float32Array(vc*2);
+  const idx=vc>65000?new Uint32Array(ic):new Uint16Array(ic);
+  let vo=0, io=0;
+  for(const q of parts){
+    const g=q.geo, P=g.attributes.position, Nr=g.attributes.normal, U=g.attributes.uv;
+    _mgN.getNormalMatrix(q.m);
+    for(let i=0;i<P.count;i++){
+      _mgV.set(P.getX(i),P.getY(i),P.getZ(i)).applyMatrix4(q.m);
+      pos[(vo+i)*3]=_mgV.x; pos[(vo+i)*3+1]=_mgV.y; pos[(vo+i)*3+2]=_mgV.z;
+      if(Nr){
+        _mgV.set(Nr.getX(i),Nr.getY(i),Nr.getZ(i)).applyMatrix3(_mgN).normalize();
+        nrm[(vo+i)*3]=_mgV.x; nrm[(vo+i)*3+1]=_mgV.y; nrm[(vo+i)*3+2]=_mgV.z;
+      }
+      if(U){ uv[(vo+i)*2]=U.getX(i); uv[(vo+i)*2+1]=U.getY(i); }
+    }
+    if(g.index){ for(let i=0;i<g.index.count;i++) idx[io+i]=vo+g.index.getX(i); io+=g.index.count; }
+    else { for(let i=0;i<P.count;i++) idx[io+i]=vo+i; io+=P.count; }
+    vo+=P.count;
+  }
+  const out=new THREE.BufferGeometry();
+  out.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  out.setAttribute('normal',new THREE.BufferAttribute(nrm,3));
+  out.setAttribute('uv',new THREE.BufferAttribute(uv,2));
+  out.setIndex(new THREE.BufferAttribute(idx,1));
+  return out;
+}
+
+/* Space colonisation. Attractors are scattered inside the species envelope;
+   each pulls on the single nearest branch tip within its reach, tips step
+   towards the average of everything pulling them, and an attractor that has
+   been reached is spent. */
+function growSkeleton(cfg){
+  const A=[];
+  let guard=0;
+  while(A.length<cfg.nAttract && guard++<cfg.nAttract*80){
+    const x=(RNG()*2-1)*cfg.rx, y=RNG()*cfg.h, z=(RNG()*2-1)*cfg.rz;
+    if(cfg.inside(x,y,z)) A.push([x,y,z,0]);
+  }
+  const pos=[[0,0,0]], par=[-1];
+  const dA=cfg.dAttract, dK=cfg.dKill, D=cfg.step;
+  for(let it=0; it<cfg.iters; it++){
+    const acc=new Map();
+    for(let ai=0; ai<A.length; ai++){
+      const a=A[ai];
+      if(a[3])continue;
+      let best=-1, bd=1e9, spent=false;
+      for(let ni=0; ni<pos.length; ni++){
+        const q=pos[ni];
+        const dx=a[0]-q[0], dy=a[1]-q[1], dz=a[2]-q[2];
+        const d=Math.sqrt(dx*dx+dy*dy+dz*dz);
+        if(d<dK){ spent=true; break; }
+        if(d<dA && d<bd){ bd=d; best=ni; }
+      }
+      if(spent){ a[3]=1; continue; }
+      if(best>=0){
+        let e=acc.get(best);
+        if(!e){ e=[0,0,0]; acc.set(best,e); }
+        const q=pos[best];
+        const dx=a[0]-q[0], dy=a[1]-q[1], dz=a[2]-q[2];
+        const L=Math.sqrt(dx*dx+dy*dy+dz*dz)||1;
+        e[0]+=dx/L; e[1]+=dy/L; e[2]+=dz/L;
+      }
+    }
+    if(acc.size===0)break;
+    for(const [ni,e] of acc){
+      let dx=e[0], dy=e[1]+cfg.up, dz=e[2];
+      dx+=(RNG()-0.5)*cfg.jitter; dz+=(RNG()-0.5)*cfg.jitter;
+      const L=Math.sqrt(dx*dx+dy*dy+dz*dz)||1;
+      const q=pos[ni];
+      pos.push([q[0]+dx/L*D, q[1]+dy/L*D, q[2]+dz/L*D]);
+      par.push(ni);
+      if(pos.length>=cfg.maxNodes)break;
+    }
+    if(pos.length>=cfg.maxNodes)break;
+  }
+  return {pos,par};
+}
+
+/* Murray's law: a limb is as thick as the limbs it carries. Nodes are always
+   appended after their parent, so one backward pass thickens the whole tree. */
+function skeletonRadii(sk,tipR,power){
+  const n=sk.pos.length;
+  const rp=new Float64Array(n);
+  const t=Math.pow(tipR,power);
+  for(let i=0;i<n;i++) rp[i]=t;
+  for(let i=n-1;i>=1;i--) rp[sk.par[i]]+=rp[i];
+  const r=new Float32Array(n);
+  for(let i=0;i<n;i++) r[i]=Math.pow(rp[i],1/power);
+  return r;
+}
+
+const _bpA=new THREE.Vector3(), _bpB=new THREE.Vector3(), _bpD=new THREE.Vector3(),
+      _bpQ=new THREE.Quaternion(), _bpM=new THREE.Matrix4(), _bpS=new THREE.Vector3(),
+      _bpUp=new THREE.Vector3(0,1,0), _bpE=new THREE.Euler(), _bpOff=new THREE.Vector3();
+function buildBushPrototype(cfg){
+  const sk=growSkeleton(cfg);
+  const r=skeletonRadii(sk,cfg.tipR,cfg.taperPow);
+  const wood=[], leaf=[];
+  for(let i=1;i<sk.pos.length;i++){
+    const a=sk.pos[sk.par[i]], b=sk.pos[i];
+    _bpA.set(a[0],a[1],a[2]); _bpB.set(b[0],b[1],b[2]);
+    _bpD.subVectors(_bpB,_bpA);
+    const len=_bpD.length();
+    if(len<1e-4)continue;
+    _bpD.divideScalar(len);
+    _bpQ.setFromUnitVectors(_bpUp,_bpD);
+    // only limbs thick enough to be seen get a tube of their own
+    if(r[i]>cfg.woodMinR){
+      const g=new THREE.CylinderGeometry(r[i],r[sk.par[i]],len,cfg.woodSides,1,true);
+      _bpOff.copy(_bpA).addScaledVector(_bpD,len*0.5);
+      _bpM.compose(_bpOff,_bpQ,_bpS.set(1,1,1));
+      wood.push({geo:g,m:_bpM.clone()});
+    }
+    // leaves ride the thin outer twigs, set the way the twig grew
+    if(r[i]<=cfg.leafMaxR){
+      for(let k=0;k<cfg.leavesPerTwig;k++){
+        const sc=cfg.leafW*(0.72+RNG()*0.56);
+        const lg=cfg.leafGeoFor(sc);
+        _bpE.set((RNG()-0.5)*2.2, RNG()*6.283, (RNG()-0.5)*2.2);
+        const q2=new THREE.Quaternion().setFromEuler(_bpE);
+        _bpOff.copy(_bpA).addScaledVector(_bpD,len*(0.25+RNG()*0.85));
+        _bpOff.x+=(RNG()-0.5)*cfg.leafScatter;
+        _bpOff.y+=(RNG()-0.5)*cfg.leafScatter;
+        _bpOff.z+=(RNG()-0.5)*cfg.leafScatter;
+        _bpM.compose(_bpOff,q2,_bpS.set(1,1,1));
+        leaf.push({geo:lg,m:_bpM.clone()});
+      }
+    }
+  }
+  const res={
+    wood: wood.length?mergeGeos(wood):null,
+    leaf: leaf.length?mergeGeos(leaf):null,
+    nodes: sk.pos.length,
+    woodTris: wood.reduce((a,b)=>a+b.geo.index.count/3,0),
+    leafTris: leaf.reduce((a,b)=>a+b.geo.index.count/3,0)
+  };
+  for(const w of wood)w.geo.dispose();
+  for(const l of leaf)l.geo.dispose();
+  return res;
+}
+
+/* Three species. Each envelope is a different habit, so the silhouettes
+   differ before a single leaf is placed. */
+const BUSH_SPECIES=[
+  { name:'boxwood',
+    rx:1.05, rz:1.05, h:2.10, nAttract:230, iters:60, maxNodes:96,
+    step:0.165, dAttract:0.80, dKill:0.26, up:0.22, jitter:0.55,
+    tipR:0.014, taperPow:2.3, woodMinR:0.029, woodSides:3,
+    leafMaxR:0.034, leavesPerTwig:2, leafW:0.20, leafScatter:0.11,
+    leafGeoFor:sc=>leafGeo(sc*0.72,sc,1,1,0.7,0.25),
+    inside:(x,y,z)=>{ const u=x/1.05, v=(y-1.12)/1.02, w=z/1.05;
+                      return u*u+v*v+w*w<1; } },
+
+  { name:'broadleaf',
+    rx:1.00, rz:1.00, h:2.45, nAttract:200, iters:60, maxNodes:86,
+    step:0.190, dAttract:0.92, dKill:0.32, up:0.40, jitter:0.42,
+    tipR:0.016, taperPow:2.2, woodMinR:0.028, woodSides:3,
+    leafMaxR:0.038, leavesPerTwig:2, leafW:0.34, leafScatter:0.09,
+    leafGeoFor:sc=>leafGeo(sc*0.80,sc,1,2,0.85,0.40),
+    inside:(x,y,z)=>{ const t=y/2.45;
+                      const rad=0.34+0.72*Math.sin(Math.min(t,1)*2.05);
+                      return x*x+z*z < rad*rad; } },
+
+  { name:'bramble',
+    rx:1.30, rz:1.30, h:1.70, nAttract:220, iters:60, maxNodes:92,
+    step:0.180, dAttract:0.86, dKill:0.29, up:0.10, jitter:0.85,
+    tipR:0.012, taperPow:2.5, woodMinR:0.024, woodSides:3,
+    leafMaxR:0.030, leavesPerTwig:2, leafW:0.24, leafScatter:0.13,
+    leafGeoFor:sc=>leafGeo(sc*0.86,sc,1,1,0.5,0.55),
+    inside:(x,y,z)=>{ const a=Math.atan2(z,x);
+                      const lobe=1.0+0.30*Math.sin(a*3.0);
+                      const rad=(0.55+0.78*Math.sin(Math.min(y/1.7,1)*2.4))*lobe;
+                      const v=(y-0.80)/1.05;
+                      return x*x+z*z < rad*rad && v*v<1; } }
+];
+
+let BUSH_PROTO=[];
+function buildBushSpecies(){
+  BUSH_PROTO=BUSH_SPECIES.map(c=>{
+    const pr=buildBushPrototype(c);
+    pr.name=c.name;
+    return pr;
+  });
+  return BUSH_PROTO;
+}
+
 function buildHedges(){
-  const bush=new IB(),trunk=new IB(),canopy=new IB(),card=new IB(),crown=new IB(),twig=new IB();
+  const proto=buildBushSpecies();
+  const woodIB=[new IB(),new IB(),new IB()], leafIB=[new IB(),new IB(),new IB()];
+  const core=new IB();
+  const trunk=new IB(),canopy=new IB(),card=new IB(),crown=new IB();
   const tint=new THREE.Color();
+  /* One grown bush, dropped on the ground and turned at random. Wood and
+     leaf share the transform so they stay one plant. */
+  const placeBush=(x,z,sc,syy,sp,tc)=>{
+    const y=groundH(x,z)-0.05, rot=rr(0,6.283);
+    woodIB[sp].add(x,y,z,0,rot,0,sc,syy,sc,null);
+    leafIB[sp].add(x,y,z,0,rot,0,sc,syy,sc,tc);
+  };
   for(let gy=0;gy<G;gy++)for(let gx=0;gx<G;gx++){
     if(!solid[gi(gx,gy)])continue;
     if(gx===EXIT_GX&&gy===EXIT_GY)continue;             // the gate tile
@@ -1894,31 +2118,39 @@ function buildHedges(){
     if(!isSolid(gx-1,gy))faces.push([-1,0]);
     if(!isSolid(gx,gy+1))faces.push([0,1]);
     if(!isSolid(gx,gy-1))faces.push([0,-1]);
-    const n=border?2:1;
-    for(let i=0;i<n;i++){
-      const ox=rr(-0.95,0.95),oz=rr(-0.95,0.95);
-      const sc=rr(0.72,1.14);
-      const sy=sc*rr(0.8,1.15);
-      // lower half of the cluster is bedded into the ground, upper half stacks on it
-      const grounded=i<Math.ceil(n*0.6);
-      const y=grounded ? groundH(cx+ox,cz+oz)+sy*rr(0.55,0.85)
-                       : groundH(cx+ox,cz+oz)+rr(1.05,1.55);
-      tint.setRGB(rr(0.72,1.18)*autumn[0],rr(0.78,1.14)*autumn[1],rr(0.7,1.1)*autumn[2]);
-      bush.add(cx+ox,y,cz+oz,rr(0,6.28),rr(0,6.28),rr(0,6.28),
-               sc*rr(0.95,1.25),sy,sc*rr(0.95,1.25),tint.clone());
-      if(grounded&&RNG()<0.26)baseDress(cx+ox,cz+oz,sc*rr(0.26,0.40));
-    }
+    /* One species leads each tile, so the hedge grows in drifts of a kind
+       rather than a different plant every metre. */
+    const sp0=RNG()<0.46?0:(RNG()<0.62?1:2);
+    /* No grown bush is placed in the middle of the tile. That space is
+       inside the wall mass, where the core below already blocks sight and
+       nothing can ever silhouette a branch. Detail goes on the faces and
+       corners, which are the only parts a player can stand next to. */
+    if(RNG()<0.34)baseDress(cx+rr(-0.7,0.7),cz+rr(-0.7,0.7),rr(0.26,0.40));
+    /* A hedge is a maze wall before it is a plant. This low-poly mass sits
+       buried inside the grown bushes and is what actually guarantees you
+       cannot see through the wall, whatever the branches happen to do. */
+    tint.setRGB(rr(0.70,1.10)*autumn[0],rr(0.76,1.12)*autumn[1],rr(0.68,1.05)*autumn[2]);
+    core.add(cx,gy0+0.92,cz,0,rr(0,6.28),0,1.16,1.02,1.16,tint.clone());
     // One blob per open face, bedded at the tile edge. Collision treats the
     // whole tile as solid, so without these the player is stopped with bare
     // ground still ahead on whichever side the random cluster left thin.
     for(const f of faces){
-      const out=rr(0.92,1.20), side=rr(-0.85,0.85);
+      const out=rr(0.82,1.06), side=rr(-0.78,0.78);
       const fx=cx+(f[0]?f[0]*out:side), fz=cz+(f[1]?f[1]*out:side);
-      const fs=rr(0.74,1.06), fy=fs*rr(0.82,1.1);
-      tint.setRGB(rr(0.72,1.18),rr(0.78,1.14),rr(0.7,1.1));
-      bush.add(fx,groundH(fx,fz)+fy*rr(0.5,0.78),fz,
-               rr(0,6.28),rr(0,6.28),rr(0,6.28),
-               fs*rr(0.98,1.22),fy,fs*rr(0.98,1.22),tint.clone());
+      const fs=rr(0.78,1.08), fy=fs*rr(0.90,1.22);
+      tint.setRGB(rr(0.72,1.18)*autumn[0],rr(0.78,1.14)*autumn[1],rr(0.7,1.1)*autumn[2]);
+      /* A grown bush is expensive, so they are scattered rather than lining
+         every face: roughly half the faces get one, the rest get the cheap
+         mass. Spacing them out also stops the hedge looking stamped from a
+         single repeated plant. */
+      if(RNG()<0.48){
+        const spf=RNG()<0.72?sp0:(sp0+1+(RNG()<0.5?0:1))%3;
+        placeBush(fx,fz,fs,fy,spf,tint.clone());
+      }else{
+        core.add(fx,groundH(fx,fz)+fy*rr(0.5,0.78),fz,
+                 rr(0,6.28),rr(0,6.28),rr(0,6.28),
+                 fs*rr(0.98,1.22),fy,fs*rr(0.98,1.22),tint.clone());
+      }
       if(RNG()<0.5)baseDress(fx,fz,fs*rr(0.26,0.40));
     }
 
@@ -1927,27 +2159,12 @@ function buildHedges(){
     for(const d of [[1,1],[1,-1],[-1,1],[-1,-1]]){
       if(isSolid(gx+d[0],gy)&&isSolid(gx,gy+d[1]))continue;   // buried inside the wall
       if(isSolid(gx+d[0],gy+d[1]))continue;                   // neighbour fills it
-      const kx=cx+d[0]*rr(0.80,1.05), kz=cz+d[1]*rr(0.80,1.05);
-      const ks=rr(0.66,0.94), ky=ks*rr(0.8,1.06);
-      tint.setRGB(rr(0.72,1.18),rr(0.78,1.14),rr(0.7,1.1));
-      bush.add(kx,groundH(kx,kz)+ky*rr(0.5,0.75),kz,
+      const kx=cx+d[0]*rr(0.74,0.98), kz=cz+d[1]*rr(0.74,0.98);
+      const ks=rr(0.60,0.86), ky=ks*rr(0.88,1.14);
+      tint.setRGB(rr(0.72,1.18)*autumn[0],rr(0.78,1.14)*autumn[1],rr(0.7,1.1)*autumn[2]);
+      core.add(kx,groundH(kx,kz)+ky*rr(0.5,0.75),kz,
                rr(0,6.28),rr(0,6.28),rr(0,6.28),
                ks*rr(0.98,1.2),ky,ks*rr(0.98,1.2),tint.clone());
-    }
-
-    /* A bush is not a green cloud: it is a tangle of twigs that happens to
-       carry leaves. The alpha cutout leaves gaps at the rim, and without
-       something woody behind them you see straight through to nothing. */
-    const nTwig=border?ri(4,7):ri(3,6);
-    for(let i=0;i<nTwig;i++){
-      const a=rr(0,6.283), tilt=rr(0.30,1.02);
-      _twDir.set(Math.cos(a)*Math.sin(tilt),Math.cos(tilt),Math.sin(a)*Math.sin(tilt)).normalize();
-      const len=rr(0.6,1.6), rad=rr(0.009,0.026);
-      const bx=cx+rr(-0.55,0.55), bz=cz+rr(-0.55,0.55);
-      const by=groundH(bx,bz)-0.06;
-      _twQ.setFromUnitVectors(_twUp,_twDir);
-      twig.addQ(bx+_twDir.x*len*0.5, by+_twDir.y*len*0.5, bz+_twDir.z*len*0.5,
-                _twQ, rad, len*0.5, rad, null);
     }
 
     // top layer so the hedge reads as one mass ~2.6m tall -- this is the part
@@ -1990,8 +2207,11 @@ function buildHedges(){
       }
     }
   }
-  worldGroup.add(twig.build(new THREE.CylinderGeometry(0.5,1.0,2,6,1),matBark,false,true));
-  worldGroup.add(bush.build(GEO_BLOB,matFoliageCut,true,true));
+  for(let i=0;i<3;i++){
+    if(proto[i].wood) worldGroup.add(woodIB[i].build(proto[i].wood,matBushWood,false,true,40));
+    if(proto[i].leaf) worldGroup.add(leafIB[i].build(proto[i].leaf,matBushLeaf,true,true,40));
+  }
+  worldGroup.add(core.build(GEO_BLOB_SHADOW,matFoliageCut,true,true));
   worldGroup.add(crown.build(GEO_BLOB,matFoliageCut,true,true));
   worldGroup.add(trunk.build(new THREE.CylinderGeometry(0.72,1.18,2,20,4),matBark,true,true));
   worldGroup.add(canopy.build(GEO_BLOB,matCanopy,true,true));
