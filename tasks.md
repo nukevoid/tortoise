@@ -41,7 +41,7 @@ mark done tasks like - [X]
 - [X] Add adrchitecture to add mobs wtich can interact with player
 - [X] First mob: hostile plant with 3 thorny shoots. Its bit you in some range with some delays, but you can hide in shell. Visualy has to have animations in sync with bites
 - [X] Heron - Can eats you from above. Firstly you see only shadown of Heron, then you have 2-3 sec to hide in shell. Then you see Heand with long head of Heron, triying to eat you. IF you no in shell - you loose 
-- [ ] hostile plant - add longer delays between bites
+- [X] hostile plant - add longer delays between bites
 - [X] Falling glass cup: like heron - shadow, then cup falling cirectly on you. You can move 5 sec untill in breakes, couse you are under the cup
 - [X] in some glasses with spider  inside, and you have to hide or they weel bite you
 - [ ] improve spider model
