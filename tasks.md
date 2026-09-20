@@ -76,6 +76,7 @@ mark done tasks like - [X]
 - [X] in fog ski is just blue
 - [X] change wind with weather and wind sound
 - [X] rain sound
-- [ ] stamina has to have histeresis. Now it shakes at the end 
+- [X] stamina has to have histeresis. Now it shakes at the end 
 - [ ] do level desing around POI and coridors between them 
+- [ ] Bushes are agly, and I almost don't see busshed with branches witch is perfect. This one witch block woles- has stretched tectures and super lowpoly. Fix
 - [ ] water has to block ablility to hide in shelter

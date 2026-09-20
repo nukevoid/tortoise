@@ -5853,6 +5853,7 @@ const P={
      you can see, you can rock, and you can do nothing else until you are
      the right way up again. */
   flipped:false, flipT:0,
+  winded:false,                    // out of breath, and not running again yet
   breath:SHELL.hold, shellLock:0, shellSpent:false,   // how long you can stay in
   flipAngle:0, flipVel:0,          // where the shell leans, and how fast
   flipTheta:0, flipAmp:0,          // the swing's own clock, and how far it goes
@@ -5876,7 +5877,7 @@ function resetPlayer(){
   else P.yaw=0;                                    // north
   P.pitch=-0.05;
   P.hp=100;P.sp=100;P.hidden=false;P.hideAmt=0;P.boost=0;P.lastHurt=99;
-  P.breath=SHELL.hold;P.shellLock=0;P.shellSpent=false;
+  P.breath=SHELL.hold;P.shellLock=0;P.shellSpent=false;P.winded=false;
   P.stones=0;P.berries=0;P.shrooms=0;P.hasLantern=false;P.lanternOn=false;
   P.berriesEaten=0;P.slot=0;P.time=0;
   huntedHintShown=false;gloomHintShown=false;heronHintShown=false;glassHintShown=false;
@@ -5942,6 +5943,8 @@ function toast(html,secs){
 function updateHUD(){
   setPips('hp',P.hp);
   setPips('sp',P.sp);
+  // the leaves dim while you have no breath to spend, so the bar says why
+  $('sp').style.opacity=P.winded?'0.42':'1';
   for(let i=0;i<3;i++)el.stones[i].className='stone'+(i<P.stones?' got':'');
 }
 function updateHotbar(){
@@ -6245,6 +6248,7 @@ const _bodyN=new THREE.Vector3(),_tiltQ=new THREE.Quaternion(),_yawQ=new THREE.Q
    expressed as fractions of WALK_SPEED, so the legs and the head bob follow
    this number down on their own. */
 const WALK_SPEED=1.05, SPRINT_SPEED=2.75;
+const STAMINA_REARM=34;      // how much has to come back before you can run again
 let chirpTimer=3,nearChime=0,huntedHintShown=false,gloomHintShown=false;
 let dripTimer=1.0, dripCount=0;
 let envCur=ENV_BASE;
@@ -6320,7 +6324,15 @@ function update(dt){
   if(updateFlip(dt)){ ix=0; iz=0; }
   const mag=Math.hypot(ix,iz);
   if(mag>0){ix/=mag;iz/=mag;}
-  const sprinting=(!!keys['ShiftLeft']||!!keys['ShiftRight'])&&mag>0&&P.sp>1&&!P.hidden;
+  /* Winded, with hysteresis. Sprinting until the last leaf ran out and then
+     letting go at 1% meant the next frame had enough to sprint again: the
+     tortoise stuttered between 2.75 and 1.05 m/s several times a second and
+     the leaves flickered with it. Run it out and you are winded until a
+     third of it is back. */
+  if(P.sp<=0.5)P.winded=true;
+  else if(P.winded&&P.sp>=STAMINA_REARM)P.winded=false;
+  const sprinting=(!!keys['ShiftLeft']||!!keys['ShiftRight'])&&mag>0
+                  &&!P.winded&&P.sp>1&&!P.hidden;
   const boosted=P.boost>0;
   let speed=WALK_SPEED;
   if(sprinting)speed=SPRINT_SPEED;
