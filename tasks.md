@@ -27,7 +27,7 @@ mark done tasks like - [X]
 - [X] Make obstacles (bushes, trees) smooth with many polygons
 - [X] Fix problem when player can move formad becose upper body is toching something, but direct view is cler
 - [X] Bushes and trees still polygonal, fix them
-- [ ] Fix "in the shell" view
+- [X] Fix "in the shell" view
 - [ ] Fix terrain texture resolution 
 - [ ] Add water, creeks, pudles, lake
 - [ ] make falling leaf animation realistinc (rotation, dwings etc) 

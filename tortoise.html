@@ -2285,7 +2285,7 @@ function buildFireflies(){
    player's feet and yaw, so looking down shows your own shell, legs and snout,
    and the sun throws its shadow on the path. */
 const bodyRig=new THREE.Group();scene.add(bodyRig);
-let legs=[],snout,head,shellMesh,lanternHeld,neck;
+let legs=[],snout,head,shellMesh,lanternHeld,neck,shellRoof,shellFloor;
 (function buildBody(){
   const texShell=makeShellTextures();
   const shellMat=new THREE.MeshStandardMaterial({
@@ -2348,6 +2348,29 @@ let legs=[],snout,head,shellMesh,lanternHeld,neck;
   // you never see yourself while crawling, yet your shadow still slides along
   // the path ahead of you, which is most of what sells the body as real.
   bodyRig.traverse(o=>{ if(o.isMesh)o.userData.realMat=o.material; });
+
+  /* Pulling in used to show nothing but the world with a few body parts
+     floating in it: the carapace is front-faced, so from inside it culls away
+     entirely. These two pieces exist only while retracted and give the view
+     something to be inside of -- a dark ceiling of shell overhead and the
+     plastron underfoot, with the gap between them as the viewing slot. */
+  const innerMat=new THREE.MeshStandardMaterial({
+    map:texShell.map,normalMap:texShell.nrm,normalScale:new THREE.Vector2(0.8,0.8),
+    color:0x3f3120,roughness:0.96,metalness:0,side:THREE.DoubleSide});
+  shellRoof=new THREE.Mesh(new THREE.SphereGeometry(1,26,14,0,6.283,0,Math.PI*0.52),innerMat);
+  shellRoof.scale.set(0.44,0.30,0.50);
+  shellRoof.position.set(0,0.305,0.34);
+  shellRoof.visible=false;
+  bodyRig.add(shellRoof);
+
+  const plastronMat=new THREE.MeshStandardMaterial({
+    map:texShell.map,normalMap:texShell.nrm,normalScale:new THREE.Vector2(0.6,0.6),
+    color:0x5b4a2e,roughness:0.95,metalness:0});
+  shellFloor=new THREE.Mesh(new THREE.SphereGeometry(1,24,10,0,6.283,0,Math.PI*0.5),plastronMat);
+  shellFloor.scale.set(0.36,0.09,0.44);
+  shellFloor.position.set(0,0.00,0.32);
+  shellFloor.visible=false;
+  bodyRig.add(shellFloor);
 
   // --- the firefly jar rides on the shell once you've found it ---
   lanternHeld=makeLanternMesh();
@@ -2856,6 +2879,18 @@ function update(dt){
      the view slide back under the carapace and the shell close around you.
      The rig stays in the scene either way so its shadow never disappears. */
   setBodyVisible(P.hideAmt>0.015);
+  /* Inside the shell the eyes are inside the skull, so the head, neck and
+     beak must not be drawn -- they sat 17 cm from the lens as a dark blob --
+     and the lantern's glow sprite must not either, or it floods the whole
+     view from 27 cm away. Its light stays on. */
+  const tuckedIn=P.hideAmt>0.55;
+  if(head)head.visible=!tuckedIn;
+  if(neck)neck.visible=!tuckedIn;
+  if(snout)snout.visible=!tuckedIn;
+  if(shellRoof){shellRoof.visible=P.hideAmt>0.05;shellFloor.visible=P.hideAmt>0.05;}
+  if(lanternHeld)lanternHeld.traverse(o=>{
+    if(o.isSprite||o.isMesh)o.visible=!tuckedIn;
+  });
 
   /* body rig: rides the ground, leans with the slope, never follows the pitch */
   bodyRig.position.set(P.pos.x,gH+bobY*0.45,P.pos.z);
