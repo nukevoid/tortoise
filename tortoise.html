@@ -2019,15 +2019,41 @@ CREEK.pts=[[HALF+26,GATE_Z-40],[HALF+21,GATE_Z-33],[HALF+22.5,GATE_Z-26],
            [HALF+18,GATE_Z-20],[HALF+17,GATE_Z-14],[LAKE.x,LAKE.z]];
 CREEK.srcY=terrainBase(CREEK.pts[0][0],CREEK.pts[0][1]);
 CREEK.dstY=POND.floor+CREEK.depth*0.9;
-// puddles in the maze, in cells away from the start
+/* Water in the maze, and a rule about it: anything the player has to walk
+   through stays wadeable. waterDepth at the middle of a basin comes out at
+   0.62 of its depth, and WADE_MAX is 0.20, so a basin dug deeper than about
+   0.32 becomes a wall -- and a wall dropped at random into a maze can cut
+   the level in half. Puddles and marshes are kept under that; only the
+   meadow beyond the gate gets water you cannot cross. */
 const PUDDLES=[];
+const MAX_WADEABLE_DEPTH=0.30;
 for(const c of openCells){
   if(dist[c[1]*N+c[0]]<3)continue;
-  if(RNG()<0.055){
+  if(RNG()<0.115){
     const pc=cellCenter(c[0],c[1]);
-    PUDDLES.push(addBasin(pc.x+rr(-0.5,0.5),pc.z+rr(-0.5,0.5),rr(0.75,1.25),rr(0.13,0.22)));
+    PUDDLES.push(addBasin(pc.x+rr(-0.6,0.6),pc.z+rr(-0.6,0.6),
+                          rr(0.85,1.55),rr(0.14,0.24)));
   }
 }
+/* Marshes: broader, shallower sheets, and they belong in the fen -- which
+   until now was a fen with no water in it. */
+for(let i=0;i<5;i++){
+  let best=null,bestEdge=-1;
+  for(const c of openCells){
+    if(dist[c[1]*N+c[0]]<4)continue;
+    const pc=cellCenter(c[0],c[1]);
+    const a=biomeAt(pc.x,pc.z);
+    if(a.b.name!=='fen')continue;
+    if(PUDDLES.some(b=>Math.hypot(b.x-pc.x,b.z-pc.z)<7))continue;
+    if(a.edge>bestEdge){bestEdge=a.edge;best=pc;}
+  }
+  if(!best)break;
+  PUDDLES.push(addBasin(best.x+rr(-0.4,0.4),best.z+rr(-0.4,0.4),
+                        rr(2.1,3.2),rr(0.20,MAX_WADEABLE_DEPTH)));
+}
+/* A second real pond, out in the meadow where depth costs nothing. */
+const POND2=addBasin(HALF+42,GATE_Z+16,7.0,0.95);
+PUDDLES.push(POND2);
 
 function deadEnds(){
   const out=[];const dirs=[[0,-1],[1,0],[0,1],[-1,0]];
@@ -2853,6 +2879,7 @@ function buildGate(){
    the terrain does the shape.
    --------------------------------------------------------------- */
 let waterMat=null, waterRipple=null;
+const waterU={value:0};
 function makeWaterMaterial(){
   const rip=makeRippleNormal();
   rip.repeat.set(7,7);
@@ -2864,8 +2891,72 @@ function makeWaterMaterial(){
     transparent:true,opacity:0.90,depthWrite:false
   });
   m.envMapIntensity=0.85;
+
+  /* What separates water from a sheet of blue plastic is that you see
+     through it where it is shallow and see the sky in it where it is not.
+     Three things do that here:
+
+       - a second ripple crossing the first at a different scale and speed,
+         because one scrolling normal map reads as a moving texture rather
+         than as a surface;
+       - Fresnel: looking straight down you see the bottom, looking along it
+         you get the sky, so opacity follows the viewing angle;
+       - depth, carried per-vertex from the height field, so shallows are
+         clear and brown and the middle of the lake is dark. The last
+         centimetres fade out entirely, which is what gives a waterline
+         instead of a cut edge. */
+  m.onBeforeCompile=sh=>{
+    sh.uniforms.uWTime=waterU;
+    sh.vertexShader='attribute float aDepth;\nvarying float vDepth;\nvarying vec3 vWPos;\n'+
+      sh.vertexShader.replace('#include <begin_vertex>',
+        `#include <begin_vertex>
+         vDepth=aDepth;
+         vWPos=(modelMatrix*vec4(transformed,1.0)).xyz;`);
+    sh.fragmentShader='uniform float uWTime;\nvarying float vDepth;\nvarying vec3 vWPos;\n'+
+      sh.fragmentShader
+      .replace('#include <normal_fragment_maps>',
+        `#ifdef USE_NORMALMAP
+           vec2 w1=vNormalMapUv+vec2(uWTime*0.013,uWTime*0.009);
+           vec2 w2=vNormalMapUv*2.17-vec2(uWTime*0.021,-uWTime*0.017);
+           vec3 n1=texture2D(normalMap,w1).xyz*2.0-1.0;
+           vec3 n2=texture2D(normalMap,w2).xyz*2.0-1.0;
+           vec3 mapN=normalize(n1+n2*0.75);
+           mapN.xy*=normalScale;
+           normal=normalize(tbn*mapN);
+         #else
+           #include <normal_fragment_maps>
+         #endif`)
+      .replace('#include <dithering_fragment>',
+        `{
+           float dep=clamp(vDepth/0.55,0.0,1.0);
+           // shallow water keeps the colour of the bed beneath it
+           gl_FragColor.rgb=mix(gl_FragColor.rgb*1.35+vec3(0.06,0.05,0.03),
+                                gl_FragColor.rgb,dep);
+           vec3 vd=normalize(cameraPosition-vWPos);
+           float fres=pow(1.0-clamp(dot(vd,normalize(vNormal)),0.0,1.0),3.0);
+           float a=mix(0.34,0.93,dep);
+           a=mix(a,1.0,fres*0.85);
+           // and the very edge stops being water at all
+           a*=smoothstep(0.0,0.05,vDepth);
+           gl_FragColor.a=clamp(a,0.0,1.0);
+         }
+         #include <dithering_fragment>`);
+  };
   waterMat=m; waterRipple=rip;
   return m;
+}
+
+/* Depth at every vertex, so the shader can tell a puddle from a lake. */
+function tagWaterDepth(geo,level,ox,oz){
+  const pos=geo.attributes.position;
+  const d=new Float32Array(pos.count);
+  for(let i=0;i<pos.count;i++){
+    // the plane is built flat in XY then laid down, so Y here is world Z
+    const wx=ox+pos.getX(i), wz=oz-pos.getY(i);
+    d[i]=Math.max(0,level-groundH(wx,wz));
+  }
+  geo.setAttribute('aDepth',new THREE.BufferAttribute(d,1));
+  return geo;
 }
 
 function buildWater(){
@@ -2874,7 +2965,8 @@ function buildWater(){
   group.renderOrder=2;
 
   // --- the lake ---
-  const lake=new THREE.Mesh(new THREE.CircleGeometry(POND.r*0.97,56),mat);
+  const lakeGeo=tagWaterDepth(new THREE.CircleGeometry(POND.r*0.97,56),POND.level,POND.x,POND.z);
+  const lake=new THREE.Mesh(lakeGeo,mat);
   lake.rotation.x=-Math.PI/2;
   lake.position.set(POND.x,POND.level,POND.z);
   lake.receiveShadow=true;
@@ -2882,7 +2974,8 @@ function buildWater(){
 
   // --- puddles ---
   for(const b of PUDDLES){
-    const d=new THREE.Mesh(new THREE.CircleGeometry(b.r*0.95,20),mat);
+    const d=new THREE.Mesh(
+      tagWaterDepth(new THREE.CircleGeometry(b.r*0.95,20),b.level,b.x,b.z),mat);
     d.rotation.x=-Math.PI/2;
     d.position.set(b.x,b.level,b.z);
     group.add(d);
@@ -5817,6 +5910,7 @@ function animate(){
   requestAnimationFrame(animate);
   const dt=Math.min(clock.getDelta(),0.05);
   if(state==='play')update(dt);
+  waterU.value+=dt;
   if(ripple){ripple.offset.x+=dt*0.012;ripple.offset.y+=dt*0.008;}
   // fps + map at a lower rate
   fpsAcc+=dt;fpsCount++;
