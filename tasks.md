@@ -29,5 +29,10 @@ mark done tasks like - [X]
 - [X] Bushes and trees still polygonal, fix them
 - [X] Fix "in the shell" view
 - [X] Fix terrain texture resolution 
-- [ ] Add water, creeks, pudles, lake
+- [X] Add water, creeks, pudles, lake
 - [ ] make falling leaf animation realistinc (rotation, dwings etc) 
+- [ ] Crteate optimisation plan
+- [ ] Do optimisation
+- [ ] Make bushed more realistic 
+- [ ] Do color corection to more calm and realistic
+- [ ] Add nice sunlight and gust on air

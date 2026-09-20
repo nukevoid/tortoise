@@ -1499,20 +1499,91 @@ const GATE_X=tileX(EXIT_GX), GATE_Z=tileZ(EXIT_GY);
    4b. TERRAIN — one analytic height field, sampled by the ground mesh
    AND by every single thing placed on it, so nothing floats or sinks.
    ═══════════════════════════════════════════════════════════════ */
-const POND={x:HALF+14,z:GATE_Z-9,r:6.0};
 function terrainBase(x,z){
   return 0.42*Math.sin(x*0.058+1.7)*Math.cos(z*0.049-0.4)
        + 0.21*Math.sin(x*0.137-2.2)*Math.cos(z*0.121+1.1)
        + 0.10*Math.sin((x+z)*0.31+0.6)*Math.cos((x-z)*0.27)
        + 0.045*Math.sin(x*0.62-1.3)*Math.sin(z*0.57+2.4);
 }
-POND.h=terrainBase(POND.x,POND.z);
+
+/* ---------------------------------------------------------------
+   Water. Every pool and channel is a real dish cut into the height
+   field, not a plate laid on top of it, so the banks slope down to
+   the waterline and everything placed on the ground follows them.
+   --------------------------------------------------------------- */
+const BASINS=[];
+const CREEK={pts:[],halfWidth:0.95,depth:0.34,srcY:0,dstY:0};
+function addBasin(x,z,r,depth){
+  const b={x,z,r,depth,floor:terrainBase(x,z)-depth};
+  b.level=b.floor+depth*0.62;
+  BASINS.push(b);
+  return b;
+}
+const LAKE={x:HALF+15,z:GATE_Z-10,r:9.5};
+function creekAt(x,z){
+  const p=CREEK.pts;
+  let best=1e9,bestT=0;
+  for(let i=0;i<p.length-1;i++){
+    const ax=p[i][0],az=p[i][1];
+    const dx=p[i+1][0]-ax, dz=p[i+1][1]-az;
+    const L=dx*dx+dz*dz;
+    let t=L>0?((x-ax)*dx+(z-az)*dz)/L:0;
+    t=t<0?0:(t>1?1:t);
+    const d=Math.hypot(x-(ax+dx*t), z-(az+dz*t));
+    if(d<best){best=d;bestT=(i+t)/(p.length-1);}
+  }
+  return {d:best,t:bestT};
+}
+const creekFloor=t=>lerp(CREEK.srcY,CREEK.dstY,t)-CREEK.depth;
+const creekLevel=t=>creekFloor(t)+CREEK.depth*0.58;
+
 function groundH(x,z){
-  const h=terrainBase(x,z);
-  // flatten the basin so the pond reads as water, not a tilted sheet
-  const d=Math.hypot(x-POND.x,z-POND.z);
-  const k=smoothstep(POND.r+1.0,POND.r+9.0,d);
-  return lerp(POND.h-0.22,h,k);
+  let h=terrainBase(x,z);
+  for(let i=0;i<BASINS.length;i++){
+    const b=BASINS[i];
+    const dx=x-b.x, dz=z-b.z;
+    if(dx<-b.r||dx>b.r||dz<-b.r||dz>b.r)continue;
+    const d=Math.hypot(dx,dz);
+    if(d>b.r)continue;
+    h=lerp(h,b.floor,1-smoothstep(b.r*0.22,b.r,d));
+  }
+  if(CREEK.pts.length>1){
+    const c=creekAt(x,z), edge=CREEK.halfWidth*2.4;
+    if(c.d<edge)h=lerp(h,creekFloor(c.t),1-smoothstep(CREEK.halfWidth*0.55,edge,c.d));
+  }
+  return h;
+}
+/* depth of standing water at a point, 0 on dry land */
+function waterDepth(x,z){
+  const h=groundH(x,z);
+  let best=0;
+  for(let i=0;i<BASINS.length;i++){
+    const b=BASINS[i];
+    if(Math.hypot(x-b.x,z-b.z)>b.r)continue;
+    const d=b.level-h;
+    if(d>best)best=d;
+  }
+  if(CREEK.pts.length>1){
+    const c=creekAt(x,z);
+    if(c.d<CREEK.halfWidth*1.9){
+      const d=creekLevel(c.t)-h;
+      if(d>best)best=d;
+    }
+  }
+  return best;
+}
+
+/* true where a plant would be standing in water */
+function inWater(x,z){
+  for(let i=0;i<BASINS.length;i++){
+    const b=BASINS[i];
+    if(Math.hypot(x-b.x,z-b.z)<b.r*0.94&&groundH(x,z)<b.level+0.02)return true;
+  }
+  if(CREEK.pts.length>1){
+    const c=creekAt(x,z);
+    if(c.d<CREEK.halfWidth*1.5&&groundH(x,z)<creekLevel(c.t)+0.02)return true;
+  }
+  return false;
 }
 const _gn=new THREE.Vector3();
 function groundNormal(x,z,out){
@@ -1533,6 +1604,24 @@ function slopeQuat(x,z,spin,tilt){
 
 const openCells=[];
 for(let cy=0;cy<N;cy++)for(let cx=0;cx<N;cx++)if(dist[cy*N+cx]>=0)openCells.push([cx,cy]);
+
+/* ---- lay out the water before anything is placed on the ground ---- */
+const POND=addBasin(LAKE.x,LAKE.z,LAKE.r,1.15);
+POND.r=LAKE.r;
+// a creek wandering down the meadow into the lake
+CREEK.pts=[[HALF+26,GATE_Z-40],[HALF+21,GATE_Z-33],[HALF+22.5,GATE_Z-26],
+           [HALF+18,GATE_Z-20],[HALF+17,GATE_Z-14],[LAKE.x,LAKE.z]];
+CREEK.srcY=terrainBase(CREEK.pts[0][0],CREEK.pts[0][1]);
+CREEK.dstY=POND.floor+CREEK.depth*0.9;
+// puddles in the maze, in cells away from the start
+const PUDDLES=[];
+for(const c of openCells){
+  if(dist[c[1]*N+c[0]]<3)continue;
+  if(RNG()<0.055){
+    const pc=cellCenter(c[0],c[1]);
+    PUDDLES.push(addBasin(pc.x+rr(-0.5,0.5),pc.z+rr(-0.5,0.5),rr(0.75,1.25),rr(0.13,0.22)));
+  }
+}
 
 function deadEnds(){
   const out=[];const dirs=[[0,-1],[1,0],[0,1],[-1,0]];
@@ -1861,6 +1950,7 @@ function buildClutter(){
     for(let i=0;i<n;i++){
       const sc=rr(0.7,1.25);
       const px=cx+rr(-1.28,1.28), pz=cz+rr(-1.28,1.28);
+      if(inWater(px,pz))continue;
       grass.add(px,groundH(px,pz)-0.035,pz,0,rr(0,6.28),0,sc,rr(0.75,1.7),sc,null);
     }
     // rocks stay low and bedded into the soil — at eye height a tipped-up one
@@ -1881,7 +1971,8 @@ function buildClutter(){
     // big plants hug the corridor edges so the middle stays crawlable
     if(RNG()<0.48){
       const a=rr(0,6.283), rad=rr(0.88,1.30);
-      plant(cx+Math.cos(a)*rad,cz+Math.sin(a)*rad,rr(0.85,1.35));
+      const px=cx+Math.cos(a)*rad, pz=cz+Math.sin(a)*rad;
+      if(!inWater(px,pz))plant(px,pz,rr(0.85,1.35));
     }
     if(RNG()<0.11){                       // the occasional giant that arches overhead
       const a=rr(0,6.283), rad=rr(0.95,1.3);
@@ -1911,12 +2002,12 @@ function buildClutter(){
     }
   }
   // ---- the meadow beyond the Sun Gate: this is the reward, so plant it ----
-  const meadowOK=(x,z)=>Math.hypot(x-POND.x,z-POND.z)>POND.r+0.7;
+  const meadowOK=(x,z)=>Math.hypot(x-POND.x,z-POND.z)>POND.r+0.7&&!inWater(x,z);
   for(let i=0;i<4200;i++){
     // densest near the gate mouth, thinning out towards the treeline
     const t=Math.pow(RNG(),0.65);
     const x=HALF+0.5+t*30, z=GATE_Z+rr(-32,32)*(0.45+t*0.9);
-    if(!meadowOK(x,z))continue;
+    if(!meadowOK(x,z)||inWater(x,z))continue;
     const sc=rr(0.85,1.5);
     grass.add(x,groundH(x,z)-0.035,z,0,rr(0,6.28),0,sc,rr(1.1,2.2),sc,null);
   }
@@ -2087,18 +2178,123 @@ function buildGate(){
   scene.add(gateGroup);
 }
 
-/* pond in the meadow beyond the gate */
-function buildPond(){
+/* ---------------------------------------------------------------
+   Water surfaces. One material for every body so they ripple and
+   reflect alike: the sky environment map does the reflecting, a
+   scrolling normal map does the ripples, and the dish carved into
+   the terrain does the shape.
+   --------------------------------------------------------------- */
+let waterMat=null, waterRipple=null;
+function makeWaterMaterial(){
   const rip=makeRippleNormal();
-  rip.repeat.set(5,5);
-  const m=new THREE.Mesh(new THREE.CircleGeometry(POND.r,48),new THREE.MeshStandardMaterial({
-    color:0x24484a,roughness:0.08,metalness:0.1,normalMap:rip,transparent:true,opacity:0.92,
-    normalScale:new THREE.Vector2(0.35,0.35)
-  }));
-  m.rotation.x=-Math.PI/2;m.position.set(POND.x,POND.h-0.155,POND.z);
-  m.receiveShadow=true;
-  scene.add(m);
-  return rip;
+  rip.repeat.set(7,7);
+  // Water barely diffuses: almost everything you see is reflected sky plus
+  // what shows through. A mid-blue diffuse term is what made it look milky.
+  const m=new THREE.MeshStandardMaterial({
+    color:0x0c1f24,roughness:0.045,metalness:0.0,
+    normalMap:rip,normalScale:new THREE.Vector2(0.34,0.34),
+    transparent:true,opacity:0.90,depthWrite:false
+  });
+  m.envMapIntensity=0.85;
+  waterMat=m; waterRipple=rip;
+  return m;
+}
+
+function buildWater(){
+  const mat=makeWaterMaterial();
+  const group=new THREE.Group();
+  group.renderOrder=2;
+
+  // --- the lake ---
+  const lake=new THREE.Mesh(new THREE.CircleGeometry(POND.r*0.97,56),mat);
+  lake.rotation.x=-Math.PI/2;
+  lake.position.set(POND.x,POND.level,POND.z);
+  lake.receiveShadow=true;
+  group.add(lake);
+
+  // --- puddles ---
+  for(const b of PUDDLES){
+    const d=new THREE.Mesh(new THREE.CircleGeometry(b.r*0.95,20),mat);
+    d.rotation.x=-Math.PI/2;
+    d.position.set(b.x,b.level,b.z);
+    group.add(d);
+  }
+
+  // --- the creek: a ribbon following the channel down to the lake ---
+  const SEG=90, pos=[], uv=[], idx=[];
+  const P=CREEK.pts;
+  const at=t=>{
+    const f=t*(P.length-1), i=Math.min(P.length-2,Math.floor(f)), k=f-i;
+    return [lerp(P[i][0],P[i+1][0],k), lerp(P[i][1],P[i+1][1],k)];
+  };
+  for(let i=0;i<=SEG;i++){
+    const t=i/SEG;
+    const c=at(t), n=at(Math.min(1,t+0.01));
+    let dx=n[0]-c[0], dz=n[1]-c[1];
+    const L=Math.hypot(dx,dz)||1; dx/=L; dz/=L;
+    // widen as it nears the lake
+    const w=CREEK.halfWidth*(0.72+t*0.85);
+    const y=creekLevel(t);
+    pos.push(c[0]-dz*w,y,c[1]+dx*w, c[0]+dz*w,y,c[1]-dx*w);
+    uv.push(0,t*9, 1,t*9);
+    if(i<SEG){const a=i*2;idx.push(a,a+2,a+1,a+1,a+2,a+3);}
+  }
+  const cg=new THREE.BufferGeometry();
+  cg.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  cg.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
+  cg.setIndex(idx);
+  cg.computeVertexNormals();
+  const creek=new THREE.Mesh(cg,mat);
+  creek.receiveShadow=true;
+  group.add(creek);
+
+  scene.add(group);
+
+  // --- wet stones along every shoreline ---
+  const stone=new IB(), tint=new THREE.Color();
+  const shoreStone=(x,z,sc)=>{
+    tint.setRGB(rr(0.7,1.15),rr(0.72,1.12),rr(0.7,1.1));
+    stone.addQ(x,groundH(x,z)-sc*0.3,z,slopeQuat(x,z,rr(0,6.28),1),sc,sc*0.75,sc,tint.clone());
+  };
+  for(let i=0;i<150;i++){
+    const a=rr(0,6.283), r=POND.r*rr(0.93,1.14);
+    shoreStone(POND.x+Math.cos(a)*r, POND.z+Math.sin(a)*r, rr(0.10,0.26));
+  }
+  for(let i=0;i<220;i++){
+    const t=RNG(), c=at(t);
+    const n=at(Math.min(1,t+0.01));
+    let dx=n[0]-c[0], dz=n[1]-c[1];
+    const L=Math.hypot(dx,dz)||1; dx/=L; dz/=L;
+    const off=CREEK.halfWidth*(0.9+t*0.8)*(RNG()<0.5?-1:1)*rr(1.0,1.5);
+    shoreStone(c[0]-dz*off, c[1]+dx*off, rr(0.07,0.18));
+  }
+  for(const b of PUDDLES){
+    for(let i=0;i<7;i++){
+      const a=rr(0,6.283), r=b.r*rr(0.95,1.2);
+      shoreStone(b.x+Math.cos(a)*r, b.z+Math.sin(a)*r, rr(0.05,0.12));
+    }
+  }
+  // reeds standing in the shallows
+  const reed=new IB();
+  const plantReed=(x,z,tall)=>{
+    if(waterDepth(x,z)>0.30)return;
+    const sc=rr(0.8,1.25);
+    reed.add(x,groundH(x,z)-0.04,z,0,rr(0,6.28),0,sc*0.8,tall*rr(0.9,1.5),sc*0.8,null);
+  };
+  for(let i=0;i<260;i++){
+    const a=rr(0,6.283), r=POND.r*rr(0.90,1.10);
+    plantReed(POND.x+Math.cos(a)*r, POND.z+Math.sin(a)*r, rr(2.2,3.6));
+  }
+  for(let i=0;i<300;i++){
+    const t=RNG(), c=at(t), n=at(Math.min(1,t+0.01));
+    let dx=n[0]-c[0], dz=n[1]-c[1];
+    const L=Math.hypot(dx,dz)||1; dx/=L; dz/=L;
+    const off=CREEK.halfWidth*(0.85+t*0.8)*(RNG()<0.5?-1:1)*rr(0.9,1.4);
+    plantReed(c[0]-dz*off, c[1]+dx*off, rr(1.8,3.0));
+  }
+  worldGroup.add(reed.build(GEO_GRASS,matGrass,false,true));
+  worldGroup.add(stone.build(GEO_ROCK,matRock,true,true));
+  return waterRipple;
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -2565,7 +2761,9 @@ function resetPlayer(){
 }
 
 /* --- tile collision ------------------------------------------- */
+const WADE_MAX=0.20;                    // deeper than this and it will not go in
 function blocked(x,z){
+  if(waterDepth(x,z)>WADE_MAX)return true;
   const gx=worldToGX(x),gz=worldToGZ(z);
   for(let j=-1;j<=1;j++)for(let i=-1;i<=1;i++){
     const tx=gx+i,tz=gz+j;
@@ -3232,7 +3430,7 @@ async function boot(){
   setLoad(50,'Planting the outer wood…');await frame();
   buildOutside();buildGloom();
   setLoad(64,'Hiding the Sunstones…');await frame();
-  placeItems();buildHazards();buildGate();ripple=buildPond();
+  placeItems();buildHazards();buildGate();ripple=buildWater();
   setLoad(74,'Bedding it all into the soil…');await frame();
   buildGroundDressing();
   setLoad(82,'Waking the crows…');await frame();
