@@ -1119,8 +1119,8 @@ addEventListener('resize',()=>{
    then adds bloom, applies a filmic curve, grades, vignettes and
    dithers it. This is what turns "a lit 3D scene" into a photograph.
    ═══════════════════════════════════════════════════════════════ */
-const POST={on:true,bloom:true,exposure:1.28,bloomAmount:0.60,
-            vignette:0.38,grain:0.011,sat:1.06,samples:0,fxaa:true,
+const POST={on:true,bloom:true,exposure:1.38,bloomAmount:0.60,
+            vignette:0.38,grain:0.011,sat:0.86,samples:0,fxaa:true,
             ao:true,aoStrength:0.95,aoRadius:0.42,bounce:0.17};
 let rtScene=null, bloomRT=[], aoRT=null, aoBlurRT=null, quadMesh=null;
 const quadCam=new THREE.OrthographicCamera(-1,1,1,-1,0,1);
@@ -1245,13 +1245,15 @@ const matComposite=new THREE.ShaderMaterial({
     uVignette:{value:POST.vignette},uGrain:{value:POST.grain},
     uSat:{value:POST.sat},uTime:{value:0},uHasBloom:{value:1},
     uRes:{value:new THREE.Vector2(1,1)},uAA:{value:1},
-    tAO:{value:null},uUseAO:{value:1}
+    tAO:{value:null},uUseAO:{value:1},
+    uGreenTame:{value:0.22},uToe:{value:0.88}
   },
   vertexShader:VERT,
   fragmentShader:`
     uniform sampler2D tScene,tB0,tB1,tB2;
     uniform sampler2D tAO;
     uniform float uExposure,uBloom,uVignette,uGrain,uSat,uTime,uHasBloom,uAA,uUseAO;
+    uniform float uGreenTame,uToe;
     uniform vec2 uRes;
     varying vec2 vUv;
     vec3 aces(vec3 x){
@@ -1302,12 +1304,21 @@ const matComposite=new THREE.ShaderMaterial({
       col=aces(col);
       // filmic toe — a forest floor between two hedges is genuinely dark, and
       // without lifting it the lower half of the frame reads as a black hole
-      col=pow(col,vec3(0.86));
-      // grade: cool the shadows a touch, keep the highlights warm
-      col=mix(col,col*vec3(1.03,1.00,0.95),smoothstep(0.35,1.0,dot(col,vec3(0.33))));
-      col=mix(col,col*vec3(0.94,0.99,1.06),1.0-smoothstep(0.0,0.35,dot(col,vec3(0.33))));
+      col=pow(col,vec3(uToe));
+
+      /* Calm grade. Foliage is by far the most saturated thing on screen, so a
+         flat saturation cut has to grey the whole frame to get at it. Pull the
+         green channel towards its own neighbours instead: the wood settles
+         down, and the soil, stone and sky keep the colour they had. */
+      col.g=mix(col.g,(col.r+col.b)*0.5,uGreenTame);
+
       float l=dot(col,vec3(0.2126,0.7152,0.0722));
       col=mix(vec3(l),col,uSat);
+
+      // daylight split tone: cool in the shade, warm where the sun reaches
+      col=mix(col,col*vec3(1.045,1.005,0.935),smoothstep(0.30,0.95,l));
+      col=mix(col,col*vec3(0.950,0.990,1.070),1.0-smoothstep(0.0,0.32,l));
+
       vec2 q=vUv-0.5;
       col*=1.0-uVignette*dot(q,q)*1.7;
       float g=fract(sin(dot(vUv*(1.0+fract(uTime)),vec2(12.9898,78.233)))*43758.5453);
