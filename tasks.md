@@ -51,7 +51,7 @@ mark done tasks like - [X]
 - [ ] make map aliitle larger
 - [ ] fix direction of marker on map
 - [X] Level has to be saved. Generate level offline
-- [ ] investiagate level disign aproaches and generators, implement and test
+- [X] investiagate level disign aproaches and generators, implement and test
 - [ ] Add different bioms, use them in level generation
 - [ ] Add landscape 
 - [ ] Add weather

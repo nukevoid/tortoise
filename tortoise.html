@@ -1515,7 +1515,7 @@ function stage(i){ RNG.reseed((DECO_SEED+Math.imul(i,0x9E3779B1))|0); }
    prints, and paste it here. Null means "generate one". */
 /* Generated offline with ?export and pasted here. This is the forest
    the game ships; delete it and the generator grows a fresh one. */
-const LEVEL_BAKED={"v":1,"grid":"/////yOACIjeTVVXLYqoilhV3/U3ooAIaH993N0AigiK319/3SOCgCLW9V/frSiAIFpd31+3iIggYt/33dQAKCig/V/fd4OAIAh2/V91LQqIClrV1Me3KqgAYFVVff8qogiC1XfPdSsogIhWVfM8jaoCCNpX1f+3oCICaH39fdcAAgCC/////wE=","gloomCell":[5,4],"items":[["stone",-13,-18.2,0.5],["stone",23.4,28.6,0.5],["stone",33.8,-28.6,0.5],["lantern",-39,-33.8,0.12],["berry",-23.842,2.5,0.14],["berry",17.54,-38.488,0.14],["berry",-33.143,33.167,0.14],["berry",38.872,38.297,0.14],["berry",13.443,18.013,0.14],["berry",-29.275,23.084,0.14],["berry",7.04,34.455,0.14],["berry",-28.477,-18.571,0.14],["berry",23.878,18,0.14],["berry",23.246,-28.994,0.14],["berry",39.087,-2.912,0.14],["berry",-18.391,-8.501,0.14],["berry",7.722,-1.924,0.14],["berry",17.52,18.25,0.14],["berry",-18.691,-34.392,0.14],["berry",17.997,-7.058,0.14],["shroom",-28.42,29.21,0.06],["shroom",8.479,-38.38,0.06],["shroom",2.968,-7.804,0.06],["shroom",38.654,23.655,0.06],["shroom",-29.179,13.51,0.06],["shroom",-7.93,33.031,0.06],["shroom",28.116,28.395,0.06],["shroom",13.576,12.285,0.06],["shroom",38.577,-29.19,0.06]],"hazardCells":[[12,15],[10,8],[6,7],[7,7],[15,14],[3,8],[4,2],[13,1],[7,12],[2,6],[8,14],[5,9],[6,10],[1,14]],"thornmaws":[[13.461,-13.474],[23.444,-18.677],[38.563,-17.812],[-3.005,2.509],[-12.881,-7.333],[23.441,-2.619],[-33.717,2.223]]};
+const LEVEL_BAKED={"v":1,"grid":"/////yOACIjeTVVXLYqoilhV3/U3ooAIaD98XN0AiAiI31h/0COCAADW9V/BrSiAAFpd31+3iIggYt/33dQAKCig/V/fd4OAIAh2/V91LQqIClrV1MW3KqgAYBVUQf8qoACC1XAHdSsoAIhWVXM8jaoCCNpX1f+3oCICaH39fdcAAgCC/////wE=","gloomCell":[9,4],"items":[["stone",7.8,-18.2,0.5],["stone",23.4,28.6,0.5],["stone",39,-39,0.5],["lantern",-39,-33.8,0.12],["berry",-23.842,2.5,0.14],["berry",17.54,-38.488,0.14],["berry",-33.143,33.167,0.14],["berry",38.872,38.297,0.14],["berry",13.443,18.013,0.14],["berry",-29.275,23.084,0.14],["berry",7.04,34.455,0.14],["berry",-28.477,-18.571,0.14],["berry",23.878,18,0.14],["berry",28.446,-28.994,0.14],["berry",39.087,-2.912,0.14],["berry",-18.391,-8.501,0.14],["berry",7.722,-1.924,0.14],["berry",17.52,18.25,0.14],["berry",-13.491,-34.392,0.14],["berry",17.997,-7.058,0.14],["shroom",-28.42,29.21,0.06],["shroom",8.479,-38.38,0.06],["shroom",2.968,-7.804,0.06],["shroom",38.654,23.655,0.06],["shroom",-29.179,13.51,0.06],["shroom",-7.93,33.031,0.06],["shroom",28.116,28.395,0.06],["shroom",13.576,12.285,0.06],["shroom",38.577,-29.19,0.06]],"hazardCells":[[12,15],[10,8],[6,7],[7,7],[15,14],[3,8],[4,2],[13,1],[7,12],[2,6],[8,14],[5,9],[6,10],[1,14]],"thornmaws":[[13.461,-13.474],[23.444,-18.677],[38.563,-17.812],[-3.005,2.509],[-12.881,-7.333],[23.441,-2.619],[-33.717,2.223]]};
 
 let LEVEL_USED=null;               // the level actually in play
 /* Whatever the generator decided this run, so it can be written out. */
@@ -1549,7 +1549,30 @@ function gridFromString(str){
   }
 }
 
-function generateMaze(){
+
+/* ═══ Level generators, and a way to tell them apart ═══════════════
+   A perfect maze is the obvious thing to generate and close to the worst
+   thing to play. Every corridor is the same width, every junction looks
+   like every other junction, and with nothing but corridors there is
+   nowhere for a heron to catch you in the open and nowhere that feels
+   like anywhere. So rather than argue about it, there are several
+   generators here and a set of measurements, and the one that ships is
+   the one that measures best against what this game actually needs:
+
+     - one clear way through, with loops so a wrong turn is not a retrace
+     - a mix of tight corridor and open ground, because the threats want
+       different spaces: thorn-maws own corridors, the heron owns clearings
+     - landmarks, meaning a few places that do not look like the others
+     - not too many dead ends, which are just walking punished
+
+   analyseGrid() below reports those as numbers. GEN_REPORT runs every
+   generator and prints the table. */
+
+const GEN={};
+
+/* The classic: recursive backtracker, then braided so it has loops.
+   This is what the game shipped with. */
+GEN.maze=function(){
   const vis=new Uint8Array(N*N);
   const stack=[[0,0]];vis[0]=1;solid[gi(1,1)]=0;
   const dirs=[[0,-1],[1,0],[0,1],[-1,0]];
@@ -1567,7 +1590,6 @@ function generateMaze(){
     solid[gi(2*cx+1+dx,2*cy+1+dy)]=0;
     stack.push([nx,ny]);
   }
-  // braid: open ~28% of dead ends so the maze has loops (less frustrating)
   for(let cy=0;cy<N;cy++)for(let cx=0;cx<N;cx++){
     const gx=2*cx+1,gy=2*cy+1;
     let open=0;const walls=[];
@@ -1583,12 +1605,163 @@ function generateMaze(){
       solid[gi(w[0],w[1])]=0;
     }
   }
-  // small clearings: open a few random wall tiles for natural glades
   for(let i=0;i<10;i++){
     const cx=ri(1,N-2),cy=ri(1,N-2);
     solid[gi(2*cx+1,2*cy)]=0;solid[gi(2*cx,2*cy+1)]=0;
     solid[gi(2*cx,2*cy)]=0;
   }
+};
+
+/* Maze, then glades: deliberate open ground of varying size, placed apart
+   from each other so each one is somewhere rather than more of the same,
+   and always joined to the corridors around them. */
+GEN.glades=function(){
+  GEN.maze();
+  const placed=[];
+  const want=6;
+  let guard=0;
+  while(placed.length<want&&guard++<400){
+    const cx=ri(3,N-4), cy=ri(3,N-4);
+    const tx=2*cx+1, ty=2*cy+1;
+    const r=(RNG()<0.35)?3.1:2.2;             // a couple of big ones
+    let ok=true;
+    for(const q of placed) if(Math.hypot(q[0]-tx,q[1]-ty)<11) ok=false;
+    if(!ok)continue;
+    placed.push([tx,ty,r]);
+    const ri2=Math.ceil(r);
+    for(let dy=-ri2;dy<=ri2;dy++)for(let dx=-ri2;dx<=ri2;dx++){
+      if(Math.hypot(dx,dy)>r)continue;        // round, not square
+      const gx=tx+dx, gy=ty+dy;
+      if(gx>0&&gy>0&&gx<G-1&&gy<G-1) solid[gi(gx,gy)]=0;
+    }
+  }
+  GEN._glades=placed;
+};
+
+/* Cellular automata: smoothed noise, the usual cave recipe. Included
+   because it is the other obvious answer, and because measuring it is the
+   quickest way to show why it is wrong for a hedge maze. */
+GEN.caves=function(){
+  for(let y=1;y<G-1;y++)for(let x=1;x<G-1;x++)
+    solid[gi(x,y)]=RNG()<0.46?1:0;
+  for(let pass=0;pass<4;pass++){
+    const next=solid.slice();
+    for(let y=1;y<G-1;y++)for(let x=1;x<G-1;x++){
+      let n=0;
+      for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++)
+        if(dx||dy) n+=isSolid(x+dx,y+dy)?1:0;
+      next[gi(x,y)]=(n>4)?1:(n<4?0:solid[gi(x,y)]);
+    }
+    solid.set(next);
+  }
+  // the start has to be standing somewhere, or the level scores zero for
+  // reasons that say nothing about the generator
+  for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++)
+    solid[gi(2*START_CELL[0]+1+dx,2*START_CELL[1]+1+dy)]=0;
+  // join whatever islands that left, so the level is walkable
+  connectRegions();
+};
+
+/* Flood fill the open tiles, then punch a corridor from every stranded
+   region to the largest one. */
+function connectRegions(){
+  const id=new Int32Array(G*G).fill(-1);
+  const regions=[];
+  for(let y=1;y<G-1;y++)for(let x=1;x<G-1;x++){
+    if(solid[gi(x,y)]||id[gi(x,y)]>=0)continue;
+    const r=regions.length, q=[[x,y]]; id[gi(x,y)]=r;
+    const cells=[];
+    while(q.length){
+      const [cx,cy]=q.pop(); cells.push([cx,cy]);
+      for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){
+        const nx=cx+dx, ny=cy+dy;
+        if(nx<1||ny<1||nx>=G-1||ny>=G-1)continue;
+        if(solid[gi(nx,ny)]||id[gi(nx,ny)]>=0)continue;
+        id[gi(nx,ny)]=r; q.push([nx,ny]);
+      }
+    }
+    regions.push(cells);
+  }
+  if(regions.length<2)return;
+  regions.sort((a,b)=>b.length-a.length);
+  const main=regions[0];
+  for(let i=1;i<regions.length;i++){
+    // nearest pair between this region and the main one, then dig straight
+    let best=null,bd=1e9;
+    for(const a of regions[i])for(const b of main){
+      const d=Math.abs(a[0]-b[0])+Math.abs(a[1]-b[1]);
+      if(d<bd){bd=d;best=[a,b];}
+    }
+    if(!best)continue;
+    let [ax,ay]=best[0]; const [bx,by]=best[1];
+    while(ax!==bx){ ax+=Math.sign(bx-ax); solid[gi(ax,ay)]=0; }
+    while(ay!==by){ ay+=Math.sign(by-ay); solid[gi(ax,ay)]=0; }
+    for(const c of regions[i]) main.push(c);
+  }
+}
+
+/* What a layout is actually like to walk around in. */
+function analyseGrid(){
+  const open=[];
+  for(let y=1;y<G-1;y++)for(let x=1;x<G-1;x++)
+    if(!solid[gi(x,y)])open.push([x,y]);
+  const total=(G-2)*(G-2);
+  let deadEnds=0, corridor=0, junction=0, edges=0, openArea=0;
+  for(const [x,y] of open){
+    let n=0;
+    for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]) if(!isSolid(x+dx,y+dy))n++;
+    if(n<=1)deadEnds++; else if(n===2)corridor++; else junction++;
+    edges+=n;
+    // "open ground" means all eight neighbours clear -- room to be caught in
+    let all=true;
+    for(let dy=-1;dy<=1&&all;dy++)for(let dx=-1;dx<=1;dx++)
+      if(isSolid(x+dx,y+dy)){all=false;break;}
+    if(all)openArea++;
+  }
+  edges/=2;
+  // reachability from the start tile
+  const seen=new Uint8Array(G*G);
+  const st=[[2*START_CELL[0]+1,2*START_CELL[1]+1]];
+  seen[gi(st[0][0],st[0][1])]=1;
+  let reached=0, far=0;
+  const dq=[[st[0][0],st[0][1],0]];
+  while(dq.length){
+    const [x,y,d]=dq.shift(); reached++; if(d>far)far=d;
+    for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){
+      const nx=x+dx, ny=y+dy;
+      if(nx<1||ny<1||nx>=G-1||ny>=G-1)continue;
+      if(solid[gi(nx,ny)]||seen[gi(nx,ny)])continue;
+      seen[gi(nx,ny)]=1; dq.push([nx,ny,d+1]);
+    }
+  }
+  return {
+    openPct:+(100*open.length/total).toFixed(1),
+    deadEnds,
+    corridorPct:+(100*corridor/open.length).toFixed(1),
+    junctionPct:+(100*junction/open.length).toFixed(1),
+    openGroundPct:+(100*openArea/open.length).toFixed(1),
+    loops:edges-open.length+1,
+    reachablePct:+(100*reached/open.length).toFixed(1),
+    longestWalk:far
+  };
+}
+
+/* Run every generator on a fresh grid and print the comparison. */
+function benchGenerators(){
+  const names=Object.keys(GEN).filter(k=>k[0]!=='_');
+  const rows={};
+  for(const nm of names){
+    solid.fill(1);
+    RNG.reseed(DECO_SEED);
+    GEN[nm]();
+    rows[nm]=analyseGrid();
+  }
+  return rows;
+}
+
+const LEVEL_GEN=(location.search.match(/gen=(\w+)/)||[])[1]||'glades';
+function generateMaze(){
+  (GEN[LEVEL_GEN]||GEN.glades)();
 }
 /* Walls: from the saved level if there is one, otherwise grown. Either way
    the scenery's random stream starts from the same place afterwards. */
@@ -5523,6 +5696,7 @@ window.__game={
   renderFrame,buildTargets,matComposite,
   gust:gustU,gustAt,WIND_DIR,THORN,HERON,GLASS,CAT,FLIP,
   exportLevel,get levelIsBaked(){return !!LEVEL_USED;},
+  analyseGrid,benchGenerators,GEN,
   flipPlayer,unflipPlayer,
   mobs,MOB_TYPES,defineMob,spawnMob,despawnMob,setMobState,mobDist,
   mobStrike,attackTick,playerSheltered,makeThreatShadow,placeThreatShadow,
