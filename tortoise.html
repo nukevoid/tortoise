@@ -3628,6 +3628,7 @@ const CAT={
   recover:1.1,
   plays:3,              // how many times before it loses interest
   tossSpeed:5.2,        // how hard you are sent skidding
+  flipChance:0.5,       // ...and how often it rolls you over entirely
   tumble:0.95,          // how long you have no say in the matter
   speed:2.4
 };
@@ -3651,7 +3652,7 @@ defineMob('cat',{
     const SH=0.33;                         // shoulder height
 
     const body=new THREE.Mesh(new THREE.CapsuleGeometry(0.098,0.30,6,12),matCat);
-    body.rotation.z=Math.PI*0.5; body.position.set(0,SH,-0.01);
+    body.rotation.x=Math.PI*0.5; body.position.set(0,SH,-0.01);
     body.castShadow=true; rig.add(body);
     const chest=new THREE.Mesh(new THREE.SphereGeometry(0.108,12,10),matCat);
     chest.scale.set(0.95,1,1.05); chest.position.set(0,SH-0.005,0.155);
@@ -3881,8 +3882,65 @@ function catStep(m,tx,tz,sp,dt){
   if(!blocked(nx,m.z))m.x=nx;
   if(!blocked(m.x,nz))m.z=nz;
 }
-/* Hook for the tumble that a toss causes; the flip mechanic extends this. */
-function catToss(m){}
+/* A cat that has knocked you skidding will, often as not, roll you right
+   over -- which is the whole reason it finds you interesting. */
+function catToss(m){
+  if(RNG()<CAT.flipChance) flipPlayer();
+}
+
+
+/* ═══ On your back ═════════════════════════════════════════════════
+   Being flipped is the one thing a shell cannot help with. The view
+   swings out to show your own upturned carapace rocking on the ground,
+   and the only way back is to throw your weight left and right -- each
+   swing has to be the opposite of the last, so mashing one key does
+   nothing and panicking gets you nowhere.
+
+   While you are over, nothing shields you. That is the cost. */
+
+const FLIP={
+  perSwing:0.175,       // how much each alternating swing buys you
+  decay:0.20,           // ...and how fast it drains if you dither
+  rockEase:0.14,
+  camHeight:1.02,       // just above the shell, looking down at it
+  camBack:0.85
+};
+
+function flipPlayer(){
+  if(P.flipped||state!=='play')return false;
+  P.flipped=true; P.flipEnergy=0; P.flipRock=0; P.flipLast=0; P.flipT=0;
+  P.hidden=false;
+  P.vel.set(0,0,0);
+  SFX.flipOver();
+  toast('On your back! <b>A</b> and <b>D</b>, left and right, rock yourself over!',4.5);
+  return true;
+}
+function unflipPlayer(){
+  if(!P.flipped)return;
+  P.flipped=false; P.flipEnergy=0; P.flipRock=0; P.flipLast=0;
+  SFX.flipBack();
+}
+
+/* Returns true when it has taken over the frame. */
+function updateFlip(dt){
+  if(!P.flipped)return false;
+  P.flipT+=dt;
+  const L=!!(keys['KeyA']||keys['ArrowLeft']);
+  const R=!!(keys['KeyD']||keys['ArrowRight']);
+  const dir=(L&&!R)?-1:((R&&!L)?1:0);
+  // only a swing in the OTHER direction does anything
+  if(dir!==0&&dir!==P.flipLast){
+    P.flipEnergy=clamp(P.flipEnergy+FLIP.perSwing,0,1.2);
+    P.flipLast=dir;
+    SFX.rock();
+  }
+  P.flipEnergy=Math.max(0,P.flipEnergy-dt*FLIP.decay);
+  // the visible rocking follows the effort, so progress is legible
+  const want=dir*(0.35+0.75*P.flipEnergy);
+  P.flipRock=lerp(P.flipRock,want,1-Math.pow(FLIP.rockEase,dt));
+  if(P.flipEnergy>=1){ unflipPlayer(); return false; }
+  return true;
+}
 
 /* --- crows --- */
 const crows=[];
@@ -4391,6 +4449,10 @@ const SFX={
   near(){tone(1320,0.5,'sine',0.045);},
   heronCall(){ tone(340,0.5,'sawtooth',0.10,150); tone(250,0.4,'square',0.05,110,0.12); },
   catMew(){ tone(rr(620,760),0.28,'sine',0.07,rr(380,470)); },
+  flipOver(){ noiseHit(0.30,300,0.9,0.16,'lowpass'); tone(150,0.40,'triangle',0.11,70); },
+  flipBack(){ tone(300,0.20,'sine',0.11,520); tone(520,0.26,'sine',0.09,760,0.07);
+              noiseHit(0.16,420,1.0,0.08,'lowpass'); },
+  rock(){ noiseHit(0.08,260,1.4,0.055,'lowpass'); },
   catPounce(){ noiseHit(0.10,700,1.6,0.05,'lowpass'); },
   catToss(){ noiseHit(0.22,420,1.1,0.13,'lowpass');
              tone(rr(500,640),0.22,'sine',0.08,rr(260,340)); },
@@ -4424,7 +4486,12 @@ const P={
   hidden:false,hideAmt:0,
   boost:0,lastHurt:99,
   stones:0,berries:0,shrooms:0,hasLantern:false,lanternOn:false,
-  berriesEaten:0,slot:0,time:0,walkPhase:0
+  berriesEaten:0,slot:0,time:0,walkPhase:0,
+  /* On your back. The one thing a tortoise genuinely cannot shrug off:
+     you can see, you can rock, and you can do nothing else until you are
+     the right way up again. */
+  flipped:false, flipEnergy:0, flipRock:0, flipLast:0, flipT:0,
+  camLift:0
 };
 let state='loading';                // loading | menu | play | pause | dead | win
 const keys={};
@@ -4446,6 +4513,7 @@ function resetPlayer(){
   P.berriesEaten=0;P.slot=0;P.time=0;
   huntedHintShown=false;gloomHintShown=false;heronHintShown=false;glassHintShown=false;
   P.trap=null; P.caught=false; P.tumble=0;
+  P.flipped=false; P.flipEnergy=0; P.flipRock=0; P.flipLast=0; P.camLift=0;
   catHintShown=false;
   resetMobs();
   gateLocked=true;gateOpenAmt=0;
@@ -4755,7 +4823,7 @@ function update(dt){
   gustU.value=gustEnvelope(windU.value);
 
   /* ---- hide in shell ---- */
-  const wantHide=!!keys['Space'];
+  const wantHide=!!keys['Space']&&!P.flipped;
   if(wantHide!==P.hidden){
     P.hidden=wantHide;
     SFX.shell();
@@ -4783,6 +4851,8 @@ function update(dt){
   /* Tossed: for a moment the tortoise is skidding and the controls are not
      connected to anything. Health is untouched -- the cat is playing. */
   if(P.tumble>0){ P.tumble=Math.max(0,P.tumble-dt); ix=0; iz=0; }
+  // on your back, the keys do something else entirely
+  if(updateFlip(dt)){ ix=0; iz=0; }
   const mag=Math.hypot(ix,iz);
   if(mag>0){ix/=mag;iz/=mag;}
   const sprinting=(!!keys['ShiftLeft']||!!keys['ShiftRight'])&&mag>0&&P.sp>1&&!P.hidden;
@@ -4841,17 +4911,26 @@ function update(dt){
   const eyeFwd=-P.hideAmt*0.40;              // pulling in draws the eyes back into the shell
   const gH=groundH(P.pos.x,P.pos.z);
   P.pos.y=gH+EYE;
-  camera.position.set(P.pos.x-Math.sin(P.yaw)*eyeFwd+bobX*0.4,
-                     gH+EYE+bobY-hideDrop,
-                     P.pos.z-Math.cos(P.yaw)*eyeFwd);
-  camera.rotation.set(P.pitch-P.hideAmt*0.10,P.yaw,Math.sin(P.bob*0.5)*0.012);
+  if(P.flipped){
+    /* Out and above, looking back down at yourself. The camera rolls with
+       the rocking so the swing is something you feel, not just watch. */
+    camera.position.set(P.pos.x+P.flipRock*0.16,
+                        gH+FLIP.camHeight,
+                        P.pos.z+FLIP.camBack*0.34);
+    camera.rotation.set(-1.18,P.flipRock*0.10,P.flipRock*0.26);
+  }else{
+    camera.position.set(P.pos.x-Math.sin(P.yaw)*eyeFwd+bobX*0.4,
+                       gH+EYE+bobY-hideDrop+P.camLift,
+                       P.pos.z-Math.cos(P.yaw)*eyeFwd);
+    camera.rotation.set(P.pitch-P.hideAmt*0.10,P.yaw,Math.sin(P.bob*0.5)*0.012);
+  }
   camera.fov=lerp(camera.fov,P.hidden?62:(sprinting?80:74),1-Math.pow(0.002,dt));
   camera.updateProjectionMatrix();
 
   /* You never see your own body while crawling — only when you pull in does
      the view slide back under the carapace and the shell close around you.
      The rig stays in the scene either way so its shadow never disappears. */
-  setBodyVisible(P.hideAmt>0.015);
+  setBodyVisible(P.hideAmt>0.015||P.flipped);
   /* Inside the shell the eyes are inside the skull, so the head, neck and
      beak must not be drawn -- they sat 17 cm from the lens as a dark blob --
      and the lantern's glow sprite must not either, or it floods the whole
@@ -4870,7 +4949,9 @@ function update(dt){
   groundNormal(P.pos.x,P.pos.z,_bodyN);
   _tiltQ.setFromUnitVectors(_upAxis,_bodyN);
   _yawQ.setFromAxisAngle(_upAxis,P.yaw);
-  _rollQ.setFromAxisAngle(_zAxis,Math.sin(P.bob*0.5)*0.035*clamp(spd/(WALK_SPEED*0.98),0,1));
+  _rollQ.setFromAxisAngle(_zAxis,
+    P.flipped ? Math.PI+P.flipRock*0.55
+              : Math.sin(P.bob*0.5)*0.035*clamp(spd/(WALK_SPEED*0.98),0,1));
   bodyRig.quaternion.copy(_tiltQ).multiply(_yawQ).multiply(_rollQ);
   const walk=clamp(spd/(WALK_SPEED*1.07),0,1);
   for(let i=0;i<legs.length;i++){
@@ -5253,7 +5334,8 @@ function placeItems(){
 window.__game={
   P,items,crows,keys,hazards,renderer,scene,camera,sun,hemi,AUDIO,POST,BOOT,
   renderFrame,buildTargets,matComposite,
-  gust:gustU,gustAt,WIND_DIR,THORN,HERON,GLASS,CAT,
+  gust:gustU,gustAt,WIND_DIR,THORN,HERON,GLASS,CAT,FLIP,
+  flipPlayer,unflipPlayer,
   mobs,MOB_TYPES,defineMob,spawnMob,despawnMob,setMobState,mobDist,
   mobStrike,attackTick,playerSheltered,makeThreatShadow,placeThreatShadow,
   get shafts(){return shaftMesh;},get motes(){return moteMesh;},
