@@ -3581,7 +3581,12 @@ const THORN={
   reach:1.95,        // ...but can only land a bite this close
   damage:9,
   windup:0.72, strike:0.18, recover:0.70,
-  gap:5.92,          // the rest between one shoot's attacks; see the note above
+  /* Scaled with the tortoise: the reach is 3.9m across, so at the old
+     1.35 m/s a walk through took 2.9s and a sprint 1.1s. At 1.05 and 2.75
+     those became 3.7s and 1.4s, and the same rest between strikes meant a
+     walking player met half again as many of them -- 14.5 damage a crossing
+     against the 9 it was tuned to. The rest is 1.29 times longer to match. */
+  gap:7.60,          // the rest between one shoot's attacks; see the note above
   boredom:2.2        // seconds of a sheltered player before it gives up
 };
 
@@ -6175,7 +6180,11 @@ const _bodyN=new THREE.Vector3(),_tiltQ=new THREE.Quaternion(),_yawQ=new THREE.Q
    around -- bob, roll and leg swing are all measured against it below, so
    changing it here keeps the gait looking like a full walk rather than a
    shuffle. Sprint stays a real burst, paid for out of stamina. */
-const WALK_SPEED=1.35, SPRINT_SPEED=3.5;
+/* A tortoise's pace. Slower again: at 1.35 the Hollow went past at a brisk
+   human walk, which is the wrong animal. The gait normalisers below are all
+   expressed as fractions of WALK_SPEED, so the legs and the head bob follow
+   this number down on their own. */
+const WALK_SPEED=1.05, SPRINT_SPEED=2.75;
 let chirpTimer=3,nearChime=0,huntedHintShown=false,gloomHintShown=false;
 let envCur=ENV_BASE;
 

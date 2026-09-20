@@ -72,7 +72,7 @@ mark done tasks like - [X]
 - [X] Fix Heron model 
 - [X] do flip swing offline simulation and improve algorithm so user can easely find rhythm and ryhtm has to be same
 - [X] improve swing animation - now it rotates at the center of mass but has to roll on the ground
-- [ ] slow down tortoise
+- [X] slow down tortoise
 - [ ] in fog ski is just blue
 - [ ] change wind with weather and wind sound
 - [ ] rain sound
