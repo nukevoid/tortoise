@@ -804,6 +804,44 @@ class IB{                                   // instance builder
     }
     return group;
   }
+
+  /* The same instances built twice, near and far, and only one of the pair
+     drawn at a time.
+
+     The chunking above already exists to let the GPU throw away what is
+     behind you; this uses the same buckets to throw away detail that is too
+     far to read. Each chunk gets a high mesh and a low mesh over identical
+     transforms, and updateLODs swaps them on the distance from the camera
+     to the chunk's bounding sphere -- its surface, not its centre, or a big
+     chunk would drop to low detail while you were standing inside it. */
+  buildLOD(geoNear,geoFar,mat,cast,recv,chunk,dist){
+    const near=this.build(geoNear,mat,cast,recv,chunk);
+    const far =this.build(geoFar, mat,cast,recv,chunk);
+    const group=new THREE.Group();
+    group.add(near); group.add(far);
+    for(let i=0;i<near.children.length;i++){
+      const a=near.children[i], b=far.children[i];
+      LODS.push({near:a,far:b,dist:dist||26});
+      b.visible=false;
+    }
+    return group;
+  }
+}
+
+/* Every near/far pair in the world, and the frame that chooses between
+   them. Kept flat and checked with squared distances: there are a few
+   hundred of these and they are looked at every frame. */
+const LODS=[];
+const _lodC=new THREE.Vector3();
+function updateLODs(cam){
+  for(let i=0;i<LODS.length;i++){
+    const L=LODS[i], bs=L.near.boundingSphere;
+    // distance to the chunk's surface, not its middle: a 40m chunk would
+    // otherwise drop to low detail while the player was standing in it
+    const d=bs?cam.position.distanceTo(bs.center)-bs.radius:0;
+    const wantNear=d<L.dist;
+    if(L.near.visible!==wantNear){ L.near.visible=wantNear; L.far.visible=!wantNear; }
+  }
 }
 
 /* A blob is a unit sphere pushed around by a smooth field.
@@ -2654,13 +2692,30 @@ const BUSH_SPECIES=[
                       return u*u+w*w+v*v<1; } }
 ];
 
-let BUSH_PROTO=[];
+let BUSH_PROTO=[], BUSH_PROTO_FAR=[];
+/* Every species is grown twice: once as itself, and once with a third of
+   the attractors and half the twigs, which is what a plant twenty-six
+   metres away is worth. Same envelope, same silhouette, a quarter of the
+   triangles. The two are never both on screen -- see IB.buildLOD. */
+function farSpec(c){
+  return Object.assign({},c,{
+    nAttract:Math.max(48,Math.round(c.nAttract*0.34)),
+    iters:Math.max(24,Math.round(c.iters*0.55)),
+    maxNodes:Math.max(20,Math.round(c.maxNodes*0.38)),
+    step:c.step*1.5,
+    dAttract:c.dAttract*1.25,
+    dKill:c.dKill*1.25,
+    leavesPerTwig:1,
+    leafMaxR:c.leafMaxR*1.5,
+    leafW:c.leafW*1.35,
+    leafGeoFor:sc=>leafGeo(sc*0.84,sc,1,1,0.5,0.35)
+  });
+}
 function buildBushSpecies(){
   BUSH_PROTO=BUSH_SPECIES.map(c=>{
-    const pr=buildBushPrototype(c);
-    pr.name=c.name;
-    return pr;
-  });
+    const pr=buildBushPrototype(c); pr.name=c.name; return pr; });
+  BUSH_PROTO_FAR=BUSH_SPECIES.map(c=>{
+    const pr=buildBushPrototype(farSpec(c)); pr.name=c.name+'-far'; return pr; });
   return BUSH_PROTO;
 }
 
@@ -2869,19 +2924,27 @@ function buildHedges(){
       }
     }
   }
+  const far=BUSH_PROTO_FAR;
   for(let i=0;i<proto.length;i++){
-    if(proto[i].wood) worldGroup.add(woodIB[i].build(proto[i].wood,matBushWood,false,true,40));
-    if(proto[i].leaf) worldGroup.add(leafIB[i].build(proto[i].leaf,matBushLeaf,true,true,40));
+    /* Small chunks, because the switch is only as sharp as the buckets it
+       works on: at 24m a chunk's own radius is 17m, so almost every chunk on
+       the board counted as near and the LOD saved 5.8%. Ten metres, and in a
+       hedge maze you can rarely see past fifteen anyway. */
+    if(proto[i].wood) worldGroup.add(woodIB[i].buildLOD(
+      proto[i].wood, (far[i]&&far[i].wood)||proto[i].wood, matBushWood,false,true,10,15));
+    if(proto[i].leaf) worldGroup.add(leafIB[i].buildLOD(
+      proto[i].leaf, (far[i]&&far[i].leaf)||proto[i].leaf, matBushLeaf,true,true,10,15));
   }
   worldGroup.add(core.build(GEO_BLOB_SHADOW,matFoliageCut,true,true));
   // the crown is the part that meets the sky, two metres up and never
   // walked into; the cheap blob is indistinguishable from the corridor floor
-  // the crown is the hedge's outline against the sky: the smooth one
-  worldGroup.add(crown.build(GEO_BLOB_SMOOTH,matFoliageCut,true,true));
+  // the crown is the hedge's outline against the sky: smooth up close,
+  // and past thirty metres a silhouette is a silhouette
+  worldGroup.add(crown.buildLOD(GEO_BLOB_SMOOTH,GEO_BLOB,matFoliageCut,true,true,12,20));
   worldGroup.add(trunk.build(new THREE.CylinderGeometry(0.72,1.18,2,20,4),matBark,true,true));
   // tree canopies sit five metres up and are never approached; the cheaper
   // blob is indistinguishable from down here and there are 1500 of them
-  worldGroup.add(canopy.build(GEO_BLOB_SMOOTH,matCanopy,true,true));
+  worldGroup.add(canopy.buildLOD(GEO_BLOB_SMOOTH,GEO_BLOB,matCanopy,true,true,14,24));
   const cardGeo=leafGeo(0.50,0.62,3,4,0.85,0.35);
   worldGroup.add(card.build(cardGeo,matLeafCard,true,true));
 }
@@ -6706,6 +6769,7 @@ function update(dt){
   sun.target.position.copy(_sunT);
   sun.target.updateMatrixWorld();
   sky.position.copy(camera.position);
+  updateLODs(camera);
 
   /* ---- gloom grove ---- */
   const gd=Math.hypot(P.pos.x-GLOOM.x,P.pos.z-GLOOM.z)/GLOOM.r;
@@ -7203,6 +7267,7 @@ window.__game={
     hissCut:+rainHissFilt.frequency.value.toFixed(0),
     drips:dripCount}:null; },
   exportLevel,get levelIsBaked(){return !!LEVEL_USED;},placeRiskCaches,
+  LODS,updateLODs,
   get rooms(){return LEVEL_ROOMS;},
   analyseGrid,benchGenerators,GEN,
   BIOMES,biomeAt,get biomeSeeds(){return BIOME_SEEDS;},
