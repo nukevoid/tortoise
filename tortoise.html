@@ -2804,6 +2804,7 @@ function playerSheltered(){ return P.hidden && P.hideAmt>0.55; }
 function mobStrike(m,dmg,reason){
   if(state!=='play')return false;
   if(playerSheltered())return false;
+  if(P.trap)return false;              // the glass takes the blow instead
   hurt(dmg,reason);
   return true;
 }
@@ -3221,6 +3222,177 @@ defineMob('heron',{
   }
 });
 let heronHintShown=false;
+
+
+/* ═══ The glass ════════════════════════════════════════════════════
+   Something enormous and careless puts a drinking glass down over you.
+   It announces itself the way the heron does -- a shadow, and time to
+   read it -- but it does not kill. It keeps you. Five seconds under the
+   rim, able to shuffle about but not to leave, while the glass creaks and
+   finally gives. Nothing else can reach you through it, which makes being
+   caught a mixed blessing rather than a punishment.
+
+   The trap is a clamp on the player's position rather than a wall, so the
+   tortoise never ends up wedged inside geometry when it lands. */
+
+const GLASS={
+  firstDrop:70,
+  cooldownMin:62, cooldownMax:115,
+  telegraph:2.0,
+  fall:0.42,
+  held:5.0,                      // the five seconds under it
+  shatter:1.25,
+  radius:1.05, height:1.5
+};
+
+const matGlass=new THREE.MeshStandardMaterial({
+  color:0xd6ecf2, roughness:0.06, metalness:0.0,
+  transparent:true, opacity:0.24, side:THREE.DoubleSide,
+  depthWrite:false
+});
+const matGlassRim=new THREE.MeshStandardMaterial({
+  color:0xeaf7fb, roughness:0.05, metalness:0.0,
+  transparent:true, opacity:0.5, depthWrite:false
+});
+
+defineMob('glass',{
+  activeRange:Infinity,
+  build(m){
+    const rig=new THREE.Group();
+    const wall=new THREE.Mesh(
+      new THREE.CylinderGeometry(GLASS.radius,GLASS.radius*0.86,GLASS.height,22,1,true),matGlass);
+    wall.geometry.translate(0,GLASS.height*0.5,0);
+    rig.add(wall);
+    const top=new THREE.Mesh(new THREE.CircleGeometry(GLASS.radius,22),matGlass);
+    top.rotation.x=Math.PI*0.5; top.position.y=GLASS.height;
+    rig.add(top);
+    const rim=new THREE.Mesh(new THREE.TorusGeometry(GLASS.radius*0.87,0.035,6,24),matGlassRim);
+    rim.rotation.x=Math.PI*0.5; rim.position.y=0.02;
+    rig.add(rim);
+    rig.visible=false;
+    m.parts.rig=rig; m.parts.wall=wall;
+    m.group.add(rig);
+
+    // the pieces it comes apart into
+    m.parts.shards=[];
+    const shardGeo=new THREE.TetrahedronGeometry(0.17,0);
+    for(let i=0;i<12;i++){
+      const sh=new THREE.Mesh(shardGeo,matGlassRim.clone());
+      sh.visible=false;
+      m.parts.shards.push({mesh:sh,vx:0,vy:0,vz:0,sp:0});
+      m.group.add(sh);
+    }
+    const sd=makeThreatShadow();
+    m.parts.shadow=sd; scene.add(sd);
+    m.data.cd=GLASS.firstDrop;
+    m.data.tx=0; m.data.tz=0;
+  },
+  onReset(m){
+    m.data.cd=GLASS.firstDrop;
+    if(m.parts.rig)m.parts.rig.visible=false;
+    if(m.parts.shadow)m.parts.shadow.visible=false;
+    if(m.parts.shards)for(const s of m.parts.shards)s.mesh.visible=false;
+    P.trap=null;
+    setMobState(m,'wait');
+  },
+  think(m,dt,d){
+    const sd=m.parts.shadow, rig=m.parts.rig;
+    if(state!=='play'){ rig.visible=false; sd.visible=false; P.trap=null; return; }
+    if(m.state==='idle')setMobState(m,'wait');
+
+    if(m.state==='wait'){
+      rig.visible=false; sd.visible=false;
+      m.data.cd-=dt;
+      if(m.data.cd<=0){
+        m.data.tx=P.pos.x; m.data.tz=P.pos.z;
+        setMobState(m,'telegraph');
+        SFX.glassHum();
+        if(!glassHintShown){
+          glassHintShown=true;
+          toast('Something is coming down over you — <b>move</b>, or sit it out.',4.0);
+        }
+      }
+      return;
+    }
+
+    if(m.state==='telegraph'){
+      const t=clamp(m.stateT/GLASS.telegraph,0,1);
+      m.data.tx=lerp(m.data.tx,P.pos.x,1-Math.pow(0.12,dt));
+      m.data.tz=lerp(m.data.tz,P.pos.z,1-Math.pow(0.12,dt));
+      placeThreatShadow(sd,m.data.tx,m.data.tz,lerp(2.2,GLASS.radius,t),lerp(0.05,0.55,t));
+      rig.visible=false;
+      if(m.stateT>=GLASS.telegraph){ setMobState(m,'fall'); }
+      return;
+    }
+
+    const gy=groundH(m.data.tx,m.data.tz);
+
+    if(m.state==='fall'){
+      const k=clamp(m.stateT/GLASS.fall,0,1);
+      rig.visible=true;
+      rig.position.set(m.data.tx, gy+lerp(7.0,0,k*k), m.data.tz);
+      placeThreatShadow(sd,m.data.tx,m.data.tz,GLASS.radius,lerp(0.55,0.75,k));
+      if(k>=1){
+        SFX.glassDown();
+        // did it come down over the tortoise?
+        const inside=Math.hypot(P.pos.x-m.data.tx,P.pos.z-m.data.tz)<GLASS.radius*0.92;
+        if(inside){
+          P.trap={x:m.data.tx,z:m.data.tz,r:GLASS.radius*0.80};
+          setMobState(m,'held');
+        }else{
+          setMobState(m,'settle');
+        }
+      }
+      return;
+    }
+
+    if(m.state==='held'||m.state==='settle'){
+      rig.visible=true;
+      // it creaks and shivers harder the closer it is to giving
+      const t=clamp(m.stateT/GLASS.held,0,1);
+      const j=0.004+0.03*t*t;
+      rig.position.set(m.data.tx+rr(-j,j), gy, m.data.tz+rr(-j,j));
+      placeThreatShadow(sd,m.data.tx,m.data.tz,GLASS.radius,0.55-0.3*t);
+      if(m.stateT>=GLASS.held){
+        P.trap=null;
+        SFX.glassBreak();
+        for(const s of m.parts.shards){
+          const a=rr(0,6.283), sp=rr(1.4,3.4);
+          s.mesh.position.set(m.data.tx+Math.cos(a)*0.4, gy+rr(0.2,1.2), m.data.tz+Math.sin(a)*0.4);
+          s.mesh.rotation.set(rr(0,6.28),rr(0,6.28),rr(0,6.28));
+          s.vx=Math.cos(a)*sp; s.vz=Math.sin(a)*sp; s.vy=rr(1.2,3.0);
+          s.sp=rr(-7,7); s.mesh.visible=true;
+          s.mesh.material.opacity=0.55;
+        }
+        setMobState(m,'shatter');
+      }
+      return;
+    }
+
+    if(m.state==='shatter'){
+      rig.visible=false; sd.visible=false;
+      const t=clamp(m.stateT/GLASS.shatter,0,1);
+      for(const s of m.parts.shards){
+        if(!s.mesh.visible)continue;
+        s.vy-=9.0*dt;
+        s.mesh.position.x+=s.vx*dt;
+        s.mesh.position.y+=s.vy*dt;
+        s.mesh.position.z+=s.vz*dt;
+        s.mesh.rotation.x+=s.sp*dt; s.mesh.rotation.y+=s.sp*0.7*dt;
+        const floor=groundH(s.mesh.position.x,s.mesh.position.z)+0.05;
+        if(s.mesh.position.y<floor){ s.mesh.position.y=floor; s.vy*=-0.25; s.vx*=0.6; s.vz*=0.6; }
+        s.mesh.material.opacity=0.55*(1-t);
+      }
+      if(t>=1){
+        for(const s of m.parts.shards)s.mesh.visible=false;
+        setMobState(m,'wait');
+        m.data.cd=rr(GLASS.cooldownMin,GLASS.cooldownMax);
+      }
+      return;
+    }
+  }
+});
+let glassHintShown=false;
 
 /* --- crows --- */
 const crows=[];
@@ -3728,6 +3900,10 @@ const SFX={
           tone(f*1.2,0.06,'sine',0.035,f*0.8,0.09);},
   near(){tone(1320,0.5,'sine',0.045);},
   heronCall(){ tone(340,0.5,'sawtooth',0.10,150); tone(250,0.4,'square',0.05,110,0.12); },
+  glassHum(){ tone(1180,0.8,'sine',0.05); tone(1760,0.7,'sine',0.03,null,0.1); },
+  glassDown(){ noiseHit(0.18,520,1.2,0.14,'lowpass'); tone(210,0.30,'sine',0.11,120); },
+  glassBreak(){ noiseHit(0.42,2600,1.0,0.17);
+                [1860,2340,2960,1540].forEach((f,i)=>tone(f,0.35,'triangle',0.06,f*0.5,i*0.035)); },
   heronStab(){ noiseHit(0.20,900,1.6,0.14); tone(90,0.24,'sine',0.10,45); },
   heronMiss(){ tone(900,0.16,'square',0.13,420); tone(1500,0.10,'sine',0.08,700,0.02);
                noiseHit(0.14,1800,2.0,0.10); },
@@ -3770,7 +3946,8 @@ function resetPlayer(){
   P.hp=100;P.sp=100;P.hidden=false;P.hideAmt=0;P.boost=0;P.lastHurt=99;
   P.stones=0;P.berries=0;P.shrooms=0;P.hasLantern=false;P.lanternOn=false;
   P.berriesEaten=0;P.slot=0;P.time=0;
-  huntedHintShown=false;gloomHintShown=false;heronHintShown=false;
+  huntedHintShown=false;gloomHintShown=false;heronHintShown=false;glassHintShown=false;
+  P.trap=null;
   resetMobs();
   gateLocked=true;gateOpenAmt=0;
   if(gateGroup){gateGroup.userData.curtain.position.y=0;
@@ -4125,6 +4302,18 @@ function update(dt){
   // world bounds in the meadow
   P.pos.x=clamp(P.pos.x,-HALF+0.4,HALF+60);
   P.pos.z=clamp(P.pos.z,-HALF+0.4,HALF-0.4);
+  /* Under the glass you may shuffle, but not leave. A clamp rather than a
+     wall, so the tortoise can never be wedged into the rim by whatever put
+     it there. */
+  if(P.trap){
+    const tdx=P.pos.x-P.trap.x, tdz=P.pos.z-P.trap.z;
+    const td=Math.hypot(tdx,tdz);
+    if(td>P.trap.r){
+      P.pos.x=P.trap.x+tdx/td*P.trap.r;
+      P.pos.z=P.trap.z+tdz/td*P.trap.r;
+      P.vel.x*=0.3; P.vel.z*=0.3;
+    }
+  }
 
   const spd=Math.hypot(P.vel.x,P.vel.z);
 
@@ -4482,6 +4671,7 @@ async function boot(){
   spawnCrows(2);buildLeaves();buildFireflies();
   spawnThornmaws(7);
   spawnMob('heron',P.pos.x,P.pos.z);
+  spawnMob('glass',P.pos.x,P.pos.z);
   setLoad(88,'Letting in the light…');await frame();
   buildEnvironment();buildShafts();buildMotes();
   collectMaterials();
@@ -4559,7 +4749,7 @@ function placeItems(){
 window.__game={
   P,items,crows,keys,hazards,renderer,scene,camera,sun,hemi,AUDIO,POST,BOOT,
   renderFrame,buildTargets,matComposite,
-  gust:gustU,gustAt,WIND_DIR,THORN,HERON,
+  gust:gustU,gustAt,WIND_DIR,THORN,HERON,GLASS,
   mobs,MOB_TYPES,defineMob,spawnMob,despawnMob,setMobState,mobDist,
   mobStrike,attackTick,playerSheltered,makeThreatShadow,placeThreatShadow,
   get shafts(){return shaftMesh;},get motes(){return moteMesh;},
