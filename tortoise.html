@@ -2391,7 +2391,10 @@ function trunkFlare(x,z,rad){
 }
 function buildGroundDressing(){
   for(const [x,z,r] of treeBases)trunkFlare(x,z,r);
-  const moundGeo=new THREE.SphereGeometry(1,14,6,0,6.283,0,Math.PI*0.5);
+  /* A soil mound is a smooth dome half-buried in the floor, seen from above
+     and never in silhouette: 14 by 6 segments was 154 triangles each and
+     there are 1800 of them. Ten by four is 70 and looks the same. */
+  const moundGeo=new THREE.SphereGeometry(1,10,4,0,6.283,0,Math.PI*0.5);
   const moundMat=new THREE.MeshStandardMaterial({
     map:texGround.map.clone(),normalMap:texGround.nrm.clone(),roughness:1,metalness:0,
     color:0x554b3e,normalScale:new THREE.Vector2(1.0,1.0)});
@@ -2621,16 +2624,18 @@ const BUSH_SPECIES=[
      Its long axis is local X, so it is turned to lie along whichever face
      it belongs to. */
   { name:'thicket',
-    /* Deliberately the cheapest of the four: there is one on every open face
-       of every wall tile, 959 of them, so a node here costs a thousand times
-       what it costs anywhere else. Fewer, longer twigs and one larger leaf
-       per twig rather than two small ones -- at the range this is seen, the
-       silhouette is the branch, not the leaf count. */
-    rx:1.48, rz:0.82, h:1.62, nAttract:130, iters:48, maxNodes:54,
-    step:0.200, dAttract:0.92, dKill:0.30, up:0.14, jitter:0.80,
-    tipR:0.013, taperPow:2.4, woodMinR:0.026, woodSides:3,
-    leafMaxR:0.044, leavesPerTwig:1, leafW:0.46, leafScatter:0.14,
-    leafGeoFor:sc=>leafGeo(sc*0.84,sc,1,1,0.62,0.44),
+    /* Made cheap first time round and it showed: one flat two-triangle leaf
+       per twig at nearly half a metre across is a stretched texture on a
+       billboard, and three-sided wood is a triangular stick. Since this is
+       the plant the player actually stands in front of -- it is the one
+       filling the gaps -- it gets the same build as the other three: real
+       twig counts, leaves with a fold in them, and round enough branches to
+       read as wood. The cost is paid back by putting one on fewer faces. */
+    rx:1.48, rz:0.82, h:1.62, nAttract:210, iters:58, maxNodes:88,
+    step:0.165, dAttract:0.82, dKill:0.26, up:0.14, jitter:0.80,
+    tipR:0.013, taperPow:2.4, woodMinR:0.026, woodSides:5,
+    leafMaxR:0.034, leavesPerTwig:2, leafW:0.30, leafScatter:0.12,
+    leafGeoFor:sc=>leafGeo(sc*0.82,sc,1,2,0.62,0.40),
     inside:(x,y,z)=>{ const u=x/1.48, w=z/0.82, v=(y-0.74)/0.94;
                       return u*u+w*w+v*v<1; } }
 ];
@@ -2726,7 +2731,9 @@ function buildHedges(){
       const fx=cx+(f[0]?f[0]*out:side), fz=cz+(f[1]?f[1]*out:side);
       const fs=rr(0.78,1.08), fy=fs*rr(0.90,1.22);
       tint.setRGB(rr(0.72,1.18)*autumn[0],rr(0.78,1.14)*autumn[1],rr(0.7,1.1)*autumn[2]);
-      if(RNG()<0.48){
+      // the grown plants are what the hedge is supposed to look like, so
+      // most faces get one rather than half of them
+      if(RNG()<0.72){
         const spf=RNG()<0.72?sp0:(sp0+1+(RNG()<0.5?0:1))%3;
         placeBush(fx,fz,fs,fy,spf,tint.clone());
       }else{
@@ -2745,13 +2752,19 @@ function buildHedges(){
          painted wall. The thicket is grown instead, wider than it is deep,
          and laid along the face rather than spun at random, so what fills
          the gap is branches you can see through. */
-      const tside=(side>0?-1:1)*rr(0.42,0.78);
-      const tout=rr(0.78,0.94);
-      const tx=cx+(f[0]?f[0]*tout:tside), tz=cz+(f[1]?f[1]*tout:tside);
-      const yaw=(f[0]?Math.PI/2:0)+rr(-0.12,0.12);
-      const ts=rr(0.88,1.02);
-      tint.setRGB(rr(0.72,1.18)*autumn[0],rr(0.78,1.14)*autumn[1],rr(0.7,1.1)*autumn[2]);
-      placeAlong(tx,tz,ts,ts*rr(0.92,1.14),ts*rr(0.94,1.12),yaw,THICKET,tint.clone());
+      /* ...and a thicket over the half that left bare, but only where the
+         plant above actually sat off to one side. A face whose bush landed
+         in the middle does not need one, and every thicket that is not
+         needed is a plant the player has to look at for nothing. */
+      if(Math.abs(side)>0.30){
+        const tside=(side>0?-1:1)*rr(0.42,0.78);
+        const tout=rr(0.78,0.94);
+        const tx=cx+(f[0]?f[0]*tout:tside), tz=cz+(f[1]?f[1]*tout:tside);
+        const yaw=(f[0]?Math.PI/2:0)+rr(-0.12,0.12);
+        const ts=rr(0.88,1.02);
+        tint.setRGB(rr(0.72,1.18)*autumn[0],rr(0.78,1.14)*autumn[1],rr(0.7,1.1)*autumn[2]);
+        placeAlong(tx,tz,ts,ts*rr(0.92,1.14),ts*rr(0.94,1.12),yaw,THICKET,tint.clone());
+      }
 
       /* A bank of litter along the foot of the face, low and long and turned
          with it. Branches are see-through by nature, which is the point of
@@ -2830,7 +2843,9 @@ function buildHedges(){
   worldGroup.add(core.build(GEO_BLOB_SHADOW,matFoliageCut,true,true));
   worldGroup.add(crown.build(GEO_BLOB,matFoliageCut,true,true));
   worldGroup.add(trunk.build(new THREE.CylinderGeometry(0.72,1.18,2,20,4),matBark,true,true));
-  worldGroup.add(canopy.build(GEO_BLOB,matCanopy,true,true));
+  // tree canopies sit five metres up and are never approached; the cheaper
+  // blob is indistinguishable from down here and there are 1500 of them
+  worldGroup.add(canopy.build(GEO_BLOB_SHADOW,matCanopy,true,true));
   const cardGeo=leafGeo(0.50,0.62,3,4,0.85,0.35);
   worldGroup.add(card.build(cardGeo,matLeafCard,true,true));
 }
