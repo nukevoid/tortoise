@@ -26,7 +26,7 @@ mark done tasks like - [X]
 
 - [X] Make obstacles (bushes, trees) smooth with many polygons
 - [X] Fix problem when player can move formad becose upper body is toching something, but direct view is cler
-- [ ] Bushes and trees still polygonal, fix them
+- [X] Bushes and trees still polygonal, fix them
 - [ ] Fix "in the shell" view
 - [ ] Fix terrain texture resolution 
 - [ ] Add water, creeks, pudles, lake
