@@ -4589,6 +4589,240 @@ function updateWeather(dt){
 }
 let rainHintShown=false;
 
+
+/* ═══ Wasps, and beetles ═══════════════════════════════════════════
+   Every threat so far has the same answer: get in the shell. The thorn-maw,
+   the crow, the heron, the spider -- all of them are solved by pulling in
+   and waiting. That makes the shell the whole game and every encounter the
+   same encounter underneath.
+
+   A wasp is the argument against that. It will not hurt you through the
+   shell -- nothing does, and nothing should -- but it does not lose
+   interest either. It hangs over you until you leave its patch, so hiding
+   only spends time you have not got. The answer is to get out of its way,
+   which is the opposite instinct to everything else in the Hollow.
+
+   The beetle is not a threat at all. It is there because a forest with
+   nothing harmless living in it feels like a trap rather than a place. */
+
+const WASP={
+  nests:5,
+  wake:5.0,            // it notices you this close to the nest
+  leash:11.0,          // and follows you this far from it before giving up
+  speed:3.1,
+  reach:0.95,
+  sting:6,
+  period:1.5,
+  windup:0.30, strike:0.12, recover:0.25
+};
+const BEETLE={ count:9, speed:0.55, shy:1.6, scuttle:2.4 };
+
+const matWasp =new THREE.MeshStandardMaterial({color:0xd8a72b,roughness:0.55,metalness:0.05});
+const matWaspD=new THREE.MeshStandardMaterial({color:0x241a10,roughness:0.6,metalness:0.05});
+const matWaspW=new THREE.MeshStandardMaterial({color:0xe8f0f4,roughness:0.25,metalness:0,
+  transparent:true,opacity:0.42,side:THREE.DoubleSide,depthWrite:false});
+const matBeetle=new THREE.MeshStandardMaterial({color:0x2b2f26,roughness:0.42,metalness:0.25});
+
+defineMob('wasp',{
+  activeRange:26,
+  worldSpace:true,          // the rig is placed in world coords, not under the group
+  build(m){
+    /* Built nose-along-+Z, then scaled down as a whole, so the numbers below
+       can be read as a diagram rather than as a list of tiny decimals.
+       What has to survive at a glance, from in front and from the side: a
+       waist, a striped abdomen, and wings that lie flat. */
+    const g2=new THREE.Group();
+
+    const head=new THREE.Mesh(new THREE.SphereGeometry(0.028,9,7),matWasp);
+    head.scale.set(1.15,1.0,0.85); head.position.z=0.070; g2.add(head);
+    for(const sx of [-1,1]){                       // antennae
+      const a=new THREE.Mesh(new THREE.CylinderGeometry(0.0035,0.002,0.055,4),matWaspD);
+      a.position.set(sx*0.012,0.022,0.092);
+      a.rotation.set(-1.15,0,sx*0.32); g2.add(a);
+    }
+    const thx=new THREE.Mesh(new THREE.SphereGeometry(0.036,10,8),matWaspD);
+    thx.scale.set(1,1,1.2); thx.position.z=0.028; g2.add(thx);
+
+    // the waist is the whole reason a wasp is not a bee
+    const waist=new THREE.Mesh(new THREE.CylinderGeometry(0.009,0.013,0.030,6),matWaspD);
+    waist.rotation.x=Math.PI/2; waist.position.z=-0.008; g2.add(waist);
+
+    const abd=new THREE.Mesh(new THREE.SphereGeometry(0.048,12,9),matWasp);
+    abd.scale.set(0.92,0.88,1.50); abd.position.z=-0.075; g2.add(abd);
+    /* A TorusGeometry already circles +Z, which is the way the body points --
+       rotating it is what turns a stripe into a hoop standing on edge. */
+    for(const zr of [[-0.045,0.0425],[-0.078,0.0455],[-0.110,0.0400]]){
+      const band=new THREE.Mesh(new THREE.TorusGeometry(zr[1],0.0075,6,14),matWaspD);
+      band.scale.y=0.88; band.position.z=zr[0]; g2.add(band);
+    }
+    const sting=new THREE.Mesh(new THREE.ConeGeometry(0.009,0.038,6),matWaspD);
+    sting.rotation.x=-Math.PI/2; sting.position.z=-0.162; g2.add(sting);
+
+    // legs trail under it: a wasp holding station hangs them
+    for(let i=0;i<6;i++){
+      const sx=i<3?-1:1, k=i%3;
+      const leg=new THREE.Mesh(new THREE.CylinderGeometry(0.0035,0.0025,0.070,4),matWaspD);
+      leg.position.set(sx*0.024,-0.028,0.040-k*0.030);
+      leg.rotation.set(0.55,0,sx*0.42); g2.add(leg);
+    }
+
+    /* Wings: a pivot at the shoulder so the flap is a rotation and not a
+       slide, and the blade laid flat (a PlaneGeometry stands upright in XY,
+       which is what made them read as paper held up beside the body). */
+    const wings=[];
+    for(const sx of [-1,1]){
+      const pivot=new THREE.Group();
+      pivot.position.set(sx*0.016,0.028,0.018);
+      const geo=new THREE.PlaneGeometry(0.125,0.040);
+      geo.translate(sx*0.064,0,0);
+      geo.rotateX(-Math.PI/2);
+      const blade=new THREE.Mesh(geo,matWaspW);
+      blade.rotation.y=sx*0.30;                    // swept back
+      pivot.add(blade); g2.add(pivot); wings.push(pivot);
+    }
+
+    g2.scale.setScalar(0.72);
+    g2.rotation.order='YXZ';   // yaw first, then pitch about its own axis
+    m.parts.rig=g2; m.parts.wings=wings;
+    g2.visible=false; m.group.position.set(0,0,0); m.group.add(g2);
+    m.data.t=0; m.data.bite=0;
+  },
+  onReset(m){
+    m.x=m.home.x; m.z=m.home.z;
+    m.data.bite=0; m._bit=false;
+    if(m.parts.rig)m.parts.rig.visible=false;
+    setMobState(m,'nest');
+  },
+  think(m,dt,d){
+    const rig=m.parts.rig;
+    if(state!=='play'){ rig.visible=false; return; }
+    if(m.state==='idle')setMobState(m,'nest');
+    const homeD=Math.hypot(P.pos.x-m.home.x,P.pos.z-m.home.z);
+
+    if(m.state==='nest'){
+      rig.visible=false;
+      m.x=m.home.x; m.z=m.home.z;
+      if(homeD<WASP.wake&&state==='play'){ setMobState(m,'hunt'); SFX.waspBuzz(); }
+      return;
+    }
+    // hunting: it keeps station over you until you leave its patch
+    rig.visible=true;
+    if(homeD>WASP.leash){ setMobState(m,'nest'); return; }
+
+    const dx=P.pos.x-m.x, dz=P.pos.z-m.z;
+    const L=Math.hypot(dx,dz)||1;
+    const want=Math.max(0,L-0.55);
+    const step=Math.min(want,WASP.speed*dt);
+    m.x+=dx/L*step; m.z+=dz/L*step;
+
+    /* The strike is on its own clock rather than on the state machine's,
+       because the wasp never stops hunting -- but it still telegraphs:
+       it rears back through the windup and drops onto you on the strike,
+       so the 0.30s is something you can see rather than something you
+       find out about afterwards. */
+    m.data.bite+=dt;
+    const cyc=WASP.windup+WASP.strike+WASP.recover+WASP.period;
+    if(m.data.bite>cyc){ m.data.bite-=cyc; m._bit=false; }
+    const fake={stateT:m.data.bite,_bit:m._bit};
+    const a=attackTick(fake,WASP.windup,WASP.strike,WASP.recover);
+    m._bit=fake._bit;
+
+    let lunge=0, rear=0;
+    if(a.stage==='windup'){ lunge=-0.16*a.windupT; rear=-0.45*a.windupT; }
+    else if(a.stage==='strike'){ lunge=-0.16+0.46*a.strikeT; rear=-0.45+0.75*a.strikeT; }
+    else if(a.stage==='recover'){ lunge=0.30*(1-a.recoverT); rear= 0.30*(1-a.recoverT); }
+    if(a.stage==='windup'&&!m.data.warned){ m.data.warned=true; SFX.waspBuzz(); }
+    if(a.stage!=='windup')m.data.warned=false;
+
+    const hover=groundH(m.x,m.z)+0.55+Math.sin(m.t*6.2)*0.06;
+    const face=Math.atan2(dx,dz);
+    rig.position.set(m.x+Math.sin(face)*lunge, hover-lunge*0.35, m.z+Math.cos(face)*lunge);
+    rig.rotation.set(rear,face,0);
+    // both wings beat together: +Z on the left pivot is down, hence the sign
+    const flap=0.30+Math.sin(m.t*54)*0.55;
+    m.parts.wings[0].rotation.z=-flap;
+    m.parts.wings[1].rotation.z= flap;
+
+    if(a.justBit&&d<WASP.reach){
+      if(mobStrike(m,WASP.sting,'wasp')) SFX.waspSting();
+    }
+  }
+});
+
+defineMob('beetle',{
+  activeRange:18,
+  worldSpace:true,
+  build(m){
+    const g2=new THREE.Group();
+    const body=new THREE.Mesh(new THREE.SphereGeometry(0.055,10,8),matBeetle);
+    body.scale.set(1,0.62,1.35); body.position.y=0.045; g2.add(body);
+    const head=new THREE.Mesh(new THREE.SphereGeometry(0.028,8,6),matBeetle);
+    head.position.set(0,0.040,0.070); g2.add(head);
+    const legs=[];
+    for(let i=0;i<6;i++){
+      const sx=i<3?-1:1, k=i%3;
+      const leg=new THREE.Mesh(new THREE.CylinderGeometry(0.005,0.004,0.06,4),matBeetle);
+      leg.position.set(sx*0.052,0.022,0.035-k*0.038);
+      leg.rotation.z=sx*0.9;
+      g2.add(leg); legs.push(leg);
+    }
+    m.parts.rig=g2; m.parts.legs=legs;
+    g2.visible=false; m.group.position.set(0,0,0); m.group.add(g2);
+    m.data.dir=rr(0,6.283); m.data.turn=rr(1,3);
+  },
+  onReset(m){
+    m.x=m.home.x; m.z=m.home.z;
+    m.data.dir=rr(0,6.283); m.data.turn=rr(1,3);   // data is wiped on reset
+    setMobState(m,'wander');
+  },
+  think(m,dt,d){
+    const rig=m.parts.rig;
+    if(state!=='play'){ rig.visible=false; return; }
+    rig.visible=true;
+    // it ambles, and bolts if you loom over it
+    const spooked=d<BEETLE.shy;
+    if(spooked){
+      m.data.dir=Math.atan2(m.x-P.pos.x,m.z-P.pos.z);
+    }else{
+      m.data.turn-=dt;
+      if(m.data.turn<=0){ m.data.dir+=rr(-1.4,1.4); m.data.turn=rr(1.2,3.4); }
+    }
+    const sp=(spooked?BEETLE.scuttle:BEETLE.speed);
+    const nx=m.x+Math.sin(m.data.dir)*sp*dt, nz=m.z+Math.cos(m.data.dir)*sp*dt;
+    if(!blocked(nx,nz)){ m.x=nx; m.z=nz; } else m.data.dir+=2.2;
+    rig.position.set(m.x,groundH(m.x,m.z)+0.005,m.z);
+    rig.rotation.y=m.data.dir;
+    const gait=Math.sin(m.t*(spooked?26:9));
+    for(let i=0;i<m.parts.legs.length;i++)
+      m.parts.legs[i].rotation.x=gait*((i%2)?0.35:-0.35);
+  }
+});
+
+/* Nests go where you will walk past them, not where you must. */
+function spawnWasps(n){
+  const far=openCells.filter(c=>dist[c[1]*N+c[0]]>6);
+  const taken=[];
+  let placed=0, guard=0;
+  while(placed<n && guard++<n*40 && far.length){
+    const c=far[Math.floor(RNG()*far.length)];
+    const p=cellCenter(c[0],c[1]);
+    if(items.some(it=>Math.hypot(it.x-p.x,it.z-p.z)<3.0))continue;
+    if(taken.some(t=>Math.hypot(t[0]-p.x,t[1]-p.z)<14))continue;
+    taken.push([p.x,p.z]);
+    spawnMob('wasp',p.x,p.z);
+    placed++;
+  }
+  return placed;
+}
+function spawnBeetles(n){
+  const pool=openCells.filter(c=>dist[c[1]*N+c[0]]>2);
+  for(let i=0;i<n&&pool.length;i++){
+    const c=pool.splice(Math.floor(RNG()*pool.length),1)[0];
+    const p=cellCenter(c[0],c[1]);
+    spawnMob('beetle',p.x+rr(-0.7,0.7),p.z+rr(-0.7,0.7));
+  }
+}
+
 /* --- crows --- */
 const crows=[];
 function makeCrow(){
@@ -5096,6 +5330,8 @@ const SFX={
   near(){tone(1320,0.5,'sine',0.045);},
   heronCall(){ tone(340,0.5,'sawtooth',0.10,150); tone(250,0.4,'square',0.05,110,0.12); },
   catMew(){ tone(rr(620,760),0.28,'sine',0.07,rr(380,470)); },
+  waspBuzz(){ tone(rr(210,260),0.55,'sawtooth',0.045,rr(180,230)); },
+  waspSting(){ tone(900,0.08,'square',0.10,380); noiseHit(0.07,1500,2.2,0.07); },
   flipOver(){ noiseHit(0.30,300,0.9,0.16,'lowpass'); tone(150,0.40,'triangle',0.11,70); },
   flipBack(){ tone(300,0.20,'sine',0.11,520); tone(520,0.26,'sine',0.09,760,0.07);
               noiseHit(0.16,420,1.0,0.08,'lowpass'); },
@@ -5956,6 +6192,8 @@ async function boot(){
   setLoad(82,'Waking the crows…');await frame();
   stage(9);  spawnCrows(2);buildLeaves();buildFireflies();buildRain();
   stage(10); spawnThornmaws(7);
+  stage(13); spawnWasps(WASP.nests);
+  stage(14); spawnBeetles(BEETLE.count);
   stage(11);
   spawnMob('heron',P.pos.x,P.pos.z);
   spawnMob('glass',P.pos.x,P.pos.z);
@@ -6048,7 +6286,7 @@ function placeItems(){
 window.__game={
   P,items,crows,keys,hazards,renderer,scene,camera,sun,hemi,AUDIO,POST,BOOT,
   renderFrame,buildTargets,matComposite,
-  gust:gustU,gustAt,WIND_DIR,THORN,HERON,GLASS,CAT,FLIP,WEATHER,
+  gust:gustU,gustAt,WIND_DIR,THORN,HERON,GLASS,CAT,FLIP,WEATHER,WASP,BEETLE,
   get rain(){return rainMesh;},
   exportLevel,get levelIsBaked(){return !!LEVEL_USED;},
   analyseGrid,benchGenerators,GEN,

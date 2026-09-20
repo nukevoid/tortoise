@@ -58,7 +58,7 @@ mark done tasks like - [X]
 - [X] fliped mechanic to hard at the end. Start is easy but final flip is always missing
 - [X] Balanse gameplay 
 - [X] Change had indication: heath - hearts, stamina - leafs. Change all code than use it
-- [ ] Add more mobs variation 
+- [X] Add more mobs variation 
 - [ ] Do mobs that in same time wont be Heron and Glass, or other 
 - [X] increase quality of water, place more water regions
 - [ ] do research how to play mobs and realm and other items usig Game Designt technicas and keep player attention + give plaer emotional swing
