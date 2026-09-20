@@ -3255,6 +3255,7 @@ const GLASS={
 
 const matSpider=new THREE.MeshStandardMaterial({color:0x20191c,roughness:0.62,metalness:0.05});
 const matSpiderEye=new THREE.MeshStandardMaterial({color:0x8d2b24,roughness:0.3,metalness:0});
+const matSpiderMark=new THREE.MeshStandardMaterial({color:0x6d5a3a,roughness:0.75,metalness:0});
 const matGlass=new THREE.MeshStandardMaterial({
   color:0xd6ecf2, roughness:0.06, metalness:0.0,
   transparent:true, opacity:0.24, side:THREE.DoubleSide,
@@ -3294,32 +3295,80 @@ defineMob('glass',{
       m.parts.shards.push({mesh:sh,vx:0,vy:0,vz:0,sp:0});
       m.group.add(sh);
     }
-    /* Some glasses already have something in them. */
+    /* Some glasses already have something in them.
+
+       A spider is mostly legs, and the thing that makes one read as a spider
+       rather than a bead is the stance: the body slung low between knees
+       that rise above it, each leg reaching out and then down to a foot on
+       the floor. Four pairs, fanned front to back, with the front pair
+       longest and held forward like feelers. */
     const sp=new THREE.Group();
-    const abdomen=new THREE.Mesh(new THREE.SphereGeometry(0.085,10,8),matSpider);
-    abdomen.scale.set(1,0.86,1.25); abdomen.position.set(0,0.085,-0.075);
+
+    const abdomen=new THREE.Mesh(new THREE.SphereGeometry(0.072,12,10),matSpider);
+    abdomen.scale.set(1.0,0.92,1.30); abdomen.position.set(0,0.070,-0.082);
     abdomen.castShadow=true; sp.add(abdomen);
-    const thorax=new THREE.Mesh(new THREE.SphereGeometry(0.055,10,8),matSpider);
-    thorax.position.set(0,0.080,0.055); thorax.castShadow=true; sp.add(thorax);
-    for(const ex of [-1,1]){
-      const eye=new THREE.Mesh(new THREE.SphereGeometry(0.014,6,5),matSpiderEye);
-      eye.position.set(ex*0.024,0.100,0.098); sp.add(eye);
+    // the pale blaze across the back, so it is not a featureless lump
+    const mark=new THREE.Mesh(new THREE.SphereGeometry(0.073,10,8),matSpiderMark);
+    mark.scale.set(0.42,0.90,0.78); mark.position.set(0,0.078,-0.086);
+    sp.add(mark);
+
+    const thorax=new THREE.Mesh(new THREE.SphereGeometry(0.050,12,10),matSpider);
+    thorax.scale.set(1.15,0.80,1.0); thorax.position.set(0,0.064,0.030);
+    thorax.castShadow=true; sp.add(thorax);
+
+    // eight eyes: a big forward pair and a scatter of smaller ones
+    for(const e of [[0.020,0.086,0.072,0.011],[-0.020,0.086,0.072,0.011],
+                    [0.038,0.082,0.058,0.007],[-0.038,0.082,0.058,0.007],
+                    [0.012,0.094,0.062,0.006],[-0.012,0.094,0.062,0.006],
+                    [0.030,0.092,0.048,0.005],[-0.030,0.092,0.048,0.005]]){
+      const eye=new THREE.Mesh(new THREE.SphereGeometry(e[3],6,5),matSpiderEye);
+      eye.position.set(e[0],e[1],e[2]); sp.add(eye);
     }
+    // fangs
+    for(const fx of [-1,1]){
+      const fang=new THREE.Mesh(new THREE.ConeGeometry(0.010,0.038,5),matSpiderEye);
+      fang.position.set(fx*0.016,0.044,0.070);
+      fang.rotation.set(-2.5,0,0);
+      sp.add(fang);
+    }
+
+    /* A limb spanning two explicit points, so the foot can be put exactly on
+       the floor rather than guessed at with rotations. */
+    const _la=new THREE.Vector3(), _lb=new THREE.Vector3(), _ld=new THREE.Vector3(),
+          _lq=new THREE.Quaternion(), _lup=new THREE.Vector3(0,1,0);
+    const limb=(ax,ay,az,bx,by,bz,r0,r1)=>{
+      _la.set(ax,ay,az); _lb.set(bx,by,bz);
+      _ld.subVectors(_lb,_la);
+      const len=_ld.length();
+      const geo=new THREE.CylinderGeometry(r1,r0,len,5,1);
+      geo.translate(0,len*0.5,0);
+      const mesh=new THREE.Mesh(geo,matSpider);
+      _lq.setFromUnitVectors(_lup,_ld.normalize());
+      mesh.quaternion.copy(_lq);
+      mesh.position.copy(_la);
+      mesh.castShadow=true;
+      return mesh;
+    };
+
     sp.userData.legs=[];
+    // per pair: body z, knee height, reach, how far forward the foot lands
+    const PAIRS=[[ 0.046, 0.150, 0.205,  0.130],
+                 [ 0.018, 0.140, 0.190,  0.040],
+                 [-0.012, 0.138, 0.185, -0.055],
+                 [-0.042, 0.132, 0.170, -0.140]];
     for(let i=0;i<8;i++){
       const side=i<4?-1:1, k=i%4;
+      const [bz,knee,reach,fz]=PAIRS[k];
       const leg=new THREE.Group();
-      leg.position.set(side*0.035,0.082,0.03-k*0.032);
-      const seg=new THREE.Mesh(new THREE.CylinderGeometry(0.008,0.006,0.15,4),matSpider);
-      seg.geometry.translate(0,0.075,0);
-      seg.rotation.z=side*1.15;
-      leg.add(seg);
-      const tip=new THREE.Mesh(new THREE.CylinderGeometry(0.006,0.004,0.13,4),matSpider);
-      tip.geometry.translate(0,0.065,0);
-      tip.position.set(side*0.135,0.058,0);
-      tip.rotation.z=side*2.35;
-      leg.add(tip);
-      leg.userData.side=side; leg.userData.phase=(k/4)*Math.PI*2+(side<0?0:Math.PI);
+      leg.position.set(0,0,0);
+      const ax=side*0.034, ay=0.062, az=bz;
+      const kx=side*(reach*0.52), ky=knee, kz=bz+(fz-bz)*0.42;
+      const fx=side*reach,        fy=0.004, fzz=fz;
+      leg.add(limb(ax,ay,az,kx,ky,kz,0.0085,0.0065));   // femur, up and out
+      leg.add(limb(kx,ky,kz,fx,fy,fzz,0.0062,0.0032));  // tibia, down to the floor
+      leg.userData.side=side;
+      leg.userData.phase=(k*0.5+(side<0?0:0.5))*Math.PI;
+      leg.userData.pivot=az;
       sp.add(leg); sp.userData.legs.push(leg);
     }
     sp.visible=false;
@@ -3434,7 +3483,11 @@ defineMob('glass',{
         // legs scurry; they go still the instant it commits to the bite
         const gait=(a.stage==='strike')?0:1;
         for(const leg of spg.userData.legs){
-          leg.rotation.x=Math.sin(m.t*11+leg.userData.phase)*0.34*gait;
+          const sw=Math.sin(m.t*9+leg.userData.phase);
+          // swing fore and aft about the body, with a small lift on the
+          // forward half of the stroke so the feet do not scrape
+          leg.rotation.y=sw*0.20*gait;
+          leg.position.y=Math.max(0,sw)*0.012*gait;
         }
       }else spg.visible=false;
       if(m.stateT>=GLASS.held){

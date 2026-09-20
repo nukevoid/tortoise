@@ -44,7 +44,7 @@ mark done tasks like - [X]
 - [X] hostile plant - add longer delays between bites
 - [X] Falling glass cup: like heron - shadow, then cup falling cirectly on you. You can move 5 sec untill in breakes, couse you are under the cup
 - [X] in some glasses with spider  inside, and you have to hide or they weel bite you
-- [ ] improve spider model
+- [X] improve spider model
 - [ ] Fix Heron - after shadow now just screen about gameover: add Heron head and neck with animation 
 - [ ] Add cat, hides in bushes. It no hostile, but can play with you and tos you, then disapeear
 - [ ] Add mechani then you can be fliped (you see then shell otside), and you have to swing by left\right keys to stay normal. Can can flip you during tha play
