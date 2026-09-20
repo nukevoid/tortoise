@@ -4699,6 +4699,7 @@ const FLIP={
   decay:0.70,           // ...and what survives a second of doing nothing
   reload:0.26,          // a tortoise cannot heave faster than this
   tipAngle:1.05,        // swing this far and it is over
+  shellR:0.22,          // the dome it rocks on, which is what it rolls along
   rightTime:0.52,       // the roll onto its feet
   lift:0.30,            // the upturned shell rests ON the ground, not in it
   hop:0.13,             // ...and lifts as it pivots over its edge
@@ -4790,8 +4791,20 @@ function flipRoll(){
   const e=k*k*(3-2*k);
   return Math.PI+P.flipDir*lerp(FLIP.tipAngle,Math.PI,e);
 }
+/* How far along the ground the roll has carried the shell from where the
+   player is standing. It has to come back to nothing by the time the body is
+   on its feet, or the shell jumps a quarter of a metre at the end. */
+function flipRollOffset(){
+  if(P.flipPhase!=='right')return FLIP.shellR*P.flipAngle;
+  const k=clamp(P.flipRightT/FLIP.rightTime,0,1);
+  return FLIP.shellR*P.flipDir*FLIP.tipAngle*(1-k*k*(3-2*k));
+}
 function flipLift(){
-  if(P.flipPhase!=='right')return FLIP.lift*Math.cos(P.flipAngle*0.5);
+  /* A body rolling on a round dome keeps its centre the same height above
+     the ground; it was dipping as it leaned, which is what a hinge does, not
+     a roll. A tortoise's back is a shallow dome rather than a true circle,
+     so a little of the dip is kept. */
+  if(P.flipPhase!=='right')return FLIP.lift*(1-0.06*P.flipAngle*P.flipAngle);
   const k=clamp(P.flipRightT/FLIP.rightTime,0,1);
   return FLIP.lift*(1-k)+Math.sin(k*Math.PI)*FLIP.hop;
 }
@@ -6307,9 +6320,12 @@ function update(dt){
   if(P.flipped){
     /* Out and above, looking back down at yourself. The camera rolls with
        the rocking so the swing is something you feel, not just watch. */
-    camera.position.set(P.pos.x+P.flipAngle*0.10,
+    // the camera follows the shell along the ground rather than watching it
+    // slide out of frame
+    const cOff=flipRollOffset();
+    camera.position.set(P.pos.x+Math.cos(P.yaw)*cOff+P.flipAngle*0.06,
                         gH+FLIP.camHeight,
-                        P.pos.z+FLIP.camBack);
+                        P.pos.z-Math.sin(P.yaw)*cOff+FLIP.camBack);
     camera.rotation.set(FLIP.camPitch,0,P.flipAngle*0.16);
   }else{
     camera.position.set(P.pos.x-Math.sin(P.yaw)*eyeFwd+bobX*0.4,
@@ -6341,7 +6357,18 @@ function update(dt){
   /* Upturned, the rig has to ride ABOVE the ground: rotating it about its
      own base would otherwise bury the shell and push the legs through the
      floor. */
-  bodyRig.position.set(P.pos.x,gH+(P.flipped?flipLift():bobY*0.45),P.pos.z);
+  /* On its back the shell rocks on its dome, so the point touching the
+     ground travels: rolling without slipping carries the body sideways by
+     the dome's radius times the angle. Spinning it about a fixed centre
+     instead made it read as a dial being turned rather than a weight being
+     rolled, and the contact point slid. */
+  let rigX=P.pos.x, rigZ=P.pos.z;
+  if(P.flipped){
+    const off=flipRollOffset();
+    rigX+= Math.cos(P.yaw)*off;
+    rigZ+=-Math.sin(P.yaw)*off;
+  }
+  bodyRig.position.set(rigX,gH+(P.flipped?flipLift():bobY*0.45),rigZ);
   groundNormal(P.pos.x,P.pos.z,_bodyN);
   _tiltQ.setFromUnitVectors(_upAxis,_bodyN);
   _yawQ.setFromAxisAngle(_upAxis,P.yaw);
