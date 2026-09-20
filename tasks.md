@@ -35,4 +35,4 @@ mark done tasks like - [X]
 - [X] Do optimisation
 - [X] Make bushed more realistic 
 - [X] Do color corection to more calm and realistic
-- [ ] Add nice sunlight and gust on air
+- [X] Add nice sunlight and gust on air

@@ -894,12 +894,36 @@ function grassTuftGeo(){
    translucency term so leaves glow when the sun is behind them —
    the single biggest cue that you are looking at a living plant. */
 const windU={value:0};
+
+/* One wind, felt everywhere. A gust is a band of faster air travelling
+   downwind: the hedge line ripples in a wave instead of every leaf jiggling
+   at once, and the falling leaves, the motes in the air and the sound of it
+   all rise from the same number, so what you hear and what you see agree. */
+const WIND_DIR=new THREE.Vector2(0.82,0.57).normalize();
+const windDirU={value:new THREE.Vector2(WIND_DIR.x,WIND_DIR.y)};
+const gustU={value:0.35};              // 0 = still air, 1 = the peak of a gust
+const WIND_BAND=0.055, WIND_SPEED=0.75;
+
+// The travelling band sampled at a world position -- the CPU twin of the
+// expression in the foliage vertex shader, so particles ride the same wave.
+function gustAt(x,z){
+  const t=windU.value;
+  const band=Math.sin((x*WIND_DIR.x+z*WIND_DIR.y)*WIND_BAND - t*WIND_SPEED)*0.5+0.5;
+  return band*band*gustU.value;
+}
+// The slow swell that decides whether the air is resting or working.
+function gustEnvelope(t){
+  return 0.18 + 0.82*Math.pow(Math.sin(t*0.081)*0.5+0.5, 1.6)
+              * (0.72+0.28*(Math.sin(t*0.207+1.1)*0.5+0.5));
+}
 function patchFoliage(mat,amp,trans,rimCut){
   amp=amp||0; trans=trans||0;
   mat.onBeforeCompile=sh=>{
     sh.uniforms.uTime=windU;
     sh.uniforms.uAmp={value:amp};
-    sh.vertexShader='uniform float uTime;uniform float uAmp;' + '\n' + sh.vertexShader.replace(
+    sh.uniforms.uGust=gustU;
+    sh.uniforms.uWindDir=windDirU;
+    sh.vertexShader='uniform float uTime;uniform float uAmp;uniform float uGust;uniform vec2 uWindDir;' + '\n' + sh.vertexShader.replace(
       '#include <begin_vertex>',
       `#include <begin_vertex>
        #ifdef USE_INSTANCING
@@ -908,10 +932,20 @@ function patchFoliage(mat,amp,trans,rimCut){
          vec3 wp = vec3(0.0);
        #endif
        if(uAmp > 0.0){
-         float sw = sin(uTime*1.5 + wp.x*0.8 + wp.z*0.55)*0.75 + sin(uTime*3.3 + wp.z*1.6)*0.25;
+         // the gust front, travelling downwind across the whole world
+         float along = dot(wp.xz, uWindDir);
+         float band  = sin(along*0.055 - uTime*0.75)*0.5 + 0.5;
+         float gust  = 0.40 + 1.30*band*band*uGust;
+         float sw = sin(uTime*1.5 + wp.x*0.8 + wp.z*0.55)*0.75
+                  + sin(uTime*3.3 + wp.z*1.6)*0.25;
+         sw *= gust;
          float hgt = max(transformed.y,0.0);
          transformed.x += sw*uAmp*hgt;
          transformed.z += sw*uAmp*0.55*hgt;
+         // and the plant leans away while the gust leans on it
+         float lean = band*band*uGust*uAmp*0.7*hgt;
+         transformed.x += uWindDir.x*lean;
+         transformed.z += uWindDir.y*lean;
        }
        // Foliage pressed against the lens smears over the whole screen and
        // costs a fortune in overdraw; fold it away as the camera closes in.
@@ -2600,6 +2634,170 @@ function updateLeaves(dt){
   }
   leafMesh.instanceMatrix.needsUpdate=true;
 }
+
+/* ═══ Sun shafts ═══════════════════════════════════════════════════
+   A beam of light is only visible because of what floats in it. These are
+   not volumetrics: each shaft is a quad that pivots around the sun's own
+   axis to keep its face to the camera, so walking around one shows a column
+   of light rather than a flat card turning edge-on. They are depth-tested,
+   so the hedges occlude them exactly as they occlude everything else. */
+let shaftMesh=null;
+function buildShafts(){
+  const pool=openCells.filter(c=>{
+    if(dist[c[1]*N+c[0]]<=2)return false;
+    const p=cellCenter(c[0],c[1]);
+    // the Gloom stays gloomy -- that darkness is what the lantern is for
+    return Math.hypot(p.x-GLOOM.x,p.z-GLOOM.z) > GLOOM.r*1.05;
+  });
+  const N_=Math.min(85,pool.length);
+  if(!N_)return;
+  const base=new THREE.PlaneGeometry(1,1,1,4);
+  const geo=new THREE.InstancedBufferGeometry();
+  geo.index=base.index;
+  geo.setAttribute('position',base.attributes.position);
+  geo.setAttribute('uv',base.attributes.uv);
+  const iOrigin=new Float32Array(N_*3), iSize=new Float32Array(N_*2),
+        iSeed=new Float32Array(N_),     iGround=new Float32Array(N_);
+  for(let i=0;i<N_;i++){
+    const c=pool.splice(Math.floor(RNG()*pool.length),1)[0];
+    const p=cellCenter(c[0],c[1]);
+    const lx=p.x+rr(-0.7,0.7), lz=p.z+rr(-0.7,0.7);   // where it lands
+    const gy=groundH(lx,lz);
+    const len=rr(5.5,9.5);
+    // the mouth of the shaft sits up-sun from the patch of ground it lights
+    iOrigin[i*3]=lx+SUN_DIR.x*len; iOrigin[i*3+1]=gy+SUN_DIR.y*len;
+    iOrigin[i*3+2]=lz+SUN_DIR.z*len;
+    iSize[i*2]=rr(0.5,1.45); iSize[i*2+1]=len;
+    iSeed[i]=rr(0,6.283); iGround[i]=gy;
+  }
+  geo.setAttribute('iOrigin',new THREE.InstancedBufferAttribute(iOrigin,3));
+  geo.setAttribute('iSize',new THREE.InstancedBufferAttribute(iSize,2));
+  geo.setAttribute('iSeed',new THREE.InstancedBufferAttribute(iSeed,1));
+  geo.setAttribute('iGround',new THREE.InstancedBufferAttribute(iGround,1));
+  geo.instanceCount=N_;
+  const mat=new THREE.ShaderMaterial({
+    uniforms:{uSunDir:{value:SUN_DIR.clone()},uTime:windU,uGust:gustU,
+              uTint:{value:new THREE.Color(0xffe3b0)},uStrength:{value:1.05}},
+    vertexShader:`
+      attribute vec3 iOrigin; attribute vec2 iSize;
+      attribute float iSeed;  attribute float iGround;
+      uniform vec3 uSunDir;
+      varying vec2 vS; varying float vSeed; varying float vFade; varying vec3 vWorld;
+      void main(){
+        vec3 axis=normalize(-uSunDir);          // the way the light travels
+        vec3 right=cross(axis,cameraPosition-iOrigin);
+        float rl=length(right);
+        right = rl<1e-4 ? vec3(1.0,0.0,0.0) : right/rl;
+        float t=uv.y;                            // 0 at the mouth, 1 at the foot
+        vec3 wp=iOrigin + axis*(t*iSize.y) + right*(position.x*iSize.x);
+        vS=vec2(position.x,t); vSeed=iSeed; vWorld=wp;
+        // a shaft that stops dead on the floor looks like cardboard
+        vFade=smoothstep(-0.05,0.38,wp.y-iGround);
+        gl_Position=projectionMatrix*viewMatrix*vec4(wp,1.0);
+      }`,
+    fragmentShader:`
+      uniform vec3 uSunDir; uniform vec3 uTint;
+      uniform float uTime; uniform float uGust; uniform float uStrength;
+      varying vec2 vS; varying float vSeed; varying float vFade; varying vec3 vWorld;
+      void main(){
+        float r=max(1.0-abs(vS.x)*2.0,0.0);
+        float across=pow(r,3.0)+0.32*pow(r,1.1);            // bright core, soft halo
+        float along=smoothstep(0.0,0.14,vS.y)*(1.0-smoothstep(0.62,1.0,vS.y));
+        // the canopy is moving, so the light coming through it breathes
+        float flick=0.80+0.20*sin(uTime*1.1+vSeed)*(0.45+0.9*uGust);
+        // a shaft is brightest when you look into the light
+        vec3 vd=normalize(vWorld-cameraPosition);
+        float facing=mix(0.58,1.0,pow(max(dot(vd,-uSunDir)*0.5+0.5,0.0),2.5));
+        float a=across*along*vFade*flick*facing*uStrength;
+        a*=smoothstep(1.0,3.2,distance(vWorld,cameraPosition));  // not in your face
+        gl_FragColor=vec4(uTint,a);
+      }`,
+    transparent:true, blending:THREE.AdditiveBlending,
+    depthWrite:false, depthTest:true, side:THREE.DoubleSide, fog:false});
+  shaftMesh=new THREE.Mesh(geo,mat);
+  shaftMesh.frustumCulled=false;          // the real bounds live in the shader
+  shaftMesh.castShadow=false; shaftMesh.receiveShadow=false;
+  shaftMesh.renderOrder=4;
+  scene.add(shaftMesh);
+}
+
+
+/* Motes on the air. A shaft of light is invisible until something is floating
+   in it, and still air looks dead however well it is lit. These ride the same
+   gust the hedges feel, so a lull leaves them hanging and a gust carries them
+   off downwind. They only really show when you are looking towards the sun,
+   which is exactly when real dust shows. */
+let moteMesh=null, moteData=[];
+function buildMotes(){
+  const N_=260;
+  const pos=new Float32Array(N_*3), seed=new Float32Array(N_), siz=new Float32Array(N_);
+  for(let i=0;i<N_;i++){
+    const d={x:rr(-12,12),y:rr(0.3,5.5),z:rr(-12,12),
+             s:rr(0.45,1.15), ph:rr(0,6.283), bob:rr(0.25,0.95)};
+    moteData.push(d);
+    pos[i*3]=d.x; pos[i*3+1]=d.y; pos[i*3+2]=d.z;
+    seed[i]=d.ph; siz[i]=d.s;
+  }
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  geo.setAttribute('aSeed',new THREE.BufferAttribute(seed,1));
+  geo.setAttribute('aSize',new THREE.BufferAttribute(siz,1));
+  const mat=new THREE.ShaderMaterial({
+    uniforms:{uTime:windU,uSunDir:{value:SUN_DIR.clone()},
+              uTint:{value:new THREE.Color(0xffeccb)},uPix:{value:1},
+              uGloomC:{value:new THREE.Vector2(GLOOM.x,GLOOM.z)},
+              uGloomR:{value:GLOOM.r}},
+    vertexShader:`
+      attribute float aSeed; attribute float aSize;
+      uniform float uTime; uniform float uPix;
+      varying float vTw; varying vec3 vW;
+      void main(){
+        vec4 mv=modelViewMatrix*vec4(position,1.0);
+        vW=(modelMatrix*vec4(position,1.0)).xyz;
+        vTw=0.55+0.45*sin(uTime*2.3+aSeed*3.1);     // each one turns in the light
+        gl_PointSize=aSize*uPix*24.0/max(-mv.z,0.35);
+        gl_Position=projectionMatrix*mv;
+      }`,
+    fragmentShader:`
+      uniform vec3 uSunDir; uniform vec3 uTint;
+      uniform vec2 uGloomC; uniform float uGloomR;
+      varying float vTw; varying vec3 vW;
+      void main(){
+        float a=smoothstep(0.5,0.06,length(gl_PointCoord-0.5));
+        a*=smoothstep(uGloomR*0.72,uGloomR*1.18,length(vW.xz-uGloomC));
+        vec3 vd=normalize(vW-cameraPosition);
+        float back=pow(max(dot(vd,-uSunDir)*0.5+0.5,0.0),3.0);
+        a*=vTw*mix(0.14,1.0,back);
+        gl_FragColor=vec4(uTint,a*0.9);
+      }`,
+    transparent:true,blending:THREE.AdditiveBlending,
+    depthWrite:false,depthTest:true,fog:false});
+  moteMesh=new THREE.Points(geo,mat);
+  moteMesh.frustumCulled=false; moteMesh.renderOrder=5;
+  scene.add(moteMesh);
+}
+function updateMotes(dt){
+  if(!moteMesh)return;
+  moteMesh.material.uniforms.uPix.value=renderer.getPixelRatio();
+  const arr=moteMesh.geometry.getAttribute('position');
+  for(let i=0;i<moteData.length;i++){
+    const d=moteData[i];
+    const gu=gustAt(d.x,d.z);                 // the same wave the hedges feel
+    const sp=0.20+2.4*gu;
+    d.x+=WIND_DIR.x*sp*dt; d.z+=WIND_DIR.y*sp*dt;
+    d.y+=Math.sin(windU.value*d.bob+d.ph)*0.22*dt + gu*0.30*dt;
+    const gy=groundH(d.x,d.z);
+    if(Math.abs(d.x-P.pos.x)>13||Math.abs(d.z-P.pos.z)>13||d.y>gy+7.5||d.y<gy-0.2){
+      // put it back upwind, so the drift never runs out of dust
+      d.x=P.pos.x-WIND_DIR.x*11+rr(-9,9);
+      d.z=P.pos.z-WIND_DIR.y*11+rr(-9,9);
+      d.y=groundH(d.x,d.z)+rr(0.15,4.6);
+    }
+    arr.array[i*3]=d.x; arr.array[i*3+1]=d.y; arr.array[i*3+2]=d.z;
+  }
+  arr.needsUpdate=true;
+}
+
 let fireflyPoints,fireflyData=[];
 function buildFireflies(){
   const N_=150;
@@ -3143,6 +3341,7 @@ let envCur=ENV_BASE;
 function update(dt){
   P.time+=dt;
   windU.value+=dt;
+  gustU.value=gustEnvelope(windU.value);
 
   /* ---- hide in shell ---- */
   const wantHide=!!keys['Space'];
@@ -3363,12 +3562,15 @@ function update(dt){
   if(!gateLocked&&P.pos.x>HALF+4.5)winGame();
 
   /* ---- particles ---- */
-  updateLeaves(dt);updateFireflies(dt);
+  updateLeaves(dt);updateFireflies(dt);updateMotes(dt);
 
   /* ---- ambience ---- */
   chirpTimer-=dt;
   if(chirpTimer<=0){chirpTimer=rr(2.5,8);if(RNG()<0.75)SFX.chirp();}
-  if(windGain)windGain.gain.value=lerp(windGain.gain.value,0.06+gl*0.05,dt*2);
+  // the wind is heard where it is felt: the gust that bends the hedges is
+  // the same one that rises in the ambience
+  if(windGain)windGain.gain.value=lerp(windGain.gain.value,
+      0.05+gl*0.05+gustU.value*0.075, dt*2);
 
   /* ---- hud ---- */
   updateHUD();
@@ -3540,7 +3742,7 @@ async function boot(){
   setLoad(82,'Waking the crows…');await frame();
   spawnCrows(2);buildLeaves();buildFireflies();
   setLoad(88,'Letting in the light…');await frame();
-  buildEnvironment();
+  buildEnvironment();buildShafts();buildMotes();
   collectMaterials();
   setLoad(94,'Settling the shadows…');await frame();
   resetPlayer();
@@ -3616,6 +3818,8 @@ function placeItems(){
 window.__game={
   P,items,crows,keys,hazards,renderer,scene,camera,sun,hemi,AUDIO,POST,BOOT,
   renderFrame,buildTargets,matComposite,
+  gust:gustU,gustAt,WIND_DIR,
+  get shafts(){return shaftMesh;},get motes(){return moteMesh;},
 
   press(code,down){keys[code]=!!down;},
   look(yaw,pitch){P.yaw=yaw;if(pitch!=null)P.pitch=pitch;},
