@@ -4672,14 +4672,33 @@ const SHELL={
   rearm:0.34       // and held there until a third of it is back
 };
 
+/* The swing is a forced oscillator on a fixed clock, not a free pendulum.
+
+   A real pendulum changes period as its amplitude grows, so there was no
+   single cadence to learn: the beat you needed at the start was not the beat
+   you needed at the end, and mashing -- which lands a press on every phase,
+   including the right one -- beat playing in time. Measured on the old
+   model, alternating presses every two frames righted the shell in 1.45s
+   against 2.38s for a slower, deliberate cadence.
+
+   So the phase runs on its own clock at a constant rate and the amplitude is
+   a separate quantity that a well-timed heave feeds. One press every half
+   period, alternating sides, for ever, whatever the shell is doing. A press
+   scores by how well it aligns with the way the shell is already
+   travelling -- side * cos(phase) -- which is +1 pushing with the swing at
+   its fastest, 0 at the turning points, and -1 pushing straight into it, so
+   a wrong press costs amplitude rather than doing nothing.
+
+   Tuned against an offline simulation of nine ways to play (see the commit
+   for the table): on the beat rights in 1.67s, 120ms of slop still rights
+   every time in 2.17s, and mashing at 4, 8 or 14 presses a second never
+   does. */
 const FLIP={
-  gravity:11.0,         // what pulls the shell back down flat
-  impulse:2.55,         // one heave, given once per press -- not while held
-  reload:0.38,          // and a tortoise cannot heave faster than this
-  damp:0.17,            // how much swing survives a second of doing nothing
-  tipAngle:1.05,        // lean past this and it is over
-  commit:0.88,          // ...and past this fraction of it, gravity helps
-  maxVel:8.0,
+  period:1.10,          // one full left-right cycle, the same however far it swings
+  gain:0.40,            // amplitude from one heave landed on the beat
+  decay:0.70,           // ...and what survives a second of doing nothing
+  reload:0.26,          // a tortoise cannot heave faster than this
+  tipAngle:1.05,        // swing this far and it is over
   rightTime:0.52,       // the roll onto its feet
   lift:0.30,            // the upturned shell rests ON the ground, not in it
   hop:0.13,             // ...and lifts as it pivots over its edge
@@ -4692,6 +4711,7 @@ function flipPlayer(){
   if(P.flipped||state!=='play')return false;
   P.flipped=true; P.flipT=0;
   P.flipAngle=0; P.flipVel=0; P.flipPhase='rock'; P.flipRightT=0; P.flipDir=1;
+  P.flipTheta=0; P.flipAmp=0.12; P.flipReload=0;
   P.flipHeldL=false; P.flipHeldR=false; P.flipReload=0;
   P.hidden=false;
   P.vel.set(0,0,0);
@@ -4702,6 +4722,7 @@ function flipPlayer(){
 function unflipPlayer(){
   if(!P.flipped)return;
   P.flipped=false; P.flipAngle=0; P.flipVel=0; P.flipPhase='rock'; P.flipRightT=0;
+  P.flipTheta=0; P.flipAmp=0;
 }
 
 /* A pendulum, not a counter.
@@ -4714,6 +4735,7 @@ function unflipPlayer(){
    gravity and stops.
 
    Returns true when it has taken over the frame. */
+const FLIP_W=2*Math.PI/FLIP.period;
 function updateFlip(dt){
   if(!P.flipped)return false;
   P.flipT+=dt;
@@ -4724,39 +4746,34 @@ function updateFlip(dt){
     return true;
   }
 
-  /* A heave, not a hold. The shove lands on the press, so leaning on one
-     key gives you exactly one of them and then nothing -- you have to keep
-     pressing, and press in time. */
+  const was=P.flipTheta;
+  P.flipTheta=(P.flipTheta+FLIP_W*dt)%(Math.PI*2);
+  P.flipAmp*=Math.pow(FLIP.decay,dt);
+
+  /* A heave, not a hold: the shove lands on the press edge, so leaning on
+     one key gives you exactly one of them and then nothing. */
   const L=!!(keys['KeyA']||keys['ArrowLeft']);
   const R=!!(keys['KeyD']||keys['ArrowRight']);
   P.flipReload=Math.max(0,P.flipReload-dt);
-  if(P.flipReload<=0){
-    if(L&&!P.flipHeldL){ P.flipVel-=FLIP.impulse; P.flipReload=FLIP.reload; }
-    else if(R&&!P.flipHeldR){ P.flipVel+=FLIP.impulse; P.flipReload=FLIP.reload; }
+  let side=0;
+  if(L&&!P.flipHeldL)side=-1; else if(R&&!P.flipHeldR)side=1;
+  if(side&&P.flipReload<=0){
+    const align=side*Math.cos(P.flipTheta);
+    P.flipAmp=Math.max(0.02,P.flipAmp+FLIP.gain*align*Math.sqrt(Math.abs(align)));
+    P.flipReload=FLIP.reload;
+    SFX.heave(align);
   }
   P.flipHeldL=L; P.flipHeldR=R;
 
-  const before=P.flipVel;
-  const lean=Math.abs(P.flipAngle)/FLIP.tipAngle;
-  let grav;
-  if(lean<FLIP.commit){
-    // below the balance point: weight pulls it back down flat, and the
-    // nearer the point the less it resists
-    grav=-FLIP.gravity*Math.sin(P.flipAngle)*(1-0.18*(lean/FLIP.commit)*(lean/FLIP.commit));
-  }else{
-    // over the point: the same weight now carries it the rest of the way
-    const k=(lean-FLIP.commit)/(1-FLIP.commit);
-    grav=FLIP.gravity*1.15*k*(P.flipAngle<0?-1:1);
-  }
-  P.flipVel+=grav*dt;
-  P.flipVel*=Math.pow(FLIP.damp,dt);
-  P.flipVel=clamp(P.flipVel,-FLIP.maxVel,FLIP.maxVel);
-  P.flipAngle+=P.flipVel*dt;
+  P.flipAngle=P.flipAmp*Math.sin(P.flipTheta);
+  P.flipVel=P.flipAmp*FLIP_W*Math.cos(P.flipTheta);   // for anything that reads it
 
-  // a scrape each time it rolls through the bottom of the swing
-  if(before<0&&P.flipVel>=0||before>0&&P.flipVel<=0)SFX.rock();
+  /* The scrape is the metronome. It fires as the shell rolls through flat,
+     which is the fastest point of the swing and exactly the instant a heave
+     wants to land, so the beat to play to is audible from the first rock. */
+  if(was>P.flipTheta || (was<Math.PI&&P.flipTheta>=Math.PI))SFX.rock();
 
-  if(Math.abs(P.flipAngle)>=FLIP.tipAngle){
+  if(P.flipAmp>=FLIP.tipAngle&&Math.abs(P.flipAngle)>=FLIP.tipAngle*0.985){
     P.flipDir=P.flipAngle<0?-1:1;
     P.flipAngle=P.flipDir*FLIP.tipAngle;
     P.flipPhase='right'; P.flipRightT=0;
@@ -5714,6 +5731,11 @@ const SFX={
   flipOver(){ noiseHit(0.30,300,0.9,0.16,'lowpass'); tone(150,0.40,'triangle',0.11,70); },
   flipBack(){ tone(300,0.20,'sine',0.11,520); tone(520,0.26,'sine',0.09,760,0.07);
               noiseHit(0.16,420,1.0,0.08,'lowpass'); },
+  /* Two notes: a scrape that always plays, and a pitch that says whether the
+     heave went with the swing or against it. Timing you can hear is timing
+     you can learn. */
+  heave(align){ const a=clamp(align,-1,1);
+    tone(150+a*95,0.13,'triangle',0.05+0.05*Math.abs(a),110+a*60); },
   rock(){ noiseHit(0.08,260,1.4,0.055,'lowpass'); },
   catPounce(){ noiseHit(0.10,700,1.6,0.05,'lowpass'); },
   catToss(){ noiseHit(0.22,420,1.1,0.13,'lowpass');
@@ -5754,7 +5776,8 @@ const P={
      the right way up again. */
   flipped:false, flipT:0,
   breath:SHELL.hold, shellLock:0, shellSpent:false,   // how long you can stay in
-  flipAngle:0, flipVel:0,          // the pendulum: where it leans, how fast
+  flipAngle:0, flipVel:0,          // where the shell leans, and how fast
+  flipTheta:0, flipAmp:0,          // the swing's own clock, and how far it goes
   flipPhase:'rock', flipRightT:0, flipDir:1,
   flipHeldL:false, flipHeldR:false, flipReload:0,
   camLift:0
@@ -5782,6 +5805,7 @@ function resetPlayer(){
   P.trap=null; P.caught=false; P.tumble=0;
   WEATHER.wet=0; WEATHER.want=0; WEATHER.hold=26; rainHintShown=false;
   P.flipped=false; P.flipAngle=0; P.flipVel=0;
+  P.flipTheta=0; P.flipAmp=0;
   P.flipPhase='rock'; P.flipRightT=0; P.camLift=0;
   P.flipHeldL=false; P.flipHeldR=false; P.flipReload=0;
   catHintShown=false;

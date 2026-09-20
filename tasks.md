@@ -70,10 +70,11 @@ mark done tasks like - [X]
 - [X] Add timeout how long we can be in shell with indicator and restore time
 - [X] cat\ Heron just came one by one, no time to  flip over. And this is first encounter. Introduse enemies slowly, one by one with increasing of dificulty
 - [X] Fix Heron model 
-- [ ] do flip swing offline simulation and improve algorithm so user can easely find rhythm and ryhtm has to be same
+- [X] do flip swing offline simulation and improve algorithm so user can easely find rhythm and ryhtm has to be same
 - [ ] improve swing animation - now it rotates at the center of mass but has to roll on the ground
 - [ ] slow down tortoise
 - [ ] in fog ski is just blue
 - [ ] change wind with weather and wind sound
 - [ ] rain sound
 - [ ] stamina has to have histeresis. Now it shakes at the end 
+ -[ ] do level desing around POI and coridors between them 
