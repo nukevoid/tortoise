@@ -43,7 +43,9 @@ mark done tasks like - [X]
 - [X] Heron - Can eats you from above. Firstly you see only shadown of Heron, then you have 2-3 sec to hide in shell. Then you see Heand with long head of Heron, triying to eat you. IF you no in shell - you loose 
 - [ ] hostile plant - add longer delays between bites
 - [X] Falling glass cup: like heron - shadow, then cup falling cirectly on you. You can move 5 sec untill in breakes, couse you are under the cup
-- [ ] in some glasses with spider  inside, and you have to hide or they weel bite you
+- [X] in some glasses with spider  inside, and you have to hide or they weel bite you
+- [ ] improve spider model
+- [ ] Fix Heron - after shadow now just screen about gameover: add Heron head and neck with animation 
 - [ ] Add cat, hides in bushes. It no hostile, but can play with you and tos you, then disapeear
 - [ ] Add mechani then you can be fliped (you see then shell otside), and you have to swing by left\right keys to stay normal. Can can flip you during tha play
 - [ ] Level has to be saved. Generate level offline
@@ -52,3 +54,4 @@ mark done tasks like - [X]
 - [ ] Add landscape 
 - [ ] Add weather
 - [ ] Balanse gameplay 
+- [ ] Change had indication: heath - hearts, stamina - leafs. Change all code than use it
