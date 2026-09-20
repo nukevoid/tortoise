@@ -216,8 +216,12 @@ function startGame(THREE){
 const clamp=(v,a,b)=>v<a?a:(v>b?b:v);
 const lerp=(a,b,t)=>a+(b-a)*t;
 const smoothstep=(e0,e1,x)=>{const t=clamp((x-e0)/(e1-e0),0,1);return t*t*(3-2*t);};
-function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);
-  t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function mulberry32(a){
+  const f=function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);
+    t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};
+  f.reseed=n=>{a=n|0;};
+  return f;
+}
 const RNG=mulberry32(0x5EED17);
 const rr=(a,b)=>a+(b-a)*RNG();
 const ri=(a,b)=>Math.floor(rr(a,b+1));
@@ -1480,6 +1484,71 @@ const worldToGZ=z=>Math.floor((z+HALF)/T);
 const cellCenter=(cx,cy)=>({x:tileX(2*cx+1),z:tileZ(2*cy+1)});
 const isSolid=(gx,gy)=>(gx<0||gy<0||gx>=G||gy>=G)?1:solid[gi(gx,gy)];
 
+
+/* ═══ The level is a thing you can keep ════════════════════════════
+   The forest was rebuilt from scratch on every load. It always came out
+   the same, because the generator is seeded -- but it was a dice roll that
+   happened to be reproducible, not a level you could look at, edit or swap.
+
+   Now the layout is an artifact: a grid of walls plus the positions of
+   everything that matters, which the game loads if it is present and
+   generates only if it is not. LEVEL_BAKED below is that artifact.
+
+   The catch is the random stream. Generating the maze consumes numbers, so
+   skipping generation would leave every bush and blade of grass downstream
+   drawing from a different point in the sequence and the forest would look
+   different. Both paths therefore reseed to DECO_SEED the moment the walls
+   are settled, and everything after that is identical either way. */
+
+const LEVEL_VERSION=1;
+const DECO_SEED=0x2F1A6B;          // where the scenery's randomness starts
+
+/* Each build stage starts its randomness from its own fixed point. Without
+   this, loading a saved level would skip the draws that placing items makes
+   and every stage after it would pull different numbers -- so the same
+   layout would come up wearing different scenery. Stages are independent
+   now, which is also what lets a level be hand-edited without the forest
+   rearranging itself. */
+function stage(i){ RNG.reseed((DECO_SEED+Math.imul(i,0x9E3779B1))|0); }
+
+/* Filled in by a build step: open the game with ?export, copy what it
+   prints, and paste it here. Null means "generate one". */
+/* Generated offline with ?export and pasted here. This is the forest
+   the game ships; delete it and the generator grows a fresh one. */
+const LEVEL_BAKED={"v":1,"grid":"/////yOACIjeTVVXLYqoilhV3/U3ooAIaH993N0AigiK319/3SOCgCLW9V/frSiAIFpd31+3iIggYt/33dQAKCig/V/fd4OAIAh2/V91LQqIClrV1Me3KqgAYFVVff8qogiC1XfPdSsogIhWVfM8jaoCCNpX1f+3oCICaH39fdcAAgCC/////wE=","gloomCell":[5,4],"items":[["stone",-13,-18.2,0.5],["stone",23.4,28.6,0.5],["stone",33.8,-28.6,0.5],["lantern",-39,-33.8,0.12],["berry",-23.842,2.5,0.14],["berry",17.54,-38.488,0.14],["berry",-33.143,33.167,0.14],["berry",38.872,38.297,0.14],["berry",13.443,18.013,0.14],["berry",-29.275,23.084,0.14],["berry",7.04,34.455,0.14],["berry",-28.477,-18.571,0.14],["berry",23.878,18,0.14],["berry",23.246,-28.994,0.14],["berry",39.087,-2.912,0.14],["berry",-18.391,-8.501,0.14],["berry",7.722,-1.924,0.14],["berry",17.52,18.25,0.14],["berry",-18.691,-34.392,0.14],["berry",17.997,-7.058,0.14],["shroom",-28.42,29.21,0.06],["shroom",8.479,-38.38,0.06],["shroom",2.968,-7.804,0.06],["shroom",38.654,23.655,0.06],["shroom",-29.179,13.51,0.06],["shroom",-7.93,33.031,0.06],["shroom",28.116,28.395,0.06],["shroom",13.576,12.285,0.06],["shroom",38.577,-29.19,0.06]],"hazardCells":[[12,15],[10,8],[6,7],[7,7],[15,14],[3,8],[4,2],[13,1],[7,12],[2,6],[8,14],[5,9],[6,10],[1,14]],"thornmaws":[[13.461,-13.474],[23.444,-18.677],[38.563,-17.812],[-3.005,2.509],[-12.881,-7.333],[23.441,-2.619],[-33.717,2.223]]};
+
+let LEVEL_USED=null;               // the level actually in play
+/* Whatever the generator decided this run, so it can be written out. */
+const LEVEL_REC={gloomCell:null,items:[],hazardCells:[],thornmaws:[]};
+
+/* The level as text. Open the game with ?export and paste the result into
+   LEVEL_BAKED above to freeze this forest for good. */
+function exportLevel(){
+  return JSON.stringify({
+    v:LEVEL_VERSION,
+    grid:gridToString(),
+    gloomCell:LEVEL_REC.gloomCell,
+    items:LEVEL_REC.items,
+    hazardCells:LEVEL_REC.hazardCells,
+    thornmaws:LEVEL_REC.thornmaws
+  });
+}
+
+function gridToString(){
+  const bytes=new Uint8Array(Math.ceil(G*G/8));
+  for(let i=0;i<G*G;i++) if(solid[i]) bytes[i>>3]|=(1<<(i&7));
+  let bin='';
+  for(let i=0;i<bytes.length;i++) bin+=String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
+function gridFromString(str){
+  const bin=atob(str);
+  for(let i=0;i<G*G;i++){
+    const b=bin.charCodeAt(i>>3);
+    solid[i]=(b>>(i&7))&1;
+  }
+}
+
 function generateMaze(){
   const vis=new Uint8Array(N*N);
   const stack=[[0,0]];vis[0]=1;solid[gi(1,1)]=0;
@@ -1521,7 +1590,16 @@ function generateMaze(){
     solid[gi(2*cx,2*cy)]=0;
   }
 }
-generateMaze();
+/* Walls: from the saved level if there is one, otherwise grown. Either way
+   the scenery's random stream starts from the same place afterwards. */
+const LEVEL_FRESH=location.search.indexOf('fresh')>=0;   // ignore the bake
+if(!LEVEL_FRESH&&LEVEL_BAKED&&LEVEL_BAKED.v===LEVEL_VERSION&&LEVEL_BAKED.grid){
+  gridFromString(LEVEL_BAKED.grid);
+  LEVEL_USED=LEVEL_BAKED;
+}else{
+  generateMaze();
+}
+RNG.reseed(DECO_SEED);
 
 /* BFS distances from start cell */
 const START_CELL=[0,0];
@@ -2417,8 +2495,14 @@ function buildOutside(){
 
 /* extra dense canopy over the gloom grove */
 function buildGloom(){
-  const far=openCells.filter(c=>dist[c[1]*N+c[0]]>N*0.9);
-  const c=far.length?far[Math.floor(RNG()*far.length)]:[N-3,2];
+  let c;
+  if(LEVEL_USED&&LEVEL_USED.gloomCell)c=LEVEL_USED.gloomCell;
+  else{
+    const far=openCells.filter(cc=>dist[cc[1]*N+cc[0]]>N*0.9);
+    c=far.length?far[Math.floor(RNG()*far.length)]:[N-3,2];
+  }
+  LEVEL_REC.gloomCell=[c[0],c[1]];
+  stage(41);                      // decide, then build from a fixed point
   const p=cellCenter(c[0],c[1]);
   GLOOM.x=p.x;GLOOM.z=p.z;GLOOM.cell=c;
   const canopy=new IB(),trunk=new IB();const tint=new THREE.Color();
@@ -2679,7 +2763,10 @@ function makeLanternMesh(){
   return g;
 }
 
+const q3=v=>Math.round(v*1000)/1000;       // the world works to the millimetre
 function addItem(type,x,z,y){
+  x=q3(x); z=q3(z);
+  LEVEL_REC.items.push([type,x,z,y]);
   let mesh;
   if(type==='stone')mesh=makeStoneMesh();
   else if(type==='berry')mesh=makeBerryMesh();
@@ -2698,13 +2785,18 @@ const hazards=[];
 function buildHazards(){
   const thornMat=new THREE.MeshStandardMaterial({color:0x4a2f22,roughness:0.9});
   const leafM=matLeafCard;
-  const spread=openCells.filter(c=>dist[c[1]*N+c[0]]>4);
-  const chosen=[];
-  for(let i=0;i<14&&spread.length;i++){
-    const idx=Math.floor(RNG()*spread.length);
-    const c=spread.splice(idx,1)[0];
-    chosen.push(c);
+  let chosen=[];
+  if(LEVEL_USED&&LEVEL_USED.hazardCells){
+    chosen=LEVEL_USED.hazardCells.map(a=>[a[0],a[1]]);
+  }else{
+    const spread=openCells.filter(c=>dist[c[1]*N+c[0]]>4);
+    for(let i=0;i<14&&spread.length;i++){
+      const idx=Math.floor(RNG()*spread.length);
+      chosen.push(spread.splice(idx,1)[0]);
+    }
   }
+  LEVEL_REC.hazardCells=chosen.map(c=>[c[0],c[1]]);
+  stage(61);
   const ib=new IB(),leafIb=new IB();
   for(const c of chosen){
     const p=cellCenter(c[0],c[1]);
@@ -3063,8 +3155,17 @@ defineMob('thornmaw',{
 /* Thornmaws guard corridors. They are kept off the start cell and away from
    the Sunstones, so nothing the player must reach is behind a wall of teeth. */
 function spawnThornmaws(n){
+  if(LEVEL_USED&&LEVEL_USED.thornmaws){
+    stage(101);
+    for(const t of LEVEL_USED.thornmaws){
+      LEVEL_REC.thornmaws.push([t[0],t[1]]);
+      spawnMob('thornmaw',t[0],t[1]);
+    }
+    return LEVEL_USED.thornmaws.length;
+  }
   const far=openCells.filter(c=>dist[c[1]*N+c[0]]>5);
   const taken=[];
+  const spots=[];
   let placed=0, guard=0;
   while(placed<n && guard++<n*40 && far.length){
     const c=far[Math.floor(RNG()*far.length)];
@@ -3073,8 +3174,13 @@ function spawnThornmaws(n){
     if(items.some(it=>Math.hypot(it.x-p.x,it.z-p.z)<2.2))continue;
     if(taken.some(t=>Math.hypot(t[0]-p.x,t[1]-p.z)<9))continue;
     taken.push([p.x,p.z]);
-    spawnMob('thornmaw',p.x+rr(-0.5,0.5),p.z+rr(-0.5,0.5));
+    spots.push([q3(p.x+rr(-0.5,0.5)),q3(p.z+rr(-0.5,0.5))]);
     placed++;
+  }
+  stage(101);                     // decide, then build from a fixed point
+  for(const sp of spots){
+    LEVEL_REC.thornmaws.push([sp[0],sp[1]]);
+    spawnMob('thornmaw',sp[0],sp[1]);
   }
   return placed;
 }
@@ -5308,23 +5414,27 @@ const frame=()=>new Promise(r=>setTimeout(r,18));
 async function boot(){
  try{
   setLoad(12,'Growing the hedges…');await frame();
-  buildHedges();
+  stage(1);  buildHedges();
   setLoad(38,'Scattering the undergrowth…');await frame();
-  buildClutter();
+  stage(2);  buildClutter();
   setLoad(50,'Planting the outer wood…');await frame();
-  buildOutside();buildGloom();
+  stage(3);  buildOutside();
+  stage(4);  buildGloom();
   setLoad(64,'Hiding the Sunstones…');await frame();
-  placeItems();buildHazards();buildGate();ripple=buildWater();
+  stage(5);  placeItems();
+  stage(6);  buildHazards();
+  stage(7);  buildGate(); ripple=buildWater();
   setLoad(74,'Bedding it all into the soil…');await frame();
-  buildGroundDressing();
+  stage(8);  buildGroundDressing();
   setLoad(82,'Waking the crows…');await frame();
-  spawnCrows(2);buildLeaves();buildFireflies();
-  spawnThornmaws(7);
+  stage(9);  spawnCrows(2);buildLeaves();buildFireflies();
+  stage(10); spawnThornmaws(7);
+  stage(11);
   spawnMob('heron',P.pos.x,P.pos.z);
   spawnMob('glass',P.pos.x,P.pos.z);
   spawnMob('cat',P.pos.x,P.pos.z);
   setLoad(88,'Letting in the light…');await frame();
-  buildEnvironment();buildShafts();buildMotes();
+  stage(12); buildEnvironment();buildShafts();buildMotes();
   collectMaterials();
   setLoad(94,'Settling the shadows…');await frame();
   resetPlayer();
@@ -5332,6 +5442,13 @@ async function boot(){
   buildTargets();
   renderer.compile(scene,camera);
   renderFrame();
+  /* ?export turns this run into a build step: it prints the level it just
+     made so it can be pasted into LEVEL_BAKED. */
+  if(location.search.indexOf('export')>=0){
+    console.log('=== LEVEL BEGIN ===');
+    console.log(exportLevel());
+    console.log('=== LEVEL END ===');
+  }
   setLoad(100,'Ready');await frame();
   $('loading').style.opacity='0';
   setTimeout(()=>{$('loading').style.display='none';},520);
@@ -5347,6 +5464,10 @@ async function boot(){
 }
 
 function placeItems(){
+  if(LEVEL_USED&&LEVEL_USED.items){
+    for(const it of LEVEL_USED.items)addItem(it[0],it[1],it[2],it[3]);
+    return;
+  }
   // --- Sunstones: far dead ends, well separated, one inside the gloom ---
   let ends=deadEnds().filter(c=>dist[c[1]*N+c[0]]>6);
   if(ends.length<6)ends=openCells.filter(c=>dist[c[1]*N+c[0]]>8);
@@ -5401,6 +5522,7 @@ window.__game={
   P,items,crows,keys,hazards,renderer,scene,camera,sun,hemi,AUDIO,POST,BOOT,
   renderFrame,buildTargets,matComposite,
   gust:gustU,gustAt,WIND_DIR,THORN,HERON,GLASS,CAT,FLIP,
+  exportLevel,get levelIsBaked(){return !!LEVEL_USED;},
   flipPlayer,unflipPlayer,
   mobs,MOB_TYPES,defineMob,spawnMob,despawnMob,setMobState,mobDist,
   mobStrike,attackTick,playerSheltered,makeThreatShadow,placeThreatShadow,

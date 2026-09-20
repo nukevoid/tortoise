@@ -48,7 +48,9 @@ mark done tasks like - [X]
 - [X] Fix Heron - after shadow now just screen about gameover: add Heron head and neck with animation 
 - [X] Add cat, hides in bushes. It no hostile, but can play with you and tos you, then disapeear
 - [X] Add mechani then you can be fliped (you see then shell otside), and you have to swing by left\right keys to stay normal. Can can flip you during tha play
-- [ ] Level has to be saved. Generate level offline
+- [ ] make map aliitle larger
+- [ ] fix direction of marker on map
+- [X] Level has to be saved. Generate level offline
 - [ ] investiagate level disign aproaches and generators, implement and test
 - [ ] Add different bioms, use them in level generation
 - [ ] Add landscape 
