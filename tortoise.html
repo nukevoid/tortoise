@@ -4368,6 +4368,100 @@ function flipLift(){
   return FLIP.lift*(1-k)+Math.sin(k*Math.PI)*FLIP.hop;
 }
 
+
+/* ═══ Weather ══════════════════════════════════════════════════════
+   The Hollow had exactly one kind of afternoon. Weather turns over
+   slowly: a spell of clear, then it greys up, then it rains, then it
+   clears again -- slow enough that it is something you notice having
+   happened rather than something you watch switch.
+
+   One number, WEATHER.wet, drives all of it: the sun dimming, the air
+   thickening, the colour draining, the wind getting up, and the rain
+   itself. That keeps the parts from disagreeing -- the light cannot be
+   bright while the rain is heavy, because they read the same number. */
+
+const WEATHER={
+  wet:0,            // 0 = dry and bright, 1 = properly raining
+  want:0,
+  hold:26,          // seconds before the next spell is chosen
+  drops:900
+};
+const WEATHER_SPELLS=[
+  {w:0.00, min:70, max:150},   // clear
+  {w:0.30, min:45, max:95},    // grey, spitting
+  {w:0.75, min:40, max:85},    // rain
+  {w:1.00, min:25, max:55}     // downpour
+];
+
+let rainMesh=null, rainData=[];
+function buildRain(){
+  const N_=WEATHER.drops;
+  const geo=new THREE.PlaneGeometry(0.015,0.46);
+  const mat=new THREE.MeshBasicMaterial({
+    color:0xbcd2de, transparent:true, opacity:0.5,
+    depthWrite:false, side:THREE.DoubleSide, fog:true});
+  rainMesh=new THREE.InstancedMesh(geo,mat,N_);
+  rainMesh.frustumCulled=false;
+  rainMesh.castShadow=false; rainMesh.receiveShadow=false;
+  rainMesh.renderOrder=6;
+  rainMesh.visible=false;
+  for(let i=0;i<N_;i++)
+    rainData.push({x:rr(-11,11),y:rr(0,9),z:rr(-11,11),v:rr(9,15),sw:rr(0,6.283)});
+  scene.add(rainMesh);
+}
+const _rnM=new THREE.Matrix4(), _rnQ=new THREE.Quaternion(),
+      _rnP=new THREE.Vector3(), _rnS=new THREE.Vector3(1,1,1),
+      _rnE=new THREE.Euler();
+function updateRain(dt){
+  if(!rainMesh)return;
+  const wet=WEATHER.wet;
+  rainMesh.visible=wet>0.04;
+  if(!rainMesh.visible)return;
+  const live=Math.floor(WEATHER.drops*clamp(wet,0,1));
+  rainMesh.count=live;
+  rainMesh.material.opacity=0.20+0.42*wet;
+  // rain leans with the wind, and harder when it is gusting
+  const lean=(0.18+0.5*gustU.value);
+  for(let i=0;i<live;i++){
+    const d=rainData[i];
+    d.y-=d.v*dt*(0.7+0.5*wet);
+    d.x+=WIND_DIR.x*lean*dt*d.v*0.25;
+    d.z+=WIND_DIR.y*lean*dt*d.v*0.25;
+    const gy=groundH(d.x,d.z);
+    if(d.y<gy-0.1||Math.abs(d.x-P.pos.x)>12||Math.abs(d.z-P.pos.z)>12){
+      d.x=P.pos.x+rr(-11,11);
+      d.z=P.pos.z+rr(-11,11);
+      d.y=groundH(d.x,d.z)+rr(6,10);
+      d.v=rr(9,15);
+    }
+    _rnE.set(lean*0.9,0,-WIND_DIR.x*lean*0.9);
+    _rnQ.setFromEuler(_rnE);
+    _rnP.set(d.x,d.y,d.z);
+    const near=Math.min(1,Math.max(0,(_rnP.distanceTo(camera.position)-0.55)/0.9));
+    _rnS.set(near,(0.7+1.5*wet)*near,near);
+    _rnM.compose(_rnP,_rnQ,_rnS);
+    rainMesh.setMatrixAt(i,_rnM);
+  }
+  rainMesh.instanceMatrix.needsUpdate=true;
+}
+
+function updateWeather(dt){
+  WEATHER.hold-=dt;
+  if(WEATHER.hold<=0){
+    // never repeat the same spell twice running, or nothing seems to change
+    let pick;
+    do{ pick=WEATHER_SPELLS[Math.floor(RNG()*WEATHER_SPELLS.length)]; }
+    while(Math.abs(pick.w-WEATHER.want)<0.01&&RNG()<0.8);
+    WEATHER.want=pick.w;
+    WEATHER.hold=rr(pick.min,pick.max);
+    if(pick.w>=0.7&&!rainHintShown){ rainHintShown=true; toast('Rain over the Hollow.',3.0); }
+  }
+  // weather arrives slowly; nothing about it should snap
+  WEATHER.wet=lerp(WEATHER.wet,WEATHER.want,1-Math.pow(0.55,dt));
+  updateRain(dt);
+}
+let rainHintShown=false;
+
 /* --- crows --- */
 const crows=[];
 function makeCrow(){
@@ -4942,6 +5036,7 @@ function resetPlayer(){
   P.berriesEaten=0;P.slot=0;P.time=0;
   huntedHintShown=false;gloomHintShown=false;heronHintShown=false;glassHintShown=false;
   P.trap=null; P.caught=false; P.tumble=0;
+  WEATHER.wet=0; WEATHER.want=0; WEATHER.hold=26; rainHintShown=false;
   P.flipped=false; P.flipAngle=0; P.flipVel=0;
   P.flipPhase='rock'; P.flipRightT=0; P.camLift=0;
   P.flipHeldL=false; P.flipHeldR=false; P.flipReload=0;
@@ -5251,7 +5346,9 @@ let envCur=ENV_BASE;
 function update(dt){
   P.time+=dt;
   windU.value+=dt;
-  gustU.value=gustEnvelope(windU.value);
+  updateWeather(dt);
+  // a wet day is a windy one
+  gustU.value=clamp(gustEnvelope(windU.value)*(1+0.85*WEATHER.wet),0,1.6);
 
   /* ---- hide in shell ---- */
   const wantHide=!!keys['Space']&&!P.flipped;
@@ -5427,11 +5524,18 @@ function update(dt){
   const gd=Math.hypot(P.pos.x-GLOOM.x,P.pos.z-GLOOM.z)/GLOOM.r;
   const gl=1-smoothstep(0.72,1.15,gd);
   const lanternLit=P.hasLantern&&P.lanternOn;
-  scene.fog.density=lerp(FOG_BASE,0.115,gl)*(lanternLit?0.82:1);
-  hemi.intensity=lerp(0.20,0.03,gl);
-  amb.intensity=lerp(0.06,0.01,gl);
-  sun.intensity=lerp(3.8,0.34,gl);
-  const envWant=lerp(ENV_BASE,0.10,gl);
+  /* Weather rides on top of the gloom: the grove is always darker than
+     the rest, and rain darkens whatever it falls on. */
+  const wet=WEATHER.wet;
+  scene.fog.density=lerp(FOG_BASE,0.115,gl)*(lanternLit?0.82:1)*(1+1.7*wet);
+  hemi.intensity=lerp(0.20,0.03,gl)*(1+0.8*wet);
+  amb.intensity=lerp(0.06,0.01,gl)*(1+0.9*wet);
+  sun.intensity=lerp(3.8,0.34,gl)*(1-0.72*wet);
+  if(matComposite){
+    matComposite.uniforms.uSat.value=POST.sat*(1-0.30*wet);
+    matComposite.uniforms.uExposure.value=POST.exposure*(1-0.14*wet);
+  }
+  const envWant=lerp(ENV_BASE,0.10,gl)*(1-0.45*wet);
   if(Math.abs(envWant-envCur)>0.01){envCur=envWant;setEnvIntensity(envCur);}
   if(gl>0.5&&!gloomHintShown){
     gloomHintShown=true;
@@ -5694,7 +5798,7 @@ async function boot(){
   setLoad(74,'Bedding it all into the soil…');await frame();
   stage(8);  buildGroundDressing();
   setLoad(82,'Waking the crows…');await frame();
-  stage(9);  spawnCrows(2);buildLeaves();buildFireflies();
+  stage(9);  spawnCrows(2);buildLeaves();buildFireflies();buildRain();
   stage(10); spawnThornmaws(7);
   stage(11);
   spawnMob('heron',P.pos.x,P.pos.z);
@@ -5788,7 +5892,8 @@ function placeItems(){
 window.__game={
   P,items,crows,keys,hazards,renderer,scene,camera,sun,hemi,AUDIO,POST,BOOT,
   renderFrame,buildTargets,matComposite,
-  gust:gustU,gustAt,WIND_DIR,THORN,HERON,GLASS,CAT,FLIP,
+  gust:gustU,gustAt,WIND_DIR,THORN,HERON,GLASS,CAT,FLIP,WEATHER,
+  get rain(){return rainMesh;},
   exportLevel,get levelIsBaked(){return !!LEVEL_USED;},
   analyseGrid,benchGenerators,GEN,
   BIOMES,biomeAt,get biomeSeeds(){return BIOME_SEEDS;},

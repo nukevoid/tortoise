@@ -48,13 +48,13 @@ mark done tasks like - [X]
 - [X] Fix Heron - after shadow now just screen about gameover: add Heron head and neck with animation 
 - [X] Add cat, hides in bushes. It no hostile, but can play with you and tos you, then disapeear
 - [X] Add mechani then you can be fliped (you see then shell otside), and you have to swing by left\right keys to stay normal. Can can flip you during tha play
+- [X] Level has to be saved. Generate level offline
+- [X] investiagate level disign aproaches and generators, implement and test
+- [X] Add different bioms, use them in level generation
+- [X] Add landscape 
 - [ ] make minimap map aliitle larger
 - [ ] fix direction of marker on mini map
-- [X] Level has to be saved. Generate level offline
-- [ ] investiagate level disign aproaches and generators, implement and test
-- [ ] Add different bioms, use them in level generation
-- [X] Add landscape 
-- [ ] Add weather
+- [X] Add weather
 - [ ] fliped mechanic to hard at the end. Start is easy but final flip is always missing
 - [ ] Balanse gameplay 
 - [ ] Change had indication: heath - hearts, stamina - leafs. Change all code than use it
