@@ -33,6 +33,6 @@ mark done tasks like - [X]
 - [X] make falling leaf animation realistinc (rotation, dwings etc) 
 - [X] Crteate optimisation plan
 - [X] Do optimisation
-- [ ] Make bushed more realistic 
+- [X] Make bushed more realistic 
 - [ ] Do color corection to more calm and realistic
 - [ ] Add nice sunlight and gust on air
