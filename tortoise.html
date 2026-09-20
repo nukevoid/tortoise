@@ -1,0 +1,3185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Shellbound — A Tortoise's Tale</title>
+<style>
+  :root{
+    --gold:#e8c56a; --green:#8fbe62; --ink:#0d120b;
+    --panel:rgba(14,22,12,0.62); --edge:rgba(232,197,106,0.28);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#0d120b;
+    font-family:"Segoe UI",Roboto,system-ui,sans-serif;color:#efe6d2;user-select:none;cursor:default}
+  canvas#app{display:block;width:100%;height:100%}
+  #ui{position:fixed;inset:0;pointer-events:none}
+
+  /* ---------- vignette + damage ---------- */
+  #vignette{position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(ellipse at center,rgba(0,0,0,0) 45%,rgba(0,0,0,0.55) 100%)}
+  #damage{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .35s ease;
+    background:radial-gradient(ellipse at center,rgba(150,10,10,0) 35%,rgba(160,12,12,0.75) 100%)}
+  #hunted{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .4s ease;
+    background:radial-gradient(ellipse at center,rgba(90,0,0,0) 50%,rgba(120,0,0,0.5) 100%)}
+  #shellview{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .25s ease;
+    background:radial-gradient(ellipse at 50% 60%,rgba(0,0,0,0) 18%,rgba(0,0,0,0.92) 62%)}
+
+  /* ---------- HUD ---------- */
+  #hud{position:absolute;inset:0;opacity:0;transition:opacity .4s ease}
+  #hud.on{opacity:1}
+  .panel{background:var(--panel);border:1px solid var(--edge);border-radius:12px;
+    backdrop-filter:blur(6px);box-shadow:0 6px 24px rgba(0,0,0,.45)}
+
+  #objective{position:absolute;left:18px;top:16px;padding:10px 14px;max-width:320px}
+  #objective .t{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--gold);opacity:.85}
+  #objective .d{font-size:14px;margin-top:4px;line-height:1.35}
+  #stones{display:flex;gap:6px;margin-top:8px}
+  .stone{width:16px;height:16px;border-radius:50%;border:1px solid rgba(232,197,106,.5);
+    background:rgba(255,255,255,.05);transition:all .3s}
+  .stone.got{background:radial-gradient(circle at 35% 30%,#fff3c4,#e8a13a);
+    box-shadow:0 0 10px #e8a13a,0 0 22px rgba(232,161,58,.55);border-color:#ffe08a}
+
+  #bars{position:absolute;left:18px;bottom:18px;padding:12px 14px;width:214px}
+  .bar{height:9px;border-radius:5px;background:rgba(0,0,0,.45);overflow:hidden;
+    border:1px solid rgba(255,255,255,.12)}
+  .bar>i{display:block;height:100%;width:100%;border-radius:4px;transition:width .12s linear}
+  .lab{font-size:10px;letter-spacing:.16em;text-transform:uppercase;opacity:.75;margin:0 0 4px}
+  .lab:nth-of-type(2){margin-top:10px}
+  #hp>i{background:linear-gradient(90deg,#c0392b,#e8735c)}
+  #sp>i{background:linear-gradient(90deg,#4f7d2a,#a6d564)}
+
+  #hotbar{position:absolute;left:50%;transform:translateX(-50%);bottom:18px;display:flex;gap:10px}
+  .slot{width:62px;height:62px;border-radius:12px;background:var(--panel);
+    border:1px solid rgba(255,255,255,.12);display:flex;flex-direction:column;align-items:center;
+    justify-content:center;position:relative;backdrop-filter:blur(6px);transition:all .18s}
+  .slot .ic{font-size:24px;line-height:1;filter:saturate(1.1)}
+  .slot .n{position:absolute;right:5px;bottom:3px;font-size:12px;font-weight:700;color:var(--gold)}
+  .slot .k{position:absolute;left:5px;top:3px;font-size:10px;opacity:.55}
+  .slot.sel{border-color:var(--gold);box-shadow:0 0 0 1px rgba(232,197,106,.45),0 0 18px rgba(232,197,106,.25);
+    transform:translateY(-4px)}
+  .slot.empty{opacity:.38}
+
+  #prompt{position:absolute;left:50%;transform:translateX(-50%);bottom:104px;padding:8px 16px;
+    font-size:14px;opacity:0;transition:opacity .15s;white-space:nowrap}
+  #prompt b{color:var(--gold)}
+  #toast{position:absolute;left:50%;transform:translateX(-50%);bottom:150px;font-size:15px;
+    text-align:center;opacity:0;transition:opacity .4s;text-shadow:0 2px 10px #000;line-height:1.5}
+  #toast b{color:var(--gold)}
+
+  #crosshair{position:absolute;left:50%;top:50%;width:6px;height:6px;margin:-3px 0 0 -3px;
+    border-radius:50%;background:rgba(255,255,255,.55);box-shadow:0 0 6px rgba(0,0,0,.8);opacity:.6}
+
+  #mapwrap{position:absolute;right:18px;top:16px;padding:8px}
+  #minimap{display:block;border-radius:8px;image-rendering:auto}
+  #mapwrap .cap{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--gold);
+    opacity:.8;text-align:center;margin-top:6px}
+  #fps{position:absolute;right:18px;bottom:18px;font-size:11px;opacity:.4;font-variant-numeric:tabular-nums}
+
+  /* ---------- overlays ---------- */
+  .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    flex-direction:column;text-align:center;pointer-events:auto;
+    background:radial-gradient(ellipse at center,rgba(12,20,10,.82),rgba(4,7,3,.96))}
+  .overlay.hide{display:none}
+  .overlay h1{font-family:Georgia,"Times New Roman",serif;font-size:clamp(34px,7vw,68px);
+    margin:0;letter-spacing:.06em;color:#f3e6c4;text-shadow:0 4px 30px rgba(232,197,106,.35)}
+  .overlay h2{font-family:Georgia,serif;font-size:clamp(24px,5vw,44px);margin:0 0 6px;color:#f3e6c4}
+  .overlay .sub{font-size:14px;letter-spacing:.3em;text-transform:uppercase;color:var(--gold);
+    opacity:.9;margin-top:10px}
+  .overlay p{max-width:620px;line-height:1.6;opacity:.85;padding:0 24px;font-size:15px}
+  .keys{display:grid;grid-template-columns:auto auto;gap:7px 18px;margin:22px auto 8px;font-size:13.5px;
+    text-align:left;max-width:560px}
+  .keys div:nth-child(odd){color:var(--gold);font-weight:600;text-align:right;white-space:nowrap}
+  .keys div:nth-child(even){opacity:.85}
+  .cta{margin-top:26px;font-size:14px;letter-spacing:.24em;text-transform:uppercase;
+    border:1px solid var(--edge);border-radius:999px;padding:13px 30px;background:rgba(232,197,106,.08);
+    animation:pulse 2.4s ease-in-out infinite;cursor:pointer}
+  @keyframes pulse{0%,100%{opacity:.72;box-shadow:0 0 0 rgba(232,197,106,0)}
+    50%{opacity:1;box-shadow:0 0 26px rgba(232,197,106,.22)}}
+  .stat{display:flex;gap:28px;margin-top:18px;font-size:13px;opacity:.9}
+  .stat b{display:block;font-size:22px;color:var(--gold);font-weight:600}
+  .credit{position:absolute;bottom:16px;font-size:11px;opacity:.4;letter-spacing:.12em}
+
+  /* ---------- loading ---------- */
+  #loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    flex-direction:column;background:#0d120b;pointer-events:auto;transition:opacity .5s}
+  #loadbarwrap{width:260px;height:4px;border-radius:2px;background:rgba(255,255,255,.1);margin-top:18px;overflow:hidden}
+  #loadbar{height:100%;width:0%;background:linear-gradient(90deg,#8fbe62,#e8c56a);transition:width .25s}
+  #loadtext{margin-top:12px;font-size:11px;letter-spacing:.22em;text-transform:uppercase;opacity:.6}
+  .spin{font-size:46px;animation:bobbing 2s ease-in-out infinite}
+  @keyframes bobbing{0%,100%{transform:translateY(0) rotate(-3deg)}50%{transform:translateY(-8px) rotate(3deg)}}
+</style>
+</head>
+<body>
+<canvas id="app"></canvas>
+
+<div id="ui">
+  <div id="vignette"></div>
+  <div id="shellview"></div>
+  <div id="hunted"></div>
+  <div id="damage"></div>
+
+  <div id="hud">
+    <div id="crosshair"></div>
+
+    <div id="objective" class="panel">
+      <div class="t">Objective</div>
+      <div class="d" id="objtext">Find the three Sunstones hidden in the Hollow.</div>
+      <div id="stones"><span class="stone"></span><span class="stone"></span><span class="stone"></span></div>
+    </div>
+
+    <div id="mapwrap" class="panel">
+      <canvas id="minimap" width="340" height="340" style="width:170px;height:170px"></canvas>
+      <div class="cap">The Hollow</div>
+    </div>
+
+    <div id="bars" class="panel">
+      <p class="lab">Vitality</p>
+      <div class="bar" id="hp"><i></i></div>
+      <p class="lab">Stamina</p>
+      <div class="bar" id="sp"><i></i></div>
+    </div>
+
+    <div id="hotbar">
+      <div class="slot empty" data-slot="0"><span class="k">1</span><span class="ic">🫐</span><span class="n">0</span></div>
+      <div class="slot empty" data-slot="1"><span class="k">2</span><span class="ic">🍄</span><span class="n">0</span></div>
+      <div class="slot empty" data-slot="2"><span class="k">3</span><span class="ic">🏮</span><span class="n"></span></div>
+    </div>
+
+    <div id="prompt" class="panel"></div>
+    <div id="toast"></div>
+    <div id="fps">— fps</div>
+  </div>
+
+  <div id="menu" class="overlay hide">
+    <h1>SHELLBOUND</h1>
+    <div class="sub">A Tortoise's Tale</div>
+    <p>You are a small tortoise lost in the Hollow — a maze of old hedges, roots and leaning trees.
+       Three <b style="color:#e8c56a">Sunstones</b> keep the Sun Gate shut. Find them, and the forest will let you go.
+       Mind the crows: when they dive, pull into your shell.</p>
+    <div class="keys">
+      <div>W A S D</div><div>Crawl</div>
+      <div>Mouse</div><div>Look around</div>
+      <div>Shift</div><div>Scurry (costs stamina)</div>
+      <div>Space (hold)</div><div>Hide in shell — crows can't hurt you</div>
+      <div>E</div><div>Pick up what's in front of you</div>
+      <div>1 2 3 · Click / Q</div><div>Select and use an item</div>
+      <div>F</div><div>Toggle the firefly lantern</div>
+      <div>Esc · M · R</div><div>Pause · Mute · Restart</div>
+    </div>
+    <div class="cta" id="startbtn">Click to begin</div>
+    <div class="credit">Built with Three.js — demo level: The Hollow</div>
+  </div>
+
+  <div id="pause" class="overlay hide">
+    <h2>Paused</h2>
+    <div class="sub">The forest waits</div>
+    <div class="cta" id="resumebtn">Click to resume</div>
+  </div>
+
+  <div id="dead" class="overlay hide">
+    <h2>The Hollow keeps you</h2>
+    <p>Your shell grows cold among the roots. The forest is patient — it will let you try again.</p>
+    <div class="cta" id="retrybtn">Press R to wake again</div>
+  </div>
+
+  <div id="win" class="overlay hide">
+    <h2>Through the Sun Gate</h2>
+    <p>Warm light on your shell at last. The Hollow releases you, and the meadow beyond smells of clover.</p>
+    <div class="stat">
+      <div><b id="wt">0:00</b>TIME</div>
+      <div><b id="wb">0</b>BERRIES EATEN</div>
+      <div><b id="ws">0</b>SUNSTONES</div>
+    </div>
+    <div class="cta" id="againbtn">Press R to wander again</div>
+  </div>
+
+  <div id="loading">
+    <div class="spin">🐢</div>
+    <div id="loadbarwrap"><div id="loadbar"></div></div>
+    <div id="loadtext">Waking the forest…</div>
+  </div>
+</div>
+
+<!-- Three.js: the classic build works from a plain file:// page too, so this
+     single HTML file runs by double-clicking it. If it can't be fetched we fall
+     back to the ES-module build further down. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
+<script>
+(function(){
+'use strict';
+function startGame(THREE){
+
+/* ═══════════════════════════════════════════════════════════════
+   0. UTILITIES
+   ═══════════════════════════════════════════════════════════════ */
+const clamp=(v,a,b)=>v<a?a:(v>b?b:v);
+const lerp=(a,b,t)=>a+(b-a)*t;
+const smoothstep=(e0,e1,x)=>{const t=clamp((x-e0)/(e1-e0),0,1);return t*t*(3-2*t);};
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);
+  t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+const RNG=mulberry32(0x5EED17);
+const rr=(a,b)=>a+(b-a)*RNG();
+const ri=(a,b)=>Math.floor(rr(a,b+1));
+const pick=arr=>arr[Math.floor(RNG()*arr.length)];
+function cnv(w,h){const c=document.createElement('canvas');c.width=w;c.height=h||w;return c;}
+const $=id=>document.getElementById(id);
+
+/* tileable value-noise + fbm --------------------------------- */
+function noiseField(size,period,rnd){
+  const g=new Float32Array(period*period);
+  for(let i=0;i<g.length;i++)g[i]=rnd();
+  const out=new Float32Array(size*size), s=period/size;
+  for(let y=0;y<size;y++)for(let x=0;x<size;x++){
+    const fx=x*s,fy=y*s, x0=Math.floor(fx)%period, y0=Math.floor(fy)%period;
+    const tx=fx-Math.floor(fx), ty=fy-Math.floor(fy);
+    const x1=(x0+1)%period, y1=(y0+1)%period;
+    const a=g[y0*period+x0],b=g[y0*period+x1],c=g[y1*period+x0],d=g[y1*period+x1];
+    const ux=tx*tx*(3-2*tx), uy=ty*ty*(3-2*ty);
+    out[y*size+x]=lerp(lerp(a,b,ux),lerp(c,d,ux),uy);
+  }
+  return out;
+}
+function fbm(size,base,oct,rnd){
+  const out=new Float32Array(size*size);let amp=1,tot=0,p=base;
+  for(let o=0;o<oct;o++){
+    const n=noiseField(size,Math.min(p,size),rnd);
+    for(let i=0;i<out.length;i++)out[i]+=n[i]*amp;
+    tot+=amp;amp*=0.5;p*=2;
+  }
+  for(let i=0;i<out.length;i++)out[i]/=tot;
+  return out;
+}
+/* build a tangent-space normal map out of a height field */
+function normalMapFromHeight(h,size,strength){
+  const c=cnv(size),ctx=c.getContext('2d'),img=ctx.createImageData(size,size);
+  const at=(x,y)=>h[((y+size)%size)*size+((x+size)%size)];
+  for(let y=0;y<size;y++)for(let x=0;x<size;x++){
+    const dx=(at(x+1,y)-at(x-1,y))*strength;
+    const dy=(at(x,y+1)-at(x,y-1))*strength;
+    let nx=-dx,ny=-dy,nz=1;
+    const l=Math.hypot(nx,ny,nz);nx/=l;ny/=l;nz/=l;
+    const i=(y*size+x)*4;
+    img.data[i]=(nx*0.5+0.5)*255;img.data[i+1]=(ny*0.5+0.5)*255;
+    img.data[i+2]=(nz*0.5+0.5)*255;img.data[i+3]=255;
+  }
+  ctx.putImageData(img,0,0);
+  const t=new THREE.CanvasTexture(c);
+  t.wrapS=t.wrapT=THREE.RepeatWrapping;
+  return t;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   1. PROCEDURAL TEXTURES
+   ═══════════════════════════════════════════════════════════════ */
+/* ---- shared helpers --------------------------------------------------- */
+function lum(d,i){return (d[i]*0.299+d[i+1]*0.587+d[i+2]*0.114)/255;}
+function normalFromCanvas(c,strength){
+  const S=c.width, d=c.getContext('2d').getImageData(0,0,S,S).data;
+  const h=new Float32Array(S*S);
+  for(let i=0;i<S*S;i++)h[i]=lum(d,i*4);
+  return normalMapFromHeight(h,S,strength);
+}
+function roughFromCanvas(c,lo,hi){
+  const S=c.width, ctx=c.getContext('2d'), src=ctx.getImageData(0,0,S,S).data;
+  const out=cnv(S), octx=out.getContext('2d'), img=octx.createImageData(S,S);
+  for(let i=0;i<S*S;i++){
+    const v=clamp(lerp(hi,lo,lum(src,i*4)),0,255);
+    const o=i*4;img.data[o]=img.data[o+1]=img.data[o+2]=v;img.data[o+3]=255;
+  }
+  octx.putImageData(img,0,0);
+  const t=new THREE.CanvasTexture(out);t.wrapS=t.wrapT=THREE.RepeatWrapping;
+  return t;
+}
+/* one leaf silhouette, used by the ground litter and the leaf texture alike */
+function leafPath(x,w,h){
+  x.beginPath();
+  x.moveTo(0,h*0.5);
+  x.bezierCurveTo(-w*0.62,h*0.22,-w*0.52,-h*0.28,0,-h*0.5);
+  x.bezierCurveTo(w*0.52,-h*0.28,w*0.62,h*0.22,0,h*0.5);
+  x.closePath();
+}
+function leafStamp(ctx,px,py,L,W,ang,fill){
+  ctx.save();ctx.translate(px,py);ctx.rotate(ang);ctx.fillStyle=fill;
+  leafPath(ctx,W,L);ctx.fill();ctx.restore();
+}
+
+/* ---- ground: soil + moss + dry litter + pebbles + twigs --------------- */
+function makeGroundTextures(){
+  const S=1024, HS=512;
+  const n    = fbm(HS,10,5,mulberry32(11));
+  const moss = fbm(HS,6,4,mulberry32(29));
+  const grain= fbm(HS,150,2,mulberry32(41));
+
+  // base layer at half res, then upscaled — cheap and soft
+  const base=cnv(HS), bx=base.getContext('2d'), img=bx.createImageData(HS,HS);
+  const hb=cnv(HS), hbx=hb.getContext('2d'), himg=hbx.createImageData(HS,HS);
+  for(let i=0;i<HS*HS;i++){
+    const m=smoothstep(0.46,0.68,moss[i]);
+    let R=lerp(96,68,m), G=lerp(75,86,m), B=lerp(50,47,m);
+    const sh=0.66+n[i]*0.66, gr=0.90+grain[i]*0.22;
+    R*=sh*gr;G*=sh*gr;B*=sh*gr;
+    const o=i*4;
+    img.data[o]=R;img.data[o+1]=G;img.data[o+2]=B;img.data[o+3]=255;
+    const hv=clamp(96+(n[i]-0.5)*90+(grain[i]-0.5)*46,0,255);
+    himg.data[o]=himg.data[o+1]=himg.data[o+2]=hv;himg.data[o+3]=255;
+  }
+  bx.putImageData(img,0,0);hbx.putImageData(himg,0,0);
+
+  const col=cnv(S), c=col.getContext('2d');
+  const hgt=cnv(S), h=hgt.getContext('2d');
+  c.drawImage(base,0,0,S,S);
+  h.drawImage(hb,0,0,S,S);
+
+  const rnd=mulberry32(777);
+  // moss flecks
+  for(let i=0;i<2600;i++){
+    const x=rnd()*S,y=rnd()*S;
+    const mi=((y/S*HS|0)*HS+(x/S*HS|0));
+    if(moss[mi]<0.5)continue;
+    const g=48+rnd()*46|0;
+    c.fillStyle='rgba('+(g*0.55|0)+','+g+','+(g*0.42|0)+','+(0.25+rnd()*0.4)+')';
+    c.beginPath();c.ellipse(x,y,1+rnd()*2.6,1+rnd()*2.2,rnd()*6.28,0,6.283);c.fill();
+  }
+  // dry fallen leaves
+  for(let i=0;i<420;i++){
+    const x=rnd()*S,y=rnd()*S,L=12+rnd()*30,W=L*(0.40+rnd()*0.24),a=rnd()*6.283,t=rnd();
+    const cc = t<0.38?[124,86,42] : t<0.70?[98,72,36] : t<0.88?[142,108,52] : [80,88,42];
+    leafStamp(c,x,y,L,W,a,'rgba('+cc[0]+','+cc[1]+','+cc[2]+','+(0.5+rnd()*0.42)+')');
+    leafStamp(h,x,y,L,W,a,'rgba(175,175,175,0.42)');
+    // midrib
+    c.save();c.translate(x,y);c.rotate(a);
+    c.strokeStyle='rgba(50,36,18,0.35)';c.lineWidth=0.9;
+    c.beginPath();c.moveTo(0,-L*0.42);c.lineTo(0,L*0.44);c.stroke();c.restore();
+  }
+  // pebbles — lit from the same direction as the sun so they read as 3D
+  for(let i=0;i<300;i++){
+    const x=rnd()*S,y=rnd()*S,R=2+rnd()*8,v=104+rnd()*74;
+    const ry=R*(0.68+rnd()*0.3), rot=rnd()*6.283;
+    const g=c.createRadialGradient(x-R*0.34,y-R*0.34,R*0.08,x,y,R);
+    g.addColorStop(0,'rgb('+(v|0)+','+(v-6|0)+','+(v-15|0)+')');
+    g.addColorStop(1,'rgb('+(v*0.44|0)+','+(v*0.42|0)+','+(v*0.38|0)+')');
+    c.fillStyle=g;c.beginPath();c.ellipse(x,y,R,ry,rot,0,6.283);c.fill();
+    const hg=h.createRadialGradient(x,y,R*0.05,x,y,R);
+    hg.addColorStop(0,'rgba(255,255,255,0.9)');hg.addColorStop(0.75,'rgba(200,200,200,0.4)');
+    hg.addColorStop(1,'rgba(128,128,128,0)');
+    h.fillStyle=hg;h.beginPath();h.ellipse(x,y,R,ry,rot,0,6.283);h.fill();
+  }
+  // twigs
+  for(let i=0;i<90;i++){
+    const x=rnd()*S,y=rnd()*S,a=rnd()*6.283,L=14+rnd()*46,w=0.9+rnd()*1.8;
+    const v=64+rnd()*40|0;
+    c.save();c.translate(x,y);c.rotate(a);
+    c.strokeStyle='rgb('+v+','+(v*0.78|0)+','+(v*0.52|0)+')';c.lineWidth=w;
+    c.lineCap='round';c.beginPath();c.moveTo(-L/2,0);
+    c.quadraticCurveTo(0,rnd()*6-3,L/2,0);c.stroke();c.restore();
+    h.save();h.translate(x,y);h.rotate(a);
+    h.strokeStyle='rgba(205,205,205,0.55)';h.lineWidth=w;h.lineCap='round';
+    h.beginPath();h.moveTo(-L/2,0);h.quadraticCurveTo(0,0,L/2,0);h.stroke();h.restore();
+  }
+
+  const map=new THREE.CanvasTexture(col);
+  map.wrapS=map.wrapT=THREE.RepeatWrapping;map.colorSpace=THREE.SRGBColorSpace;
+  map.anisotropy=16;
+  const nrm=normalFromCanvas(hgt,7);
+  const rough=roughFromCanvas(hgt,205,250);
+  return {map,rough,nrm,height:hgt};
+}
+
+/* large, slow colour drift that hides the tiling of the ground texture */
+function makeMacroTexture(){
+  const S=256;
+  const a=fbm(S,4,4,mulberry32(313)), b=fbm(S,7,3,mulberry32(515));
+  const c=cnv(S),x=c.getContext('2d'),img=x.createImageData(S,S);
+  for(let i=0;i<S*S;i++){
+    const v=0.74+a[i]*0.42, w=0.86+b[i]*0.26;
+    const o=i*4;
+    img.data[o]=clamp(v*w*255,0,255);
+    img.data[o+1]=clamp(v*(0.94+b[i]*0.22)*255,0,255);
+    img.data[o+2]=clamp(v*(0.82+a[i]*0.2)*255,0,255);
+    img.data[o+3]=255;
+  }
+  x.putImageData(img,0,0);
+  const t=new THREE.CanvasTexture(c);
+  t.wrapS=t.wrapT=THREE.RepeatWrapping;t.colorSpace=THREE.SRGBColorSpace;
+  return t;
+}
+
+/* ---- foliage mass: a drift of small overlapping leaves ---------------- */
+function makeFoliageTextures(){
+  const S=512;
+  const back=fbm(S,9,4,mulberry32(77));
+  const col=cnv(S),c=col.getContext('2d'),img=c.createImageData(S,S);
+  for(let i=0;i<S*S;i++){
+    const t=back[i];
+    const o=i*4;
+    img.data[o]=lerp(16,44,t);img.data[o+1]=lerp(26,62,t);img.data[o+2]=lerp(10,22,t);
+    img.data[o+3]=255;
+  }
+  c.putImageData(img,0,0);
+  const hgt=cnv(S),h=hgt.getContext('2d');
+  h.fillStyle='#303030';h.fillRect(0,0,S,S);
+  const rnd=mulberry32(91);
+  for(let i=0;i<900;i++){
+    const x=rnd()*S,y=rnd()*S,L=14+rnd()*30,W=L*(0.42+rnd()*0.26),a=rnd()*6.283;
+    const t=rnd(), sh=0.55+rnd()*0.75;
+    const base = t<0.15?[128,126,52] : t<0.35?[64,104,38] : t<0.8?[48,86,30] : [34,62,24];
+    const R=clamp(base[0]*sh,0,255)|0, G=clamp(base[1]*sh,0,255)|0, B=clamp(base[2]*sh,0,255)|0;
+    // wrap around the edges so the texture tiles
+    for(const [ox,oy] of [[0,0],[S,0],[-S,0],[0,S],[0,-S]]){
+      // only stamp a wrapped copy when the leaf really straddles that edge
+      if(x+ox<-L||x+ox>S+L||y+oy<-L||y+oy>S+L)continue;
+      leafStamp(c,x+ox,y+oy,L,W,a,'rgb('+R+','+G+','+B+')');
+      leafStamp(h,x+ox,y+oy,L,W,a,'rgba('+(120+sh*110|0)+','+(120+sh*110|0)+','+(120+sh*110|0)+',0.75)');
+      c.save();c.translate(x+ox,y+oy);c.rotate(a);
+      c.strokeStyle='rgba(16,26,8,0.45)';c.lineWidth=0.8;
+      c.beginPath();c.moveTo(0,-L*0.42);c.lineTo(0,L*0.44);c.stroke();c.restore();
+    }
+  }
+  const map=new THREE.CanvasTexture(col);
+  map.wrapS=map.wrapT=THREE.RepeatWrapping;map.colorSpace=THREE.SRGBColorSpace;
+  map.repeat.set(2,1.4);map.anisotropy=8;
+  const nrm=normalFromCanvas(hgt,6);
+  nrm.repeat.set(2,1.4);
+  return {map,nrm};
+}
+
+/* ---- bark: deep vertical ridges, lichen, a healed scar or two --------- */
+function makeBarkTextures(){
+  const S=512;
+  const warp=fbm(S,7,4,mulberry32(13));
+  const fine=fbm(S,60,3,mulberry32(23));
+  const col=cnv(S),c=col.getContext('2d'),img=c.createImageData(S,S);
+  const hgt=cnv(S),h=hgt.getContext('2d'),himg=h.createImageData(S,S);
+  for(let y=0;y<S;y++)for(let x=0;x<S;x++){
+    const i=y*S+x;
+    // stretch the noise vertically into fibres, then carve ridges with it
+    const w=warp[((y*0.10|0)%S)*S+x];
+    const ridge=Math.abs(Math.sin(x*0.10+w*9.0+fine[i]*1.4));
+    const deep=Math.pow(ridge,0.55);
+    const v=clamp(deep*0.78+fine[i]*0.26,0,1);
+    let R=lerp(30,128,v), G=lerp(23,101,v), B=lerp(16,72,v);
+    if(v<0.22){R*=0.66;G*=0.66;B*=0.7;}
+    const o=i*4;
+    img.data[o]=R;img.data[o+1]=G;img.data[o+2]=B;img.data[o+3]=255;
+    const hv=clamp(v*242,0,255);
+    himg.data[o]=himg.data[o+1]=himg.data[o+2]=hv;himg.data[o+3]=255;
+  }
+  c.putImageData(img,0,0);h.putImageData(himg,0,0);
+  // lichen
+  const rnd=mulberry32(37);
+  for(let i=0;i<180;i++){
+    const x=rnd()*S,y=rnd()*S,R=4+rnd()*20;
+    const g=c.createRadialGradient(x,y,0,x,y,R);
+    const t=rnd();
+    const cc = t<0.6?'160,176,140':'186,190,158';
+    g.addColorStop(0,'rgba('+cc+','+(0.30+rnd()*0.3)+')');
+    g.addColorStop(1,'rgba('+cc+',0)');
+    c.fillStyle=g;c.beginPath();c.ellipse(x,y,R,R*(0.5+rnd()*0.6),rnd()*6.28,0,6.283);c.fill();
+  }
+  const map=new THREE.CanvasTexture(col);
+  map.wrapS=map.wrapT=THREE.RepeatWrapping;map.colorSpace=THREE.SRGBColorSpace;
+  map.anisotropy=8;
+  const nrm=normalFromCanvas(hgt,9);
+  const rough=roughFromCanvas(hgt,214,252);
+  return {map,nrm,rough};
+}
+
+/* ---- a single leaf, with serrated edge, veins and blotching ----------- */
+function makeLeafTexture(kind){
+  const S=512,col=cnv(S),x=col.getContext('2d');
+  const hgt=cnv(S),h=hgt.getContext('2d');
+  x.clearRect(0,0,S,S);h.clearRect(0,0,S,S);
+  const rnd=mulberry32(kind==='fern'?404:909);
+
+  if(kind==='fern'){
+    // a frond: central rachis with paired, filled pinnae that shrink to the tip
+    x.lineCap='round';h.lineCap='round';
+    const rachis=(ctx,col,w)=>{ctx.strokeStyle=col;ctx.lineWidth=w;ctx.beginPath();
+      ctx.moveTo(S*0.5,S*0.995);ctx.quadraticCurveTo(S*0.465,S*0.42,S*0.5,S*0.035);ctx.stroke();};
+    rachis(h,'rgba(225,225,225,0.95)',7);
+    for(let i=0;i<20;i++){
+      const t=i/20;
+      const y=S*(0.965-t*0.925);
+      const spanX=S*0.40*(1-Math.pow(t,1.35)*0.86)+5;
+      const pin=S*0.052*(1-t*0.62)+3;
+      const droop=S*0.030*(1-t*0.4);
+      const g=Math.round(92+t*62), r=Math.round(44+t*50), b=Math.round(26+t*22);
+      const shade=0.82+((i%2)?0.18:0);
+      for(const sgn of [-1,1]){
+        // each pinna is a little filled leaf, angled up and out
+        const n=4;
+        for(let k=1;k<=n;k++){
+          const kt=k/n;
+          const px=S*0.5+sgn*spanX*kt;
+          const py=y-droop*kt*kt-pin*0.35;
+          const ang=sgn*(1.15-kt*0.25);
+          const L=pin*(1.25-kt*0.35), W=L*0.52;
+          leafStamp(x,px,py,L,W,ang,
+            'rgb('+Math.round(r*shade)+','+Math.round(g*shade)+','+Math.round(b*shade)+')');
+          leafStamp(h,px,py,L,W,ang,'rgba(205,205,205,0.6)');
+        }
+      }
+    }
+    rachis(x,'rgb(74,104,38)',5.5);
+  }else{
+    // blade with a serrated margin
+    const W=S*0.78, L=S*0.96;
+    x.save();x.translate(S/2,S/2);
+    const g=x.createLinearGradient(0,L*0.5,0,-L*0.5);
+    g.addColorStop(0,'#233a12');g.addColorStop(0.35,'#3c5e1c');
+    g.addColorStop(0.72,'#5c8a28');g.addColorStop(1,'#7ea839');
+    x.fillStyle=g;
+    x.beginPath();
+    const steps=90;
+    for(let i=0;i<=steps;i++){
+      const t=i/steps, ang=t*Math.PI;
+      const yy=Math.cos(ang)*L*0.5;
+      let ww=Math.sin(ang);
+      ww=Math.pow(ww,0.72)*W*0.5;
+      const serr=1+Math.sin(t*Math.PI*26)*0.035;
+      const px=ww*serr;
+      if(i===0)x.moveTo(px,yy);else x.lineTo(px,yy);
+    }
+    for(let i=steps;i>=0;i--){
+      const t=i/steps, ang=t*Math.PI;
+      const yy=Math.cos(ang)*L*0.5;
+      let ww=Math.sin(ang);
+      ww=Math.pow(ww,0.72)*W*0.5;
+      const serr=1+Math.sin(t*Math.PI*26)*0.035;
+      x.lineTo(-ww*serr,yy);
+    }
+    x.closePath();x.fill();
+    // blotches
+    for(let i=0;i<70;i++){
+      const a=rnd()*6.283, r=rnd()*W*0.42;
+      const px=Math.cos(a)*r, py=Math.sin(a)*L*0.42;
+      x.fillStyle='rgba('+(30+rnd()*60|0)+','+(52+rnd()*60|0)+','+(18+rnd()*30|0)+','+(0.12+rnd()*0.2)+')';
+      x.beginPath();x.ellipse(px,py,4+rnd()*22,3+rnd()*14,rnd()*6.28,0,6.283);x.fill();
+    }
+    x.restore();
+    // height: midrib and veins stand proud
+    h.save();h.translate(S/2,S/2);
+    h.fillStyle='rgba(120,120,120,1)';
+    h.beginPath();h.ellipse(0,0,W*0.5,L*0.5,0,0,6.283);h.fill();
+    h.restore();
+    for(const ctx2 of [x,h]){
+      ctx2.save();ctx2.translate(S/2,S/2);
+      const veinCol = ctx2===x ? 'rgba(28,46,14,0.55)' : 'rgba(228,228,228,0.85)';
+      ctx2.strokeStyle=veinCol;ctx2.lineWidth=ctx2===x?4:5;ctx2.lineCap='round';
+      ctx2.beginPath();ctx2.moveTo(0,L*0.46);ctx2.lineTo(0,-L*0.47);ctx2.stroke();
+      ctx2.lineWidth=ctx2===x?2:2.6;
+      for(let i=1;i<11;i++){
+        const t=i/11, yy=L*(0.44-t*0.88);
+        const ww=Math.pow(Math.sin((1-t)*Math.PI*0.92+0.08),0.7)*W*0.46;
+        for(const sgn of [-1,1]){
+          ctx2.beginPath();ctx2.moveTo(0,yy);
+          ctx2.quadraticCurveTo(sgn*ww*0.55,yy-L*0.05,sgn*ww,yy-L*0.10);ctx2.stroke();
+        }
+      }
+      ctx2.restore();
+    }
+  }
+  const t=new THREE.CanvasTexture(col);t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=8;
+  const nrm=normalFromCanvas(hgt,4);
+  return {map:t,nrm};
+}
+
+function makeShellTextures(){
+  const S=256, rnd=mulberry32(4711), sites=[], GX=7, GY=5;
+  for(let j=0;j<GY;j++)for(let i=0;i<GX;i++)
+    sites.push({x:(i+0.5+(rnd()-0.5)*0.55)/GX*S,y:(j+0.5+(rnd()-0.5)*0.5)/GY*S,
+                h:0.56+rnd()*0.36,w:0.34+rnd()*0.34});
+  const c=cnv(S),ctx=c.getContext('2d'),img=ctx.createImageData(S,S);
+  const height=new Float32Array(S*S);
+  for(let y=0;y<S;y++)for(let x=0;x<S;x++){
+    let b1=1e9,b2=1e9,si=0;
+    for(let k=0;k<sites.length;k++){
+      const st=sites[k];
+      let dx=Math.abs(x-st.x);dx=Math.min(dx,S-dx);
+      const dy=y-st.y, d=Math.hypot(dx,dy);
+      if(d<b1){b2=b1;b1=d;si=k;}else if(d<b2)b2=d;
+    }
+    const st=sites[si];
+    const edge=clamp((b2-b1)/10,0,1);                 // 0 right on the seam
+    const rings=0.5+0.5*Math.sin(b1*st.w-1.1);        // growth rings from the plate's core
+    let l=st.h*(0.85+0.15*rings)*(0.34+0.66*edge);
+    const t=clamp(l,0,1);
+    const r=lerp(34,178,t*t*0.6+t*0.4), g=lerp(26,126,t), b=lerp(16,54,t);
+    const o=(y*S+x)*4;
+    img.data[o]=r;img.data[o+1]=g;img.data[o+2]=b;img.data[o+3]=255;
+    height[y*S+x]=edge*0.85+rings*0.15;
+  }
+  ctx.putImageData(img,0,0);
+  const map=new THREE.CanvasTexture(c);
+  map.wrapS=map.wrapT=THREE.RepeatWrapping;map.colorSpace=THREE.SRGBColorSpace;
+  map.repeat.set(2,1);map.anisotropy=8;
+  const nrm=normalMapFromHeight(height,S,14);
+  nrm.repeat.set(2,1);
+  return {map,nrm};
+}
+
+/* soft round patch of leaf litter and dark humus — laid flat where a plant
+   meets the soil so stems don't just intersect a flat plane */
+function makeLitterTexture(){
+  const S=256,c=cnv(S),x=c.getContext('2d'),rnd=mulberry32(6161);
+  x.clearRect(0,0,S,S);
+  for(let i=0;i<190;i++){
+    const a=rnd()*6.283, r=Math.pow(rnd(),0.62)*S*0.47;
+    const px=S/2+Math.cos(a)*r, py=S/2+Math.sin(a)*r;
+    const w=3+rnd()*13, h=2+rnd()*7, rot=rnd()*6.283;
+    const t=rnd();
+    const col = t<0.42 ? 'rgba('+(38+rnd()*26|0)+','+(28+rnd()*20|0)+','+(16+rnd()*12|0)+',0.92)'
+              : t<0.78 ? 'rgba('+(84+rnd()*44|0)+','+(62+rnd()*30|0)+','+(28+rnd()*18|0)+',0.85)'
+                       : 'rgba('+(56+rnd()*30|0)+','+(70+rnd()*30|0)+','+(28+rnd()*16|0)+',0.8)';
+    x.save();x.translate(px,py);x.rotate(rot);x.fillStyle=col;
+    x.beginPath();x.ellipse(0,0,w,h,0,0,6.283);x.fill();x.restore();
+  }
+  // fade the rim so the patch dissolves into the ground
+  const g=x.createRadialGradient(S/2,S/2,S*0.14,S/2,S/2,S*0.5);
+  g.addColorStop(0,'rgba(0,0,0,1)');g.addColorStop(0.62,'rgba(0,0,0,0.55)');
+  g.addColorStop(1,'rgba(0,0,0,0)');
+  x.globalCompositeOperation='destination-in';x.fillStyle=g;x.fillRect(0,0,S,S);
+  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=8;
+  return t;
+}
+
+/* a small five-petalled flower seen from above */
+function makeFlowerTexture(){
+  const S=256,c=cnv(S),x=c.getContext('2d');
+  x.clearRect(0,0,S,S);
+  const cx=S/2, cy=S/2;
+  for(let i=0;i<5;i++){
+    const a=i/5*6.283-1.57;
+    const px=cx+Math.cos(a)*S*0.20, py=cy+Math.sin(a)*S*0.20;
+    const g=x.createRadialGradient(px,py,2,px,py,S*0.25);
+    g.addColorStop(0,'rgba(255,253,244,1)');
+    g.addColorStop(0.55,'rgba(250,243,220,1)');
+    g.addColorStop(1,'rgba(236,224,196,0.9)');
+    x.fillStyle=g;
+    x.save();x.translate(px,py);x.rotate(a+1.57);
+    x.beginPath();x.ellipse(0,0,S*0.115,S*0.20,0,0,6.283);x.fill();x.restore();
+  }
+  const g2=x.createRadialGradient(cx,cy,1,cx,cy,S*0.11);
+  g2.addColorStop(0,'rgba(255,214,84,1)');
+  g2.addColorStop(0.7,'rgba(226,172,50,1)');
+  g2.addColorStop(1,'rgba(180,130,40,0)');
+  x.fillStyle=g2;x.beginPath();x.arc(cx,cy,S*0.11,0,6.283);x.fill();
+  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=8;
+  return t;
+}
+
+function makeGlowSprite(color){
+  const S=128,c=cnv(S),x=c.getContext('2d');
+  const g=x.createRadialGradient(S/2,S/2,0,S/2,S/2,S/2);
+  g.addColorStop(0,color);g.addColorStop(0.25,color.replace('1)','0.55)'));
+  g.addColorStop(1,'rgba(0,0,0,0)');
+  x.fillStyle=g;x.fillRect(0,0,S,S);
+  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;
+  return t;
+}
+
+function makeRippleNormal(){
+  const S=256;const h=fbm(S,12,3,mulberry32(303));
+  return normalMapFromHeight(h,S,3);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   2. GEOMETRY HELPERS
+   ═══════════════════════════════════════════════════════════════ */
+const _m4=new THREE.Matrix4(),_q=new THREE.Quaternion(),_e=new THREE.Euler(),
+      _v=new THREE.Vector3(),_s=new THREE.Vector3(),_v2=new THREE.Vector3();
+
+class IB{                                   // instance builder
+  constructor(){this.a=[];}
+  add(x,y,z,rx,ry,rz,sx,sy,sz,col){this.a.push([x,y,z,rx,ry,rz,sx,sy,sz,col||null]);}
+  /* quaternion form — used to stand things up along the ground's normal */
+  addQ(x,y,z,quat,sx,sy,sz,col){
+    this.a.push([x,y,z,quat.x,quat.y,quat.z,sx,sy,sz,col||null,quat.w]);}
+  /* Instances are split into spatial chunks rather than one world-spanning
+     mesh: a single InstancedMesh can never be frustum-culled, so the GPU would
+     transform every blade of grass in the level for every frame. Chunking cuts
+     the vertex load to what is actually in front of the camera. */
+  build(geo,mat,cast,recv,chunk){
+    const CH=chunk||28;
+    const buckets=new Map();
+    for(let i=0;i<this.a.length;i++){
+      const it=this.a[i];
+      const k=Math.floor(it[0]/CH)+'|'+Math.floor(it[2]/CH);
+      let b=buckets.get(k);
+      if(!b){b=[];buckets.set(k,b);}
+      b.push(it);
+    }
+    const group=new THREE.Group();
+    if(buckets.size===0){
+      const m=new THREE.InstancedMesh(geo,mat,1);m.count=0;group.add(m);return group;
+    }
+    for(const arr of buckets.values()){
+      const n=arr.length;
+      const m=new THREE.InstancedMesh(geo,mat,n);
+      for(let i=0;i<n;i++){
+        const it=arr[i];
+        if(it.length>10)_q.set(it[3],it[4],it[5],it[10]);
+        else{_e.set(it[3],it[4],it[5]);_q.setFromEuler(_e);}
+        _m4.compose(_v.set(it[0],it[1],it[2]),_q,_s.set(it[6],it[7],it[8]));
+        m.setMatrixAt(i,_m4);
+        if(it[9])m.setColorAt(i,it[9]);
+      }
+      m.instanceMatrix.needsUpdate=true;
+      if(m.instanceColor)m.instanceColor.needsUpdate=true;
+      m.castShadow=!!cast;m.receiveShadow=recv!==false;
+      m.frustumCulled=true;
+      m.computeBoundingSphere();
+      group.add(m);
+    }
+    return group;
+  }
+}
+
+function blobGeo(detail){
+  const g=new THREE.IcosahedronGeometry(1,detail);
+  const p=g.attributes.position;
+  for(let i=0;i<p.count;i++){
+    const x=p.getX(i),y=p.getY(i),z=p.getZ(i);
+    const d=1
+      +0.19*Math.sin(x*3.1+1.2)*Math.cos(y*2.7-0.4)
+      +0.15*Math.sin(z*3.7+2.1)*Math.cos(x*2.3+1.1)
+      +0.10*Math.sin(y*4.6-0.8);
+    p.setXYZ(i,x*d,y*d,z*d);
+  }
+  g.computeVertexNormals();
+  return g;
+}
+
+function rockGeo(){
+  const g=new THREE.IcosahedronGeometry(1,1);
+  const p=g.attributes.position;
+  for(let i=0;i<p.count;i++){
+    const x=p.getX(i),y=p.getY(i),z=p.getZ(i);
+    const d=0.82+0.26*Math.sin(x*2.4+0.7)*Math.cos(z*1.9)
+                +0.20*Math.sin(y*3.1-1.3)*Math.cos(x*1.4)
+                +0.13*Math.cos(x*4.2+z*2.6)+0.09*Math.sin(z*5.1+y*3.3);
+    p.setXYZ(i,x*d*(1+0.12*Math.sin(z*3.0)),y*d*0.5,z*d);
+  }
+  g.computeVertexNormals();
+  return g;
+}
+
+/* A leaf is never a flat card in nature: it cups across its width and droops
+   along its length, which is what lets it catch a highlight and cast a curved
+   shadow. Pivot sits at the stem end so instances can be rotated from the base. */
+function leafGeo(w,h,sw,sh,cup,droop){
+  const g=new THREE.PlaneGeometry(w,h,sw,sh);
+  g.translate(0,h*0.5,0);
+  const pos=g.attributes.position;
+  for(let i=0;i<pos.count;i++){
+    const x=pos.getX(i), y=pos.getY(i);
+    const t=clamp(y/h,0,1);
+    const u=x/(w*0.5);
+    // narrow the blade towards the tip so the silhouette is leaf-shaped
+    const taper=0.35+0.65*Math.sin(Math.min(t,1)*Math.PI*0.92+0.08);
+    pos.setX(i,x*taper);
+    pos.setZ(i,cup*u*u*h*0.13 - droop*t*t*h*0.42);
+    pos.setY(i,y*(1-0.04*u*u));
+  }
+  g.computeVertexNormals();
+  return g;
+}
+
+function grassTuftGeo(){
+  const pos=[],col=[],idx=[],rnd=mulberry32(4242);let v=0;
+  for(let b=0;b<6;b++){
+    const a=rnd()*Math.PI*2,h=0.30+rnd()*0.40,w=0.026+rnd()*0.018;
+    const dx=Math.cos(a),dz=Math.sin(a);
+    const bx=dx*(0.045+rnd()*0.085),bz=dz*(0.045+rnd()*0.085);
+    const ox=dx*0.07*rnd(),oz=dz*0.07*rnd();
+    const segs=4;
+    const hue=0.85+rnd()*0.35;
+    const twist=(rnd()-0.5)*0.9;
+    for(let s=0;s<=segs;s++){
+      const t=s/segs,y=h*t;
+      // blades arch over rather than standing dead straight
+      const arch=t*t;
+      const cx=ox+bx*arch,cz=oz+bz*arch;
+      const ww=w*(1-Math.pow(t,1.5)*0.94);
+      const tw=twist*t;
+      const px=-dz*ww*Math.cos(tw)+dx*ww*Math.sin(tw)*0.3;
+      const pz= dx*ww*Math.cos(tw)+dz*ww*Math.sin(tw)*0.3;
+      pos.push(cx-px,y-t*t*h*0.06,cz-pz,cx+px,y-t*t*h*0.06,cz+pz);
+      const sh=(0.30+0.70*t)*hue;
+      const r=0.040*sh+0.030*t*sh,g2=0.105*sh+0.095*t*sh,bl=0.020*sh;
+      col.push(r,g2,bl,r,g2,bl);
+    }
+    for(let s=0;s<segs;s++){
+      const a0=v+s*2;idx.push(a0,a0+2,a0+1,a0+1,a0+2,a0+3);
+    }
+    v+=(segs+1)*2;
+  }
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
+  g.setIndex(idx);g.computeVertexNormals();
+  return g;
+}
+
+/* Foliage shading: wind sway in the vertex stage, and a wrap-around
+   translucency term so leaves glow when the sun is behind them —
+   the single biggest cue that you are looking at a living plant. */
+const windU={value:0};
+function patchFoliage(mat,amp,trans){
+  amp=amp||0; trans=trans||0;
+  mat.onBeforeCompile=sh=>{
+    sh.uniforms.uTime=windU;
+    sh.uniforms.uAmp={value:amp};
+    sh.vertexShader='uniform float uTime;uniform float uAmp;' + '\n' + sh.vertexShader.replace(
+      '#include <begin_vertex>',
+      `#include <begin_vertex>
+       #ifdef USE_INSTANCING
+         vec3 wp = instanceMatrix[3].xyz;
+       #else
+         vec3 wp = vec3(0.0);
+       #endif
+       if(uAmp > 0.0){
+         float sw = sin(uTime*1.5 + wp.x*0.8 + wp.z*0.55)*0.75 + sin(uTime*3.3 + wp.z*1.6)*0.25;
+         float hgt = max(transformed.y,0.0);
+         transformed.x += sw*uAmp*hgt;
+         transformed.z += sw*uAmp*0.55*hgt;
+       }
+       // Foliage pressed against the lens smears over the whole screen and
+       // costs a fortune in overdraw; fold it away as the camera closes in.
+       float camD = distance(wp, cameraPosition);
+       transformed *= mix(0.05, 1.0, smoothstep(0.14, 0.68, camD));
+       #ifdef USE_INSTANCING
+         vec4 wv = modelMatrix * instanceMatrix * vec4(transformed,1.0);
+       #else
+         vec4 wv = modelMatrix * vec4(transformed,1.0);
+       #endif
+       vNearD = distance(wv.xyz, cameraPosition);`);
+    sh.vertexShader='varying float vNearD;\n'+sh.vertexShader;
+    // screen-door fade for anything that gets within a few centimetres of
+    // the lens — at tortoise height that happens constantly
+    sh.fragmentShader='varying float vNearD;\n'+sh.fragmentShader.replace(
+      '#include <clipping_planes_fragment>',
+      `#include <clipping_planes_fragment>
+       {
+         float nf = smoothstep(0.15, 0.58, vNearD);
+         if(nf < 0.999){
+           // ordered 4x4 dither: a stable, fine pattern rather than static
+           vec2 bp = floor(mod(gl_FragCoord.xy, 4.0));
+           float bi = bp.y*4.0 + bp.x;
+           float bv =
+             bi<0.5?0.0   : bi<1.5?8.0  : bi<2.5?2.0  : bi<3.5?10.0 :
+             bi<4.5?12.0  : bi<5.5?4.0  : bi<6.5?14.0 : bi<7.5?6.0  :
+             bi<8.5?3.0   : bi<9.5?11.0 : bi<10.5?1.0 : bi<11.5?9.0 :
+             bi<12.5?15.0 : bi<13.5?7.0 : bi<14.5?13.0: 5.0;
+           if((bv+0.5)/16.0 > nf) discard;
+         }
+       }`);
+    if(trans>0){
+      sh.uniforms.uTrans={value:trans};
+      sh.fragmentShader='uniform float uTrans;\n'+sh.fragmentShader.replace(
+        '#include <lights_fragment_end>',
+        `#include <lights_fragment_end>
+         #if ( NUM_DIR_LIGHTS > 0 )
+         {
+           vec3 V = normalize( vViewPosition );
+           vec3 L = normalize( directionalLights[ 0 ].direction );
+           float wrap = clamp( dot( -V, L ) * 0.5 + 0.5, 0.0, 1.0 );
+           float back = pow( clamp( dot( V, -L ), 0.0, 1.0 ), 2.5 );
+           reflectedLight.indirectDiffuse += directionalLights[ 0 ].color *
+                 ( back * 1.65 + wrap * 0.18 ) * uTrans * diffuseColor.rgb;
+         }
+         #endif`);
+    }
+  };
+  mat.customProgramCacheKey=()=>'fol'+amp+'_'+trans;
+}
+const applyWind=(m,a)=>patchFoliage(m,a,0);
+
+/* ═══════════════════════════════════════════════════════════════
+   3. RENDERER / SCENE / LIGHTS / SKY
+   ═══════════════════════════════════════════════════════════════ */
+const canvas=$('app');
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.25));
+renderer.setSize(innerWidth,innerHeight);
+renderer.outputColorSpace=THREE.SRGBColorSpace;
+renderer.toneMapping=THREE.NoToneMapping;   // the composite pass grades instead
+renderer.shadowMap.enabled=true;
+renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+
+const scene=new THREE.Scene();
+const FOG_BASE=0.019;
+scene.fog=new THREE.FogExp2(0xa7bba6,FOG_BASE);
+
+const camera=new THREE.PerspectiveCamera(74,innerWidth/innerHeight,0.02,400);
+camera.rotation.order='YXZ';
+scene.add(camera);
+
+const SUN_DIR=new THREE.Vector3(0.50,0.78,0.38).normalize();   // high enough to reach the corridor floor
+const sun=new THREE.DirectionalLight(0xfff0d4,3.8);
+sun.castShadow=true;
+sun.shadow.mapSize.set(2048,2048);
+sun.shadow.camera.near=1;sun.shadow.camera.far=120;
+sun.shadow.camera.left=-13;sun.shadow.camera.right=13;
+sun.shadow.camera.top=13;sun.shadow.camera.bottom=-13;
+sun.shadow.bias=-0.00022;sun.shadow.normalBias=0.018;
+sun.shadow.radius=1.6;
+scene.add(sun);scene.add(sun.target);
+
+const hemi=new THREE.HemisphereLight(0xaccbec,0x5a4820,0.20);
+scene.add(hemi);
+const amb=new THREE.AmbientLight(0xc2c0aa,0.06);
+scene.add(amb);
+
+/* sky dome */
+const skyMat=new THREE.ShaderMaterial({
+  side:THREE.BackSide,depthWrite:false,
+  uniforms:{
+    uTop:{value:new THREE.Color(0x2f6ab4)},
+    uMid:{value:new THREE.Color(0x9dc2e6)},
+    uBot:{value:new THREE.Color(0xa7bba6)},
+    uSunCol:{value:new THREE.Color(0xffe6b0)},
+    uSunDir:{value:SUN_DIR.clone()}
+  },
+  vertexShader:`varying vec3 vDir;void main(){vDir=normalize(position);
+    gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+  fragmentShader:`varying vec3 vDir;uniform vec3 uTop,uMid,uBot,uSunCol,uSunDir;
+    void main(){
+      vec3 d=normalize(vDir);
+      float h=clamp(d.y*0.5+0.5,0.0,1.0);
+      vec3 col=mix(uBot,uMid,smoothstep(0.500,0.565,h));
+      col=mix(col,uTop,smoothstep(0.55,0.96,h));
+      float s=max(dot(d,normalize(uSunDir)),0.0);
+      col+=uSunCol*(pow(s,220.0)*3.0+pow(s,18.0)*0.30+pow(s,4.0)*0.06);
+      gl_FragColor=vec4(col,1.0);
+      #include <tonemapping_fragment>
+      #include <colorspace_fragment>
+    }`
+});
+const sky=new THREE.Mesh(new THREE.SphereGeometry(300,32,20),skyMat);
+sky.frustumCulled=false;scene.add(sky);
+
+/* ---------------------------------------------------------------
+   Image-based lighting. The same sky, prefiltered into a mip chain,
+   becomes the ambient term: soft sky light from above, warm bounce
+   from the forest floor below. This is what stops the shadows from
+   reading as flat black.
+   --------------------------------------------------------------- */
+let envRT=null;
+const ENV_BASE=0.88;
+function buildEnvironment(){
+  const envMat=new THREE.ShaderMaterial({
+    side:THREE.BackSide,depthWrite:false,
+    uniforms:{
+      uTop:{value:new THREE.Color(0x3d78bd)},
+      uMid:{value:new THREE.Color(0x9dbcd6)},
+      uHor:{value:new THREE.Color(0xa6b394)},
+      uGnd:{value:new THREE.Color(0x3a3420)},
+      uSunCol:{value:new THREE.Color(0xffdfa8)},
+      uSunDir:{value:SUN_DIR.clone()}
+    },
+    vertexShader:`varying vec3 vDir;void main(){vDir=normalize(position);
+      gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+    fragmentShader:`varying vec3 vDir;uniform vec3 uTop,uMid,uHor,uGnd,uSunCol,uSunDir;
+      void main(){
+        vec3 d=normalize(vDir);
+        vec3 col=mix(uHor,uMid,smoothstep(0.0,0.30,d.y));
+        col=mix(col,uTop,smoothstep(0.25,0.95,d.y));
+        col=mix(uGnd,col,smoothstep(-0.30,0.02,d.y));
+        float su=max(dot(d,normalize(uSunDir)),0.0);
+        col+=uSunCol*(pow(su,120.0)*6.0+pow(su,10.0)*0.35);
+        gl_FragColor=vec4(col,1.0);
+      }`
+  });
+  const envScene=new THREE.Scene();
+  envScene.add(new THREE.Mesh(new THREE.SphereGeometry(60,40,28),envMat));
+  const pmrem=new THREE.PMREMGenerator(renderer);
+  pmrem.compileCubemapShader();
+  envRT=pmrem.fromScene(envScene,0,1,200);
+  scene.environment=envRT.texture;
+  pmrem.dispose();
+  envMat.dispose();
+}
+
+/* every lit material, so the Gloom Grove can dim the ambient as a whole */
+let allMats=[];
+function collectMaterials(){
+  const set=new Set();
+  scene.traverse(o=>{
+    if(!o.material)return;
+    (Array.isArray(o.material)?o.material:[o.material]).forEach(m=>{
+      if(m.isMeshStandardMaterial||m.isMeshPhysicalMaterial)set.add(m);
+    });
+  });
+  allMats=[...set];
+  for(const m of allMats){
+    m.envMapIntensity=m.userData.isGround?ENV_BASE*0.95:ENV_BASE;
+    m.userData.envScale=m.userData.isGround?0.95:1;
+    m.needsUpdate=true;
+  }
+}
+function setEnvIntensity(v){
+  for(let i=0;i<allMats.length;i++)
+    allMats[i].envMapIntensity=v*(allMats[i].userData.envScale||1);
+}
+
+addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+  buildTargets();
+});
+
+
+/* ═══════════════════════════════════════════════════════════════
+   6b. POST PROCESSING
+   The scene renders into a linear HDR buffer; a single composite pass
+   then adds bloom, applies a filmic curve, grades, vignettes and
+   dithers it. This is what turns "a lit 3D scene" into a photograph.
+   ═══════════════════════════════════════════════════════════════ */
+const POST={on:true,bloom:true,exposure:1.28,bloomAmount:0.60,
+            vignette:0.38,grain:0.011,sat:1.06,samples:0,fxaa:true,
+            ao:true,aoStrength:0.95,aoRadius:0.42,bounce:0.17};
+let rtScene=null, bloomRT=[], aoRT=null, aoBlurRT=null, quadMesh=null;
+const quadCam=new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+const quadScene=new THREE.Scene();
+
+const VERT=`varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position.xy,0.0,1.0);}`;
+
+const matBright=new THREE.ShaderMaterial({
+  uniforms:{tSrc:{value:null},uThresh:{value:1.05},uSoft:{value:0.7},uTexel:{value:new THREE.Vector2()}},
+  vertexShader:VERT,
+  fragmentShader:`uniform sampler2D tSrc;uniform float uThresh,uSoft;uniform vec2 uTexel;
+    varying vec2 vUv;
+    void main(){
+      vec3 c=vec3(0.0);
+      c+=texture2D(tSrc,vUv+uTexel*vec2(-0.5,-0.5)).rgb;
+      c+=texture2D(tSrc,vUv+uTexel*vec2( 0.5,-0.5)).rgb;
+      c+=texture2D(tSrc,vUv+uTexel*vec2(-0.5, 0.5)).rgb;
+      c+=texture2D(tSrc,vUv+uTexel*vec2( 0.5, 0.5)).rgb;
+      c*=0.25;
+      float l=max(c.r,max(c.g,c.b));
+      float k=clamp((l-uThresh)/max(uSoft,0.0001),0.0,1.0);
+      gl_FragColor=vec4(c*k,1.0);
+    }`,depthTest:false,depthWrite:false});
+
+const matBlur=new THREE.ShaderMaterial({
+  uniforms:{tSrc:{value:null},uDir:{value:new THREE.Vector2(1,0)}},
+  vertexShader:VERT,
+  fragmentShader:`uniform sampler2D tSrc;uniform vec2 uDir;varying vec2 vUv;
+    void main(){
+      vec3 c=texture2D(tSrc,vUv).rgb*0.2270270270;
+      c+=texture2D(tSrc,vUv+uDir*1.3846153846).rgb*0.3162162162;
+      c+=texture2D(tSrc,vUv-uDir*1.3846153846).rgb*0.3162162162;
+      c+=texture2D(tSrc,vUv+uDir*3.2307692308).rgb*0.0702702703;
+      c+=texture2D(tSrc,vUv-uDir*3.2307692308).rgb*0.0702702703;
+      gl_FragColor=vec4(c,1.0);
+    }`,depthTest:false,depthWrite:false});
+
+/* Ambient occlusion and a cheap single-bounce colour bleed, both from the
+   depth buffer. The AO darkens the creases where leaves meet stems and stems
+   meet soil; the bounce picks up the colour of whatever is nearby, so green
+   light spills off the foliage onto the ground the way it does in a real
+   wood. Neither is physically exact — both are what the eye reads as "lit". */
+const matAO=new THREE.ShaderMaterial({
+  uniforms:{
+    tDepth:{value:null},tColor:{value:null},
+    uProj:{value:new THREE.Vector2(1,1)},   // tan(fov/2)*aspect , tan(fov/2)
+    uNear:{value:0.02},uFar:{value:400},
+    uRadius:{value:0.45},uStrength:{value:0.85},uBounce:{value:0.55},
+    uTexel:{value:new THREE.Vector2()},uTime:{value:0}
+  },
+  vertexShader:VERT,
+  fragmentShader:`
+    uniform sampler2D tDepth,tColor;
+    uniform vec2 uProj,uTexel;
+    uniform float uNear,uFar,uRadius,uStrength,uBounce,uTime;
+    varying vec2 vUv;
+
+    float viewZ(vec2 uv){
+      float d=texture2D(tDepth,uv).x;
+      if(d>=1.0) return -uFar*2.0;
+      return -(uNear*uFar)/(uFar-d*(uFar-uNear));
+    }
+    vec3 viewPos(vec2 uv,float z){
+      return vec3((uv*2.0-1.0)*uProj*(-z), z);
+    }
+    void main(){
+      float z=viewZ(vUv);
+      if(z<-uFar){ gl_FragColor=vec4(1.0,0.0,0.0,0.0); return; }
+      vec3 P=viewPos(vUv,z);
+      // normal from neighbouring depths — no derivatives needed
+      vec3 Px=viewPos(vUv+vec2(uTexel.x,0.0),viewZ(vUv+vec2(uTexel.x,0.0)))-P;
+      vec3 Py=viewPos(vUv+vec2(0.0,uTexel.y),viewZ(vUv+vec2(0.0,uTexel.y)))-P;
+      vec3 N=normalize(cross(Px,Py));
+
+      float ang=fract(sin(dot(vUv,vec2(12.9898,78.233)))*43758.5453)*6.2831853;
+      float ca=cos(ang), sa=sin(ang);
+      float occ=0.0;
+      vec3 bounce=vec3(0.0);
+      const int NS=8;
+      for(int i=0;i<NS;i++){
+        float fi=float(i);
+        float a=fi*2.3999632; // golden angle
+        float r=sqrt((fi+0.5)/float(NS))*uRadius;
+        vec2 d2=vec2(cos(a),sin(a));
+        d2=vec2(d2.x*ca-d2.y*sa, d2.x*sa+d2.y*ca)*r;
+        // project the world-space offset into screen space
+        vec2 suv=vUv+d2/max(0.35,-z)*vec2(0.5/uProj.x,0.5/uProj.y);
+        float sz=viewZ(suv);
+        if(sz<-uFar) continue;
+        vec3 S=viewPos(suv,sz)-P;
+        float dist=length(S);
+        if(dist<0.0001) continue;
+        float ndl=max(dot(N,S/dist),0.0);
+        float att=uRadius/(uRadius+dist);
+        occ+=ndl*att;
+        bounce+=texture2D(tColor,suv).rgb*ndl*att;
+      }
+      occ/=float(NS);
+      bounce/=float(NS);
+      float ao=clamp(1.0-occ*uStrength*2.1,0.0,1.0);
+      // keep some of the bounce achromatic so soil never turns lawn-green
+      float bl=dot(bounce,vec3(0.3333));
+      bounce=mix(vec3(bl),bounce,0.55);
+      gl_FragColor=vec4(ao,bounce*uBounce);
+    }`,depthTest:false,depthWrite:false});
+
+const matAOBlur=new THREE.ShaderMaterial({
+  uniforms:{tSrc:{value:null},uTexel:{value:new THREE.Vector2()}},
+  vertexShader:VERT,
+  fragmentShader:`uniform sampler2D tSrc;uniform vec2 uTexel;varying vec2 vUv;
+    void main(){
+      vec4 sum=vec4(0.0);
+      for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++)
+        sum+=texture2D(tSrc,vUv+vec2(float(x),float(y))*uTexel*1.6);
+      gl_FragColor=sum/9.0;
+    }`,depthTest:false,depthWrite:false});
+
+const matComposite=new THREE.ShaderMaterial({
+  uniforms:{
+    tScene:{value:null},tB0:{value:null},tB1:{value:null},tB2:{value:null},
+    uExposure:{value:POST.exposure},uBloom:{value:POST.bloomAmount},
+    uVignette:{value:POST.vignette},uGrain:{value:POST.grain},
+    uSat:{value:POST.sat},uTime:{value:0},uHasBloom:{value:1},
+    uRes:{value:new THREE.Vector2(1,1)},uAA:{value:1},
+    tAO:{value:null},uUseAO:{value:1}
+  },
+  vertexShader:VERT,
+  fragmentShader:`
+    uniform sampler2D tScene,tB0,tB1,tB2;
+    uniform sampler2D tAO;
+    uniform float uExposure,uBloom,uVignette,uGrain,uSat,uTime,uHasBloom,uAA,uUseAO;
+    uniform vec2 uRes;
+    varying vec2 vUv;
+    vec3 aces(vec3 x){
+      const float a=2.51,b=0.03,c=2.43,d=0.59,e=0.14;
+      return clamp((x*(a*x+b))/(x*(c*x+d)+e),0.0,1.0);
+    }
+    /* perceptual luma of an HDR sample, for edge detection */
+    float lu(vec3 c){ c=c/(1.0+c); return dot(c,vec3(0.299,0.587,0.114)); }
+    /* compact FXAA run directly on the HDR buffer — grass and leaf edges are
+       one pixel wide at this camera height, and they crawl badly without it */
+    vec3 edgeAA(vec2 uv){
+      vec2 inv=1.0/uRes;
+      vec3 m =texture2D(tScene,uv).rgb;
+      if(uAA<0.5) return m;
+      vec3 nw=texture2D(tScene,uv+vec2(-1.0,-1.0)*inv).rgb;
+      vec3 ne=texture2D(tScene,uv+vec2( 1.0,-1.0)*inv).rgb;
+      vec3 sw=texture2D(tScene,uv+vec2(-1.0, 1.0)*inv).rgb;
+      vec3 se=texture2D(tScene,uv+vec2( 1.0, 1.0)*inv).rgb;
+      float lnw=lu(nw),lne=lu(ne),lsw=lu(sw),lse=lu(se),lm=lu(m);
+      float lmin=min(lm,min(min(lnw,lne),min(lsw,lse)));
+      float lmax=max(lm,max(max(lnw,lne),max(lsw,lse)));
+      if(lmax-lmin < max(0.028, lmax*0.115)) return m;
+      vec2 dir=vec2(-((lnw+lne)-(lsw+lse)),((lnw+lsw)-(lne+lse)));
+      float red=max((lnw+lne+lsw+lse)*0.03125,0.0078125);
+      float rcp=1.0/(min(abs(dir.x),abs(dir.y))+red);
+      dir=clamp(dir*rcp,-8.0,8.0)*inv;
+      vec3 a=0.5*(texture2D(tScene,uv+dir*(1.0/3.0-0.5)).rgb+
+                  texture2D(tScene,uv+dir*(2.0/3.0-0.5)).rgb);
+      vec3 b=a*0.5+0.25*(texture2D(tScene,uv+dir*-0.5).rgb+
+                         texture2D(tScene,uv+dir*0.5).rgb);
+      float lb=lu(b);
+      return (lb<lmin||lb>lmax)?a:b;
+    }
+    void main(){
+      vec3 col=edgeAA(vUv);
+      if(uUseAO>0.5){
+        vec4 ao=texture2D(tAO,vUv);
+        col*=ao.r;            // contact shadowing
+        col+=ao.gba*col;      // light bounced off whatever is nearby
+      }
+      if(uHasBloom>0.5){
+        vec3 bl=texture2D(tB0,vUv).rgb*0.50
+               +texture2D(tB1,vUv).rgb*0.32
+               +texture2D(tB2,vUv).rgb*0.18;
+        col+=bl*uBloom;
+      }
+      col*=uExposure;
+      col=aces(col);
+      // filmic toe — a forest floor between two hedges is genuinely dark, and
+      // without lifting it the lower half of the frame reads as a black hole
+      col=pow(col,vec3(0.86));
+      // grade: cool the shadows a touch, keep the highlights warm
+      col=mix(col,col*vec3(1.03,1.00,0.95),smoothstep(0.35,1.0,dot(col,vec3(0.33))));
+      col=mix(col,col*vec3(0.94,0.99,1.06),1.0-smoothstep(0.0,0.35,dot(col,vec3(0.33))));
+      float l=dot(col,vec3(0.2126,0.7152,0.0722));
+      col=mix(vec3(l),col,uSat);
+      vec2 q=vUv-0.5;
+      col*=1.0-uVignette*dot(q,q)*1.7;
+      float g=fract(sin(dot(vUv*(1.0+fract(uTime)),vec2(12.9898,78.233)))*43758.5453);
+      float lg=dot(col,vec3(0.3333));
+      col+=(g-0.5)*uGrain*(1.0-smoothstep(0.25,0.95,lg));
+      col=pow(max(col,0.0),vec3(0.4545454545));
+      gl_FragColor=vec4(col,1.0);
+    }`,depthTest:false,depthWrite:false});
+
+function disposeTargets(){
+  if(rtScene){if(rtScene.depthTexture)rtScene.depthTexture.dispose();rtScene.dispose();rtScene=null;}
+  if(aoRT){aoRT.dispose();aoRT=null;}
+  if(aoBlurRT){aoBlurRT.dispose();aoBlurRT=null;}
+
+  for(const r of bloomRT)r.dispose();
+  bloomRT=[];
+}
+function buildTargets(){
+  disposeTargets();
+  const sz=renderer.getDrawingBufferSize(new THREE.Vector2());
+  const w=Math.max(2,sz.x), h=Math.max(2,sz.y);
+  rtScene=new THREE.WebGLRenderTarget(w,h,{
+    type:THREE.HalfFloatType,minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter,
+    depthBuffer:true,stencilBuffer:false,samples:POST.samples});
+  if(POST.samples===0){
+    rtScene.depthTexture=new THREE.DepthTexture(w,h);
+    rtScene.depthTexture.format=THREE.DepthFormat;
+    rtScene.depthTexture.type=THREE.UnsignedIntType;
+  }
+  const aw=Math.max(2,Math.floor(w/3)), ah=Math.max(2,Math.floor(h/3));
+  aoRT=new THREE.WebGLRenderTarget(aw,ah,{minFilter:THREE.LinearFilter,
+    magFilter:THREE.LinearFilter,depthBuffer:false,stencilBuffer:false});
+  aoBlurRT=new THREE.WebGLRenderTarget(aw,ah,{minFilter:THREE.LinearFilter,
+    magFilter:THREE.LinearFilter,depthBuffer:false,stencilBuffer:false});
+  for(let i=0;i<6;i++){
+    const d=Math.pow(2,1+(i>>1));
+    bloomRT.push(new THREE.WebGLRenderTarget(Math.max(2,Math.floor(w/d)),Math.max(2,Math.floor(h/d)),
+      {type:THREE.HalfFloatType,minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter,
+       depthBuffer:false,stencilBuffer:false}));
+  }
+  if(!quadMesh){
+    quadMesh=new THREE.Mesh(new THREE.PlaneGeometry(2,2),matComposite);
+    quadMesh.frustumCulled=false;quadScene.add(quadMesh);
+  }
+}
+function fsPass(mat,target){
+  quadMesh.material=mat;
+  renderer.setRenderTarget(target||null);
+  renderer.render(quadScene,quadCam);
+}
+function renderFrame(){
+  if(!POST.on||!rtScene){renderer.setRenderTarget(null);renderer.render(scene,camera);return;}
+  renderer.setRenderTarget(rtScene);
+  renderer.clear();
+  renderer.render(scene,camera);
+  const canAO=POST.ao&&rtScene.depthTexture;
+  if(canAO){
+    const th=Math.tan(camera.fov*0.5*Math.PI/180);
+    matAO.uniforms.tDepth.value=rtScene.depthTexture;
+    matAO.uniforms.tColor.value=rtScene.texture;
+    matAO.uniforms.uProj.value.set(th*camera.aspect,th);
+    matAO.uniforms.uNear.value=camera.near;
+    matAO.uniforms.uFar.value=camera.far;
+    matAO.uniforms.uRadius.value=POST.aoRadius;
+    matAO.uniforms.uStrength.value=POST.aoStrength;
+    matAO.uniforms.uBounce.value=POST.bounce;
+    matAO.uniforms.uTexel.value.set(1/aoRT.width,1/aoRT.height);
+    fsPass(matAO,aoRT);
+    matAOBlur.uniforms.tSrc.value=aoRT.texture;
+    matAOBlur.uniforms.uTexel.value.set(1/aoRT.width,1/aoRT.height);
+    fsPass(matAOBlur,aoBlurRT);
+    matComposite.uniforms.tAO.value=aoBlurRT.texture;
+  }
+  matComposite.uniforms.uUseAO.value=canAO?1:0;
+  if(POST.bloom){
+    // bright pass into the first mip, then a separable blur per level
+    matBright.uniforms.tSrc.value=rtScene.texture;
+    matBright.uniforms.uTexel.value.set(1/rtScene.width,1/rtScene.height);
+    fsPass(matBright,bloomRT[0]);
+    for(let lvl=0;lvl<3;lvl++){
+      const a=bloomRT[lvl*2], b=bloomRT[lvl*2+1];
+      if(lvl>0){
+        matBright.uniforms.tSrc.value=bloomRT[(lvl-1)*2].texture;
+        matBright.uniforms.uThresh.value=0.0;
+        matBright.uniforms.uTexel.value.set(1/bloomRT[(lvl-1)*2].width,1/bloomRT[(lvl-1)*2].height);
+        fsPass(matBright,a);
+        matBright.uniforms.uThresh.value=1.05;
+      }
+      matBlur.uniforms.tSrc.value=a.texture;
+      matBlur.uniforms.uDir.value.set(1.4/a.width,0);
+      fsPass(matBlur,b);
+      matBlur.uniforms.tSrc.value=b.texture;
+      matBlur.uniforms.uDir.value.set(0,1.4/a.height);
+      fsPass(matBlur,a);
+    }
+    matComposite.uniforms.tB0.value=bloomRT[0].texture;
+    matComposite.uniforms.tB1.value=bloomRT[2].texture;
+    matComposite.uniforms.tB2.value=bloomRT[4].texture;
+  }
+  matComposite.uniforms.uHasBloom.value=POST.bloom?1:0;
+  matComposite.uniforms.tScene.value=rtScene.texture;
+  matComposite.uniforms.uTime.value=performance.now()*0.001;
+  matComposite.uniforms.uAA.value=POST.fxaa?1:0;
+  matComposite.uniforms.uRes.value.set(rtScene.width,rtScene.height);
+  fsPass(matComposite,null);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   4. MAZE GENERATION
+   ═══════════════════════════════════════════════════════════════ */
+const N=16, T=2.6, G=2*N+1, WORLD=G*T, HALF=WORLD/2;
+const solid=new Uint8Array(G*G).fill(1);
+const seen=new Uint8Array(G*G);
+const gi=(x,y)=>y*G+x;
+const tileX=gx=>gx*T-HALF+T/2;
+const tileZ=gy=>gy*T-HALF+T/2;
+const worldToGX=x=>Math.floor((x+HALF)/T);
+const worldToGZ=z=>Math.floor((z+HALF)/T);
+const cellCenter=(cx,cy)=>({x:tileX(2*cx+1),z:tileZ(2*cy+1)});
+const isSolid=(gx,gy)=>(gx<0||gy<0||gx>=G||gy>=G)?1:solid[gi(gx,gy)];
+
+function generateMaze(){
+  const vis=new Uint8Array(N*N);
+  const stack=[[0,0]];vis[0]=1;solid[gi(1,1)]=0;
+  const dirs=[[0,-1],[1,0],[0,1],[-1,0]];
+  while(stack.length){
+    const [cx,cy]=stack[stack.length-1];
+    const opts=[];
+    for(const [dx,dy] of dirs){
+      const nx=cx+dx,ny=cy+dy;
+      if(nx>=0&&ny>=0&&nx<N&&ny<N&&!vis[ny*N+nx])opts.push([nx,ny,dx,dy]);
+    }
+    if(!opts.length){stack.pop();continue;}
+    const [nx,ny,dx,dy]=opts[Math.floor(RNG()*opts.length)];
+    vis[ny*N+nx]=1;
+    solid[gi(2*nx+1,2*ny+1)]=0;
+    solid[gi(2*cx+1+dx,2*cy+1+dy)]=0;
+    stack.push([nx,ny]);
+  }
+  // braid: open ~28% of dead ends so the maze has loops (less frustrating)
+  for(let cy=0;cy<N;cy++)for(let cx=0;cx<N;cx++){
+    const gx=2*cx+1,gy=2*cy+1;
+    let open=0;const walls=[];
+    for(const [dx,dy] of dirs){
+      if(!isSolid(gx+dx,gy+dy))open++;
+      else{
+        const nx=cx+dx,ny=cy+dy;
+        if(nx>=0&&ny>=0&&nx<N&&ny<N)walls.push([gx+dx,gy+dy]);
+      }
+    }
+    if(open===1&&walls.length&&RNG()<0.28){
+      const w=walls[Math.floor(RNG()*walls.length)];
+      solid[gi(w[0],w[1])]=0;
+    }
+  }
+  // small clearings: open a few random wall tiles for natural glades
+  for(let i=0;i<10;i++){
+    const cx=ri(1,N-2),cy=ri(1,N-2);
+    solid[gi(2*cx+1,2*cy)]=0;solid[gi(2*cx,2*cy+1)]=0;
+    solid[gi(2*cx,2*cy)]=0;
+  }
+}
+generateMaze();
+
+/* BFS distances from start cell */
+const START_CELL=[0,0];
+const dist=new Int32Array(N*N).fill(-1);
+(function bfs(){
+  const q=[START_CELL[1]*N+START_CELL[0]];dist[q[0]]=0;
+  const dirs=[[0,-1],[1,0],[0,1],[-1,0]];
+  for(let h=0;h<q.length;h++){
+    const id=q[h],cx=id%N,cy=(id/N)|0;
+    for(const [dx,dy] of dirs){
+      const nx=cx+dx,ny=cy+dy;
+      if(nx<0||ny<0||nx>=N||ny>=N)continue;
+      if(isSolid(2*cx+1+dx,2*cy+1+dy))continue;
+      const nid=ny*N+nx;
+      if(dist[nid]<0){dist[nid]=dist[id]+1;q.push(nid);}
+    }
+  }
+})();
+
+/* exit corridor through the east border at the last row */
+const EXIT_CY=N-1, EXIT_GX=2*N, EXIT_GY=2*EXIT_CY+1;
+solid[gi(2*(N-1)+1,EXIT_GY)]=0;
+let gateLocked=true;                                  // gate tile stays solid until unlocked
+const GATE_X=tileX(EXIT_GX), GATE_Z=tileZ(EXIT_GY);
+
+/* ═══════════════════════════════════════════════════════════════
+   4b. TERRAIN — one analytic height field, sampled by the ground mesh
+   AND by every single thing placed on it, so nothing floats or sinks.
+   ═══════════════════════════════════════════════════════════════ */
+const POND={x:HALF+14,z:GATE_Z-9,r:6.0};
+function terrainBase(x,z){
+  return 0.42*Math.sin(x*0.058+1.7)*Math.cos(z*0.049-0.4)
+       + 0.21*Math.sin(x*0.137-2.2)*Math.cos(z*0.121+1.1)
+       + 0.10*Math.sin((x+z)*0.31+0.6)*Math.cos((x-z)*0.27)
+       + 0.045*Math.sin(x*0.62-1.3)*Math.sin(z*0.57+2.4);
+}
+POND.h=terrainBase(POND.x,POND.z);
+function groundH(x,z){
+  const h=terrainBase(x,z);
+  // flatten the basin so the pond reads as water, not a tilted sheet
+  const d=Math.hypot(x-POND.x,z-POND.z);
+  const k=smoothstep(POND.r+1.0,POND.r+9.0,d);
+  return lerp(POND.h-0.22,h,k);
+}
+const _gn=new THREE.Vector3();
+function groundNormal(x,z,out){
+  const e=0.6;
+  const hx=groundH(x+e,z)-groundH(x-e,z);
+  const hz=groundH(x,z+e)-groundH(x,z-e);
+  return (out||_gn).set(-hx,2*e,-hz).normalize();
+}
+/* quaternion that stands an object up along the local slope */
+const _upQ=new THREE.Quaternion(), _upV=new THREE.Vector3(0,1,0), _nrm=new THREE.Vector3();
+function slopeQuat(x,z,spin,tilt){
+  groundNormal(x,z,_nrm);
+  if(tilt!==undefined&&tilt<1)_nrm.lerp(_upV,1-tilt).normalize();
+  _upQ.setFromUnitVectors(_upV,_nrm);
+  if(spin){_q.setFromAxisAngle(_nrm,spin);_upQ.premultiply(_q);}
+  return _upQ;
+}
+
+const openCells=[];
+for(let cy=0;cy<N;cy++)for(let cx=0;cx<N;cx++)if(dist[cy*N+cx]>=0)openCells.push([cx,cy]);
+
+function deadEnds(){
+  const out=[];const dirs=[[0,-1],[1,0],[0,1],[-1,0]];
+  for(const [cx,cy] of openCells){
+    let open=0;
+    for(const [dx,dy] of dirs)if(!isSolid(2*cx+1+dx,2*cy+1+dy))open++;
+    if(open===1)out.push([cx,cy]);
+  }
+  return out;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   5. WORLD BUILD
+   ═══════════════════════════════════════════════════════════════ */
+const texGround=makeGroundTextures();
+const texFol=makeFoliageTextures();
+const texBark=makeBarkTextures();
+const texLeaf=makeLeafTexture('leaf'), leafTex=texLeaf.map;
+const texFernT=makeLeafTexture('fern'), fernTex=texFernT.map;
+const macroTex=makeMacroTexture();
+const litterTex=makeLitterTexture();
+const flowerTex=makeFlowerTexture();
+const glowWarm=makeGlowSprite('rgba(255,214,120,1)');
+const glowGreen=makeGlowSprite('rgba(160,255,190,1)');
+
+/* --- ground --- */
+(function buildGround(){
+  texGround.map.repeat.set(40,40);
+  texGround.rough.repeat.set(40,40);
+  texGround.nrm.repeat.set(40,40);
+  const SEG=180;
+  const g=new THREE.PlaneGeometry(300,300,SEG,SEG);
+  const p=g.attributes.position;
+  for(let i=0;i<p.count;i++){
+    // plane is still in XY here: x -> world x, y -> world -z
+    p.setZ(i,groundH(p.getX(i),-p.getY(i)));
+  }
+  g.computeVertexNormals();
+
+  /* Baked sky occlusion. Without it the forest floor is lit as if it were an
+     open field: every corner where the ground meets a hedge needs to go dark,
+     and that contact shading is most of what sells the scene as one place
+     rather than props standing on a plane. */
+  const aoArr=new Float32Array(p.count*3);
+  const AO_R=1;                     // contact shading only — one tile either way
+  for(let i=0;i<p.count;i++){
+    const wx=p.getX(i), wz=-p.getY(i);
+    const gx=worldToGX(wx), gz=worldToGZ(wz);
+    let occ=0, tot=0;
+    for(let j=-AO_R;j<=AO_R;j++)for(let k=-AO_R;k<=AO_R;k++){
+      const d2=j*j+k*k;
+      if(d2>AO_R*AO_R)continue;
+      const w=1/(1+d2*2.4);
+      tot+=w;
+      if(isSolid(gx+k,gz+j))occ+=w;
+    }
+    const a=clamp(1-Math.pow(occ/tot,0.9)*0.38,0.62,1);
+    aoArr[i*3]=aoArr[i*3+1]=aoArr[i*3+2]=a;
+  }
+  g.setAttribute('color',new THREE.BufferAttribute(aoArr,3));
+  g.rotateX(-Math.PI/2);
+  const gmat=new THREE.MeshStandardMaterial({
+    map:texGround.map,normalMap:texGround.nrm,roughnessMap:texGround.rough,
+    roughness:1,metalness:0,normalScale:new THREE.Vector2(0.9,0.9),
+    color:0xeadcc0,vertexColors:true
+  });
+  gmat.userData.isGround=true;
+  /* a second, very large-scale tint sampled in world space; without it the
+     40x-repeated soil texture reads as wallpaper */
+  gmat.onBeforeCompile=sh=>{
+    sh.uniforms.uMacro={value:macroTex};
+    sh.vertexShader='varying vec2 vMacroUv;\n'+sh.vertexShader.replace(
+      '#include <begin_vertex>',
+      '#include <begin_vertex>\n vMacroUv=(modelMatrix*vec4(transformed,1.0)).xz*0.0052;');
+    sh.fragmentShader='uniform sampler2D uMacro;\nvarying vec2 vMacroUv;\n'+
+      sh.fragmentShader.replace('#include <map_fragment>',
+      '#include <map_fragment>\n diffuseColor.rgb*=texture2D(uMacro,vMacroUv).rgb*1.15;');
+  };
+  gmat.customProgramCacheKey=()=>'groundMacro';
+  const m=new THREE.Mesh(g,gmat);
+  m.receiveShadow=true;
+  scene.add(m);
+})();
+
+/* --- hedge walls, trees, clutter --- */
+const GEO_BLOB=blobGeo(1);
+const GEO_BLOB2=blobGeo(2);
+const GEO_ROCK=rockGeo();
+const GEO_GRASS=grassTuftGeo();
+
+const matFoliage=new THREE.MeshStandardMaterial({
+  map:texFol.map,normalMap:texFol.nrm,roughness:0.92,metalness:0,
+  normalScale:new THREE.Vector2(1.4,1.4)
+});
+const matCanopy=matFoliage.clone();
+const matBark=new THREE.MeshStandardMaterial({
+  map:texBark.map,normalMap:texBark.nrm,roughnessMap:texBark.rough,roughness:1,metalness:0,
+  normalScale:new THREE.Vector2(1.6,1.6)
+});
+const matLeafCard=new THREE.MeshStandardMaterial({
+  map:leafTex,normalMap:texLeaf.nrm,normalScale:new THREE.Vector2(0.9,0.9),
+  transparent:true,alphaTest:0.5,side:THREE.DoubleSide,roughness:0.72,metalness:0
+});
+const matFern=new THREE.MeshStandardMaterial({
+  map:fernTex,normalMap:texFernT.nrm,normalScale:new THREE.Vector2(0.7,0.7),
+  transparent:true,alphaTest:0.4,side:THREE.DoubleSide,roughness:0.8,metalness:0
+});
+const matGrass=new THREE.MeshStandardMaterial({vertexColors:true,side:THREE.DoubleSide,roughness:0.95,metalness:0});
+const matRock=new THREE.MeshStandardMaterial({color:0x4b473f,roughness:1.0,metalness:0.0,flatShading:true});
+patchFoliage(matGrass,0.55,0.55);
+patchFoliage(matFern,0.28,0.85);
+patchFoliage(matLeafCard,0,0.75);
+patchFoliage(matFoliage,0,0.30);
+patchFoliage(matCanopy,0,0.40);
+
+const GLOOM={x:0,z:0,r:15};
+
+/* ---------------------------------------------------------------
+   Ground contact: every plant gets a little mound of turned soil and
+   a patch of litter, both lying along the local slope, so nothing
+   looks like it was dropped onto a flat plane.
+   --------------------------------------------------------------- */
+const soilIB=new IB(), litterIB=new IB(), flareIB=new IB();
+const _dressCol=new THREE.Color();
+function baseDress(x,z,r,heavy){
+  const y=groundH(x,z);
+  // a low ring of turned earth, barely a few centimetres proud of the soil
+  _dressCol.setRGB(rr(0.85,1.12),rr(0.85,1.1),rr(0.82,1.08));
+  soilIB.addQ(x,y-r*0.22,z,slopeQuat(x,z,rr(0,6.28),1),
+              r*rr(0.95,1.25),r*rr(0.30,0.46),r*rr(0.95,1.25),_dressCol.clone());
+  // and a soft skirt of fallen leaf litter that dissolves into the ground
+  const lr=r*rr(1.5,2.2)*(heavy?1.4:1);
+  _dressCol.setRGB(rr(0.8,1.12),rr(0.8,1.1),rr(0.75,1.05));
+  litterIB.addQ(x,y+0.012,z,slopeQuat(x,z,rr(0,6.28),1),lr,1,lr,_dressCol.clone());
+  if(heavy){
+    const lr2=r*rr(1.0,1.6);
+    _dressCol.setRGB(rr(0.7,1.0),rr(0.7,0.98),rr(0.65,0.95));
+    litterIB.addQ(x+rr(-r*0.7,r*0.7),y+0.019,z+rr(-r*0.7,r*0.7),
+                  slopeQuat(x,z,rr(0,6.28),1),lr2,1,lr2,_dressCol.clone());
+  }
+}
+/* trunks get a flared, buttressed base instead of a cylinder stuck in dirt */
+function trunkFlare(x,z,rad){
+  const y=groundH(x,z);
+  flareIB.addQ(x,y-0.14,z,slopeQuat(x,z,rr(0,6.28),0.7),
+               rad*rr(2.0,2.7),rr(0.34,0.60),rad*rr(2.0,2.7),null);
+  baseDress(x,z,rad*1.7,true);
+}
+function buildGroundDressing(){
+  for(const [x,z,r] of treeBases)trunkFlare(x,z,r);
+  const moundGeo=new THREE.SphereGeometry(1,14,6,0,6.283,0,Math.PI*0.5);
+  const moundMat=new THREE.MeshStandardMaterial({
+    map:texGround.map.clone(),normalMap:texGround.nrm.clone(),roughness:1,metalness:0,
+    color:0x554b3e,normalScale:new THREE.Vector2(1.0,1.0)});
+  moundMat.map.repeat.set(8,8);moundMat.normalMap.repeat.set(8,8);
+  moundMat.map.needsUpdate=moundMat.normalMap.needsUpdate=true;
+  const mound=soilIB.build(moundGeo,moundMat,false,true);
+  worldGroup.add(mound);
+
+  const litterGeo=new THREE.CircleGeometry(1,20);litterGeo.rotateX(-Math.PI/2);
+  const litterMat=new THREE.MeshStandardMaterial({
+    map:litterTex,transparent:true,depthWrite:false,roughness:0.95,metalness:0,
+    polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2,alphaTest:0.04});
+  const litter=litterIB.build(litterGeo,litterMat,false,true);
+  litter.renderOrder=1;
+  worldGroup.add(litter);
+
+  const flareGeo=new THREE.ConeGeometry(1,1,12,1,true);flareGeo.translate(0,0.5,0);
+  const flare=flareIB.build(flareGeo,matBark,true,true);
+  worldGroup.add(flare);
+}
+const worldGroup=new THREE.Group();scene.add(worldGroup);
+
+const treeBases=[];
+function buildHedges(){
+  const bush=new IB(),trunk=new IB(),canopy=new IB(),card=new IB();
+  const tint=new THREE.Color();
+  for(let gy=0;gy<G;gy++)for(let gx=0;gx<G;gx++){
+    if(!solid[gi(gx,gy)])continue;
+    if(gx===EXIT_GX&&gy===EXIT_GY)continue;             // the gate tile
+    const cx=tileX(gx),cz=tileZ(gy);
+    const gy0=groundH(cx,cz);
+    const border=(gx===0||gy===0||gx===G-1||gy===G-1);
+    const n=border?6:5;
+    for(let i=0;i<n;i++){
+      const ox=rr(-0.95,0.95),oz=rr(-0.95,0.95);
+      const sc=rr(0.62,1.0);
+      const sy=sc*rr(0.8,1.15);
+      // lower half of the cluster is bedded into the ground, upper half stacks on it
+      const grounded=i<Math.ceil(n*0.6);
+      const y=grounded ? groundH(cx+ox,cz+oz)+sy*rr(0.55,0.85)
+                       : groundH(cx+ox,cz+oz)+rr(1.05,1.55);
+      tint.setRGB(rr(0.72,1.18),rr(0.78,1.14),rr(0.7,1.1));
+      bush.add(cx+ox,y,cz+oz,rr(0,6.28),rr(0,6.28),rr(0,6.28),
+               sc*rr(0.95,1.25),sy,sc*rr(0.95,1.25),tint.clone());
+      if(grounded&&RNG()<0.26)baseDress(cx+ox,cz+oz,sc*rr(0.26,0.40));
+    }
+    // top layer so the hedge reads as one mass ~2.6m tall
+    tint.setRGB(rr(0.8,1.2),rr(0.85,1.2),rr(0.75,1.05));
+    bush.add(cx+rr(-0.4,0.4),gy0+rr(1.75,2.1),cz+rr(-0.4,0.4),rr(0,6.28),rr(0,6.28),rr(0,6.28),
+             rr(0.85,1.2),rr(0.6,0.85),rr(0.85,1.2),tint.clone());
+    // leaf cards for silhouette
+    for(let i=0;i<7;i++){
+      const a=rr(0,6.283), rad=rr(1.1,1.75);
+      tint.setRGB(rr(0.62,1.25),rr(0.7,1.2),rr(0.55,1.1));
+      const lx=cx+Math.cos(a)*rad, lz=cz+Math.sin(a)*rad;
+      card.add(lx,groundH(lx,lz)+rr(0.20,2.28),lz,
+               rr(-1.3,1.3),rr(0,6.28),rr(-0.8,0.8),
+               rr(0.7,1.5),rr(0.7,1.5),1,tint.clone());
+    }
+    // tall trees
+    const treeChance=border?0.30:0.16;
+    if(RNG()<treeChance){
+      const h=rr(4.5,9.5), rad=rr(0.16,0.3);
+      const lean=rr(-0.06,0.06);
+      const tx=cx+rr(-0.5,0.5), tz=cz+rr(-0.5,0.5), t0=groundH(tx,tz)-0.28;
+      trunk.add(tx,t0+h/2,tz,lean,rr(0,6.28),rr(-0.06,0.06),rad,h/2,rad,null);
+      treeBases.push([tx,tz,rad]);
+      const cn=ri(3,5);
+      for(let i=0;i<cn;i++){
+        const sc=rr(1.7,3.1);
+        tint.setRGB(rr(0.66,1.05),rr(0.72,1.08),rr(0.62,0.98));
+        canopy.add(cx+rr(-1.4,1.4),t0+h+rr(-0.7,1.4),cz+rr(-1.4,1.4),
+                   rr(0,6.28),rr(0,6.28),rr(0,6.28),sc,sc*rr(0.6,0.85),sc,tint.clone());
+      }
+    }
+  }
+  worldGroup.add(bush.build(GEO_BLOB,matFoliage,true,true));
+  worldGroup.add(trunk.build(new THREE.CylinderGeometry(0.72,1.18,2,14,3),matBark,true,true));
+  worldGroup.add(canopy.build(GEO_BLOB,matCanopy,true,true));
+  const cardGeo=leafGeo(0.50,0.62,3,4,0.85,0.35);
+  worldGroup.add(card.build(cardGeo,matLeafCard,true,true));
+}
+
+const matBigLeaf=new THREE.MeshStandardMaterial({
+  map:leafTex,transparent:true,alphaTest:0.45,side:THREE.DoubleSide,roughness:0.66,metalness:0,
+  normalMap:texLeaf.nrm,normalScale:new THREE.Vector2(1.0,1.0)});
+patchFoliage(matBigLeaf,0.20,0.95);
+const matStalk=new THREE.MeshStandardMaterial({color:0x3f5220,roughness:0.9});
+
+function buildClutter(){
+  const grass=new IB(),rock=new IB(),fern=new IB(),flower=new IB(),shroom=new IB(),stem=new IB(),fstem=new IB();
+  const bigLeaf=new IB(),stalk=new IB();
+  // a broad-leaved plant: a stalk with big drooping blades you crawl beneath
+  const leafTint=new THREE.Color();
+  const plant=(px,pz,scale)=>{
+    const h=rr(0.34,0.62)*scale;
+    const g0=groundH(px,pz)-0.05;
+    const baseTint=[rr(0.62,1.2),rr(0.72,1.18),rr(0.5,1.0)];
+    stalk.add(px,g0+h*0.5,pz,rr(-0.06,0.06),0,rr(-0.06,0.06),0.024*scale,h*0.5+0.05,0.024*scale,null);
+    baseDress(px,pz,0.085*scale);
+    const n=ri(4,6), base=rr(0,6.283);
+    for(let i=0;i<n;i++){
+      const a=base+i*(6.283/n)+rr(-0.3,0.3);
+      const droop=rr(0.85,1.35);                 // roll: 0 = upright, ~1.4 = flat
+      const ls=rr(0.75,1.25)*scale;
+      leafTint.setRGB(baseTint[0]*rr(0.9,1.1),baseTint[1]*rr(0.9,1.1),baseTint[2]*rr(0.9,1.1));
+      bigLeaf.add(px+Math.cos(a)*0.03,g0+h+rr(-0.05,0.04),pz+Math.sin(a)*0.03,
+                  0,-a,droop, ls,ls,ls,leafTint.clone());
+    }
+  };
+  const openTiles=[];
+  for(let gy=1;gy<G-1;gy++)for(let gx=1;gx<G-1;gx++)if(!solid[gi(gx,gy)])openTiles.push([gx,gy]);
+  for(const [gx,gy] of openTiles){
+    const cx=tileX(gx),cz=tileZ(gy);
+    const n=ri(7,11);
+    for(let i=0;i<n;i++){
+      const sc=rr(0.7,1.25);
+      const px=cx+rr(-1.28,1.28), pz=cz+rr(-1.28,1.28);
+      grass.add(px,groundH(px,pz)-0.035,pz,0,rr(0,6.28),0,sc,rr(0.75,1.7),sc,null);
+    }
+    // rocks stay low and bedded into the soil — at eye height a tipped-up one
+    // would fill half the screen
+    if(RNG()<0.24){const sc=rr(0.09,0.21);
+      const rt=new THREE.Color().setRGB(rr(0.7,1.25),rr(0.72,1.2),rr(0.68,1.15));
+      const px=cx+rr(-1,1), pz=cz+rr(-1,1);
+      rock.addQ(px,groundH(px,pz)-sc*0.34,pz,slopeQuat(px,pz,rr(0,6.28),1),sc,sc*0.8,sc,rt);}
+    if(RNG()<0.26){const sc=rr(0.5,0.92);
+      const px=cx+rr(-1.1,1.1), pz=cz+rr(-1.1,1.1), y0=groundH(px,pz)-0.04;
+      const spin=rr(0,6.28);
+      for(let k=0;k<2;k++){
+        const sk=sc*(k?0.88:1);
+        fern.addQ(px,y0,pz,slopeQuat(px,pz,spin+k*Math.PI*0.5,0.5),sk,sk,sk,null);
+      }
+      baseDress(px,pz,0.13*sc);
+    }
+    // big plants hug the corridor edges so the middle stays crawlable
+    if(RNG()<0.48){
+      const a=rr(0,6.283), rad=rr(0.88,1.30);
+      plant(cx+Math.cos(a)*rad,cz+Math.sin(a)*rad,rr(0.85,1.35));
+    }
+    if(RNG()<0.11){                       // the occasional giant that arches overhead
+      const a=rr(0,6.283), rad=rr(0.95,1.3);
+      plant(cx+Math.cos(a)*rad,cz+Math.sin(a)*rad,rr(1.7,2.4));
+    }
+    if(RNG()<0.22){
+      const c=new THREE.Color().setRGB(rr(0.85,1.1),rr(0.85,1.08),rr(0.75,1.0));
+      const fx=cx+rr(-1,1), fz=cz+rr(-1,1);
+      for(let i=0;i<ri(3,6);i++){
+        const px=fx+rr(-0.30,0.30),pz=fz+rr(-0.30,0.30);
+        const fh=rr(0.07,0.17), g0=groundH(px,pz);
+        fstem.add(px,g0+fh*0.5,pz,rr(-0.12,0.12),0,rr(-0.12,0.12),0.006,fh*0.5+0.02,0.006,null);
+        flower.add(px,g0+fh,pz,rr(-0.5,-0.9),rr(0,6.28),rr(-0.3,0.3),
+                   rr(0.030,0.046),rr(0.030,0.046),1,c.clone());
+      }
+      baseDress(fx,fz,0.09);
+    }
+    if(RNG()<0.14){
+      const bx=cx+rr(-1,1),bz=cz+rr(-1,1);
+      for(let i=0;i<ri(2,4);i++){
+        const sc=rr(0.05,0.10);
+        const mx=bx+rr(-0.22,0.22), mz=bz+rr(-0.22,0.22), m0=groundH(mx,mz)-0.025;
+        stem.add(mx,m0+sc*0.9,mz,0,0,0,sc*0.3,sc*0.95,sc*0.3,null);
+        shroom.add(mx,m0+sc*1.62,mz,0,rr(0,6.28),0,sc*1.35,sc*0.85,sc*1.35,null);
+      }
+      baseDress(bx,bz,0.10);
+    }
+  }
+  // ---- the meadow beyond the Sun Gate: this is the reward, so plant it ----
+  const meadowOK=(x,z)=>Math.hypot(x-POND.x,z-POND.z)>POND.r+0.7;
+  for(let i=0;i<4200;i++){
+    // densest near the gate mouth, thinning out towards the treeline
+    const t=Math.pow(RNG(),0.65);
+    const x=HALF+0.5+t*30, z=GATE_Z+rr(-32,32)*(0.45+t*0.9);
+    if(!meadowOK(x,z))continue;
+    const sc=rr(0.85,1.5);
+    grass.add(x,groundH(x,z)-0.035,z,0,rr(0,6.28),0,sc,rr(1.1,2.2),sc,null);
+  }
+  const mflower=new THREE.Color();
+  for(let i=0;i<260;i++){
+    const t=Math.pow(RNG(),0.7);
+    const bx=HALF+1+t*28, bz=GATE_Z+rr(-26,26)*(0.5+t*0.9);
+    if(!meadowOK(bx,bz))continue;
+    mflower.setRGB(rr(0.85,1.12),rr(0.85,1.08),rr(0.7,1.0));
+    for(let k=0;k<ri(3,7);k++){
+      const px=bx+rr(-0.5,0.5), pz=bz+rr(-0.5,0.5);
+      const fh=rr(0.09,0.20), g0=groundH(px,pz);
+      fstem.add(px,g0+fh*0.5,pz,rr(-0.14,0.14),0,rr(-0.14,0.14),0.006,fh*0.5+0.02,0.006,null);
+      flower.add(px,g0+fh,pz,rr(-0.5,-0.95),rr(0,6.28),rr(-0.35,0.35),
+                 rr(0.032,0.050),rr(0.032,0.050),1,mflower.clone());
+    }
+  }
+  for(let i=0;i<120;i++){
+    const t=Math.pow(RNG(),0.6);
+    const px=HALF+2+t*27, pz=GATE_Z+rr(-24,24)*(0.5+t*0.9);
+    if(!meadowOK(px,pz))continue;
+    const sc=rr(0.6,1.2);
+    fern.addQ(px,groundH(px,pz)-0.04,pz,slopeQuat(px,pz,rr(0,6.28),0.5),sc,sc,sc,null);
+    baseDress(px,pz,0.12*sc);
+  }
+  const bigLeafGeo=leafGeo(0.60,0.76,5,7,1.05,0.5);
+  worldGroup.add(bigLeaf.build(bigLeafGeo,matBigLeaf,true,true));
+  worldGroup.add(stalk.build(new THREE.CylinderGeometry(0.7,1,2,5),matStalk,false,true));
+  worldGroup.add(grass.build(GEO_GRASS,matGrass,false,true));
+  worldGroup.add(rock.build(GEO_ROCK,matRock,true,true));
+  const fernGeo=new THREE.PlaneGeometry(0.9,0.9,4,5);fernGeo.translate(0,0.45,0);
+  worldGroup.add(fern.build(fernGeo,matFern,true,true));
+  const flowerGeo=new THREE.PlaneGeometry(1,1,3,3);
+  worldGroup.add(flower.build(flowerGeo,new THREE.MeshStandardMaterial({
+    map:flowerTex,transparent:true,alphaTest:0.4,side:THREE.DoubleSide,
+    roughness:0.72,metalness:0}),false,true));
+  worldGroup.add(fstem.build(new THREE.CylinderGeometry(1,1,2,5),
+    new THREE.MeshStandardMaterial({color:0x4d6128,roughness:0.9}),false,true));
+  worldGroup.add(stem.build(new THREE.CylinderGeometry(0.85,1.15,1,8),
+    new THREE.MeshStandardMaterial({color:0xcfc4a8,roughness:0.92}),false,true));
+  // a lathe profile gives the cap a rolled edge and a proper underside
+  const capPts=[];
+  for(let i=0;i<=6;i++){
+    const t=i/6;
+    capPts.push(new THREE.Vector2(Math.sin(t*Math.PI*0.52)*1.0+0.02,
+                                  Math.cos(t*Math.PI*0.52)*0.72));
+  }
+  capPts.push(new THREE.Vector2(0.86,-0.14));
+  capPts.push(new THREE.Vector2(0.22,-0.10));
+  capPts.push(new THREE.Vector2(0.0,-0.08));
+  const capGeo=new THREE.LatheGeometry(capPts,10);
+  worldGroup.add(shroom.build(capGeo,new THREE.MeshStandardMaterial({
+    color:0x8f4636,roughness:0.74,metalness:0}),true,true));
+}
+
+/* outside trees near the meadow so the border doesn't look cut off */
+function buildOutside(){
+  const trunk=new IB(),canopy=new IB();const tint=new THREE.Color();
+  for(let i=0;i<70;i++){
+    const ang=rr(0,6.283), rad=rr(HALF+6,HALF+42);
+    const x=Math.cos(ang)*rad, z=Math.sin(ang)*rad;
+    if(x>HALF&&Math.abs(z-GATE_Z)<12)continue;            // keep the exit view open
+    if(Math.hypot(x-POND.x,z-POND.z)<POND.r+3)continue;
+    const h=rr(6,13),r=rr(0.22,0.42), t0=groundH(x,z)-0.32;
+    trunk.add(x,t0+h/2,z,rr(-0.05,0.05),rr(0,6.28),rr(-0.05,0.05),r,h/2,r,null);
+    treeBases.push([x,z,r]);
+    for(let k=0;k<4;k++){
+      const sc=rr(2.2,4.0);
+      tint.setRGB(rr(0.7,1.1),rr(0.75,1.1),rr(0.65,1.0));
+      canopy.add(x+rr(-1.8,1.8),t0+h+rr(-1,1.8),z+rr(-1.8,1.8),rr(0,6.28),rr(0,6.28),rr(0,6.28),
+                 sc,sc*0.72,sc,tint.clone());
+    }
+  }
+  // scattered low scrub so the meadow has depth rather than a bare horizon
+  const bush=new IB(), card=new IB(), tintB=new THREE.Color();
+  for(let i=0;i<150;i++){
+    const t=Math.pow(RNG(),0.55);
+    const bx=HALF+4+t*30, bz=GATE_Z+rr(-30,30)*(0.5+t*0.9);
+    if(Math.hypot(bx-POND.x,bz-POND.z)<POND.r+1.5)continue;
+    const g0=groundH(bx,bz);
+    const sc=rr(0.35,0.85);
+    for(let k=0;k<ri(2,4);k++){
+      tintB.setRGB(rr(0.7,1.15),rr(0.75,1.12),rr(0.65,1.05));
+      bush.add(bx+rr(-0.5,0.5),g0+sc*rr(0.5,0.85),bz+rr(-0.5,0.5),
+               rr(0,6.28),rr(0,6.28),rr(0,6.28),sc,sc*0.8,sc,tintB.clone());
+    }
+    for(let k=0;k<5;k++){
+      const a=rr(0,6.283), rad=rr(0.5,1.0)*sc;
+      const lx=bx+Math.cos(a)*rad, lz=bz+Math.sin(a)*rad;
+      tintB.setRGB(rr(0.65,1.2),rr(0.72,1.15),rr(0.6,1.05));
+      card.add(lx,groundH(lx,lz)+rr(0.15,1.1)*sc,lz,
+               rr(-1.3,1.3),rr(0,6.28),rr(-0.8,0.8),
+               rr(0.6,1.2),rr(0.6,1.2),1,tintB.clone());
+    }
+    baseDress(bx,bz,0.30*sc,true);
+  }
+  worldGroup.add(bush.build(GEO_BLOB,matFoliage,true,true));
+  worldGroup.add(card.build(leafGeo(0.50,0.62,3,4,0.85,0.35),matLeafCard,true,true));
+  worldGroup.add(trunk.build(new THREE.CylinderGeometry(0.72,1.18,2,14,3),matBark,true,true));
+  worldGroup.add(canopy.build(GEO_BLOB,matCanopy,true,true));
+}
+
+/* extra dense canopy over the gloom grove */
+function buildGloom(){
+  const far=openCells.filter(c=>dist[c[1]*N+c[0]]>N*0.9);
+  const c=far.length?far[Math.floor(RNG()*far.length)]:[N-3,2];
+  const p=cellCenter(c[0],c[1]);
+  GLOOM.x=p.x;GLOOM.z=p.z;GLOOM.cell=c;
+  const canopy=new IB(),trunk=new IB();const tint=new THREE.Color();
+  for(let i=0;i<46;i++){
+    const a=rr(0,6.283),r=rr(0,GLOOM.r*0.95);
+    const x=GLOOM.x+Math.cos(a)*r, z=GLOOM.z+Math.sin(a)*r;
+    const sc=rr(3.0,5.4), g0=groundH(x,z);
+    tint.setRGB(rr(0.35,0.6),rr(0.42,0.62),rr(0.34,0.55));
+    canopy.add(x,g0+rr(5.0,7.6),z,rr(0,6.28),rr(0,6.28),rr(0,6.28),sc,sc*0.55,sc,tint.clone());
+    if(RNG()<0.35){
+      const gx=worldToGX(x),gy=worldToGZ(z);
+      if(isSolid(gx,gy)){
+        const h=rr(6,10), r=rr(0.25,0.4);
+        trunk.add(x,g0-0.3+h/2,z,0,rr(0,6.28),0,r,h/2,r,null);
+        treeBases.push([x,z,r]);
+      }
+    }
+  }
+  worldGroup.add(canopy.build(GEO_BLOB,matCanopy,true,true));
+  worldGroup.add(trunk.build(new THREE.CylinderGeometry(0.72,1.18,2,14,3),matBark,true,true));
+}
+
+/* the Sun Gate --------------------------------------------------- */
+let gateGroup,gateBeam;
+function buildGate(){
+  gateGroup=new THREE.Group();
+  gateGroup.position.set(GATE_X,groundH(GATE_X,GATE_Z)-0.1,GATE_Z);
+  const postGeo=new THREE.CylinderGeometry(0.22,0.32,3.6,16,3);
+  const matPost=new THREE.MeshStandardMaterial({map:texBark.map,normalMap:texBark.nrm,
+    roughnessMap:texBark.rough,roughness:1,normalScale:new THREE.Vector2(1.5,1.5)});
+  for(const s of [-1,1]){
+    const p=new THREE.Mesh(postGeo,matPost);
+    p.position.set(0,1.8,s*1.25);p.castShadow=true;p.receiveShadow=true;
+    gateGroup.add(p);
+  }
+  const arch=new THREE.Mesh(new THREE.TorusGeometry(1.3,0.2,8,20,Math.PI),matPost);
+  arch.position.y=3.4;arch.rotation.y=Math.PI/2;arch.castShadow=true;
+  gateGroup.add(arch);
+  // vine curtain that blocks the way
+  const curtain=new THREE.Group();
+  const vineMat=new THREE.MeshStandardMaterial({color:0x3f5c22,roughness:0.85});
+  for(let i=0;i<9;i++){
+    const v=new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.07,3.4,6),vineMat);
+    v.position.set(rr(-0.1,0.1),1.7,-1.1+i*0.275);
+    v.rotation.z=rr(-0.05,0.05);v.castShadow=true;
+    curtain.add(v);
+    for(let k=0;k<5;k++){
+      const lf=new THREE.Mesh(new THREE.PlaneGeometry(0.42,0.42),matLeafCard);
+      lf.position.set(rr(-0.12,0.12),rr(0.3,3.2),v.position.z+rr(-0.1,0.1));
+      lf.rotation.set(rr(-1,1),rr(0,6.28),rr(-1,1));
+      curtain.add(lf);
+    }
+  }
+  gateGroup.userData.curtain=curtain;
+  gateGroup.add(curtain);
+  // light beam once opened
+  const beamMat=new THREE.MeshBasicMaterial({color:0xffe1a0,transparent:true,opacity:0,
+    depthWrite:false,side:THREE.DoubleSide,fog:false,blending:THREE.AdditiveBlending});
+  gateBeam=new THREE.Mesh(new THREE.CylinderGeometry(2.6,1.3,30,16,1,true),beamMat);
+  gateBeam.position.y=14;gateBeam.renderOrder=3;
+  gateGroup.add(gateBeam);
+  scene.add(gateGroup);
+}
+
+/* pond in the meadow beyond the gate */
+function buildPond(){
+  const rip=makeRippleNormal();
+  rip.repeat.set(5,5);
+  const m=new THREE.Mesh(new THREE.CircleGeometry(POND.r,48),new THREE.MeshStandardMaterial({
+    color:0x24484a,roughness:0.08,metalness:0.1,normalMap:rip,transparent:true,opacity:0.92,
+    normalScale:new THREE.Vector2(0.35,0.35)
+  }));
+  m.rotation.x=-Math.PI/2;m.position.set(POND.x,POND.h-0.155,POND.z);
+  m.receiveShadow=true;
+  scene.add(m);
+  return rip;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   6. ITEMS, HAZARDS, CROWS
+   ═══════════════════════════════════════════════════════════════ */
+const items=[];
+const itemGroup=new THREE.Group();scene.add(itemGroup);
+
+const ITEM_DEF={
+  stone :{name:'Sunstone',      icon:'☀',  hint:'A Sunstone — warm as summer.'},
+  berry :{name:'Sunberry',      icon:'🫐', hint:'A cluster of ripe berries.'},
+  shroom:{name:'Glowcap',       icon:'🍄', hint:'A humming glowcap mushroom.'},
+  lantern:{name:'Firefly Jar',  icon:'🏮', hint:'A jar of sleepy fireflies.'}
+};
+
+function makeStoneMesh(){
+  const g=new THREE.Group();
+  const core=new THREE.Mesh(new THREE.IcosahedronGeometry(0.19,0),
+    new THREE.MeshStandardMaterial({color:0xffcf6a,emissive:0xffa63c,emissiveIntensity:2.2,
+      roughness:0.25,metalness:0.35}));
+  core.castShadow=true;g.add(core);
+  const halo=new THREE.Sprite(new THREE.SpriteMaterial({map:glowWarm,color:0xffc46a,
+    transparent:true,opacity:0.85,depthWrite:false,blending:THREE.AdditiveBlending,fog:false}));
+  halo.scale.set(1.9,1.9,1);g.add(halo);
+  const l=new THREE.PointLight(0xffb347,4.5,7,1.7);g.add(l);
+  // a faint shaft rising over the hedges — enough to navigate by, not enough to give it away
+  const shaft=new THREE.Mesh(new THREE.CylinderGeometry(1.15,0.18,9.5,14,1,true),
+    new THREE.MeshBasicMaterial({color:0xffc978,transparent:true,opacity:0.12,
+      depthWrite:false,side:THREE.DoubleSide,fog:false,blending:THREE.AdditiveBlending}));
+  shaft.position.y=4.6;g.add(shaft);
+  g.userData.core=core;g.userData.halo=halo;g.userData.shaft=shaft;
+  return g;
+}
+function makeBerryMesh(){
+  const g=new THREE.Group();
+  const mat=new THREE.MeshStandardMaterial({color:0xb2243c,roughness:0.28,metalness:0.0,
+    emissive:0x2a0308,emissiveIntensity:0.6});
+  for(let i=0;i<5;i++){
+    const b=new THREE.Mesh(new THREE.SphereGeometry(0.062,10,8),mat);
+    b.position.set(rr(-0.07,0.07),rr(0,0.1),rr(-0.07,0.07));
+    b.castShadow=true;g.add(b);
+  }
+  const lf=new THREE.Mesh(new THREE.PlaneGeometry(0.3,0.3),matLeafCard);
+  lf.rotation.x=-Math.PI/2.2;lf.position.y=-0.03;g.add(lf);
+  return g;
+}
+function makeShroomMesh(){
+  const g=new THREE.Group();
+  const stem=new THREE.Mesh(new THREE.CylinderGeometry(0.035,0.05,0.2,8),
+    new THREE.MeshStandardMaterial({color:0xe6ddc4,roughness:0.85}));
+  stem.position.y=0.1;stem.castShadow=true;g.add(stem);
+  const cap=new THREE.Mesh(new THREE.SphereGeometry(0.13,12,9,0,6.283,0,1.55),
+    new THREE.MeshStandardMaterial({color:0x6fd8e8,emissive:0x2ea0bb,emissiveIntensity:1.6,roughness:0.5}));
+  cap.position.y=0.2;cap.scale.y=0.8;cap.castShadow=true;g.add(cap);
+  const halo=new THREE.Sprite(new THREE.SpriteMaterial({map:glowGreen,color:0x7fe6ff,
+    transparent:true,opacity:0.5,depthWrite:false,blending:THREE.AdditiveBlending,fog:false}));
+  halo.scale.set(1.0,1.0,1);halo.position.y=0.18;g.add(halo);
+  g.add(new THREE.PointLight(0x5fd0ee,1.6,3.2,1.8));
+  return g;
+}
+function makeLanternMesh(){
+  const g=new THREE.Group();
+  const jar=new THREE.Mesh(new THREE.CylinderGeometry(0.11,0.12,0.24,14,1,true),
+    new THREE.MeshPhysicalMaterial({color:0xcfe8dd,roughness:0.08,metalness:0,
+      transparent:true,opacity:0.32,side:THREE.DoubleSide,transmission:0}));
+  jar.position.y=0.13;g.add(jar);
+  const lid=new THREE.Mesh(new THREE.CylinderGeometry(0.115,0.115,0.03,14),
+    new THREE.MeshStandardMaterial({color:0x8a6a3a,roughness:0.6,metalness:0.4}));
+  lid.position.y=0.26;g.add(lid);
+  const core=new THREE.Mesh(new THREE.SphereGeometry(0.05,10,8),
+    new THREE.MeshBasicMaterial({color:0xfff0b0,fog:false}));
+  core.position.y=0.13;g.add(core);
+  const halo=new THREE.Sprite(new THREE.SpriteMaterial({map:glowWarm,color:0xffe9a8,
+    transparent:true,opacity:0.75,depthWrite:false,blending:THREE.AdditiveBlending,fog:false}));
+  halo.scale.set(1.3,1.3,1);halo.position.y=0.13;g.add(halo);
+  g.add(new THREE.PointLight(0xffd88a,3,5,1.7));
+  return g;
+}
+
+function addItem(type,x,z,y){
+  let mesh;
+  if(type==='stone')mesh=makeStoneMesh();
+  else if(type==='berry')mesh=makeBerryMesh();
+  else if(type==='shroom')mesh=makeShroomMesh();
+  else mesh=makeLanternMesh();
+  const gy=groundH(x,z);
+  mesh.position.set(x,gy+(y||0.35),z);
+  itemGroup.add(mesh);
+  baseDress(x,z,type==='stone'?0.16:0.11,type==='stone');
+  const it={type,mesh,x,z,baseY:gy+(y||0.35),phase:rr(0,6.28),collected:false,seen:false};
+  items.push(it);
+  return it;
+}
+
+const hazards=[];
+function buildHazards(){
+  const thornMat=new THREE.MeshStandardMaterial({color:0x4a2f22,roughness:0.9});
+  const leafM=matLeafCard;
+  const spread=openCells.filter(c=>dist[c[1]*N+c[0]]>4);
+  const chosen=[];
+  for(let i=0;i<14&&spread.length;i++){
+    const idx=Math.floor(RNG()*spread.length);
+    const c=spread.splice(idx,1)[0];
+    chosen.push(c);
+  }
+  const ib=new IB(),leafIb=new IB();
+  for(const c of chosen){
+    const p=cellCenter(c[0],c[1]);
+    const px=p.x+rr(-0.6,0.6),pz=p.z+rr(-0.6,0.6);
+    hazards.push({x:px,z:pz,r:1.05});
+    baseDress(px,pz,0.40,true);
+    for(let i=0;i<16;i++){
+      const a=rr(0,6.283),d=rr(0,0.95);
+      ib.add(px+Math.cos(a)*d,groundH(px+Math.cos(a)*d,pz+Math.sin(a)*d)+rr(0.03,0.34),
+             pz+Math.sin(a)*d,
+             rr(-1.4,1.4),rr(0,6.28),rr(-1.4,1.4),
+             rr(0.02,0.035),rr(0.25,0.55),rr(0.02,0.035),null);
+    }
+    for(let i=0;i<7;i++){
+      const a=rr(0,6.283),d=rr(0,0.9);
+      leafIb.add(px+Math.cos(a)*d,groundH(px+Math.cos(a)*d,pz+Math.sin(a)*d)+rr(0.08,0.42),
+                 pz+Math.sin(a)*d,
+                 rr(-1.4,1.4),rr(0,6.28),rr(-1.4,1.4),0.5,0.5,0.5,null);
+    }
+  }
+  const tg=new THREE.CylinderGeometry(0.2,1,1,5);
+  worldGroup.add(ib.build(tg,thornMat,true,true));
+  const lg=leafGeo(0.36,0.44,3,4,0.7,0.3);
+  worldGroup.add(leafIb.build(lg,leafM,false,true));
+}
+
+/* --- crows --- */
+const crows=[];
+function makeCrow(){
+  const g=new THREE.Group();
+  const matB=new THREE.MeshStandardMaterial({color:0x191b22,roughness:0.42,metalness:0.28});
+  const body=new THREE.Mesh(new THREE.SphereGeometry(0.22,14,11),matB);
+  body.scale.set(1,0.86,1.5);body.castShadow=true;g.add(body);
+  const head=new THREE.Mesh(new THREE.SphereGeometry(0.13,12,10),matB);
+  head.position.set(0,0.11,0.28);head.castShadow=true;g.add(head);
+  const beak=new THREE.Mesh(new THREE.ConeGeometry(0.05,0.2,8),
+    new THREE.MeshStandardMaterial({color:0x53400f,roughness:0.5}));
+  beak.rotation.x=Math.PI/2;beak.position.set(0,0.09,0.44);g.add(beak);
+  for(const s of [-1,1]){
+    const eye=new THREE.Mesh(new THREE.SphereGeometry(0.026,8,6),
+      new THREE.MeshStandardMaterial({color:0xffd24a,emissive:0x804000,emissiveIntensity:1.2}));
+    eye.position.set(s*0.07,0.15,0.35);g.add(eye);
+  }
+  const tail=new THREE.Mesh(new THREE.ConeGeometry(0.12,0.4,4),matB);
+  tail.rotation.x=-Math.PI/2;tail.position.set(0,0,-0.42);tail.scale.set(1,1,0.35);g.add(tail);
+  const wings=[];
+  for(const s of [-1,1]){
+    const w=new THREE.Group();
+    const pl=new THREE.Mesh(new THREE.PlaneGeometry(0.62,0.34),
+      new THREE.MeshStandardMaterial({color:0x1d2029,roughness:0.55,side:THREE.DoubleSide}));
+    pl.position.set(s*0.34,0,0);pl.rotation.y=0;pl.rotation.x=Math.PI/2;
+    pl.castShadow=true;
+    w.add(pl);g.add(w);wings.push(w);
+  }
+  g.userData.wings=wings;
+  return g;
+}
+function spawnCrows(n){
+  for(let i=0;i<n;i++){
+    const c=openCells[Math.floor(RNG()*openCells.length)];
+    const p=cellCenter(c[0],c[1]);
+    const m=makeCrow();
+    m.position.set(p.x,groundH(p.x,p.z)+rr(4,5.4),p.z);
+    scene.add(m);
+    crows.push({mesh:m,state:'patrol',t:0,wp:new THREE.Vector3(p.x,4.8,p.z),
+                vel:new THREE.Vector3(),flap:rr(0,6.28),cooldown:0,hidTime:0});
+  }
+}
+function crowNewWaypoint(c){
+  const cell=openCells[Math.floor(RNG()*openCells.length)];
+  const p=cellCenter(cell[0],cell[1]);
+  c.wp.set(p.x+rr(-0.8,0.8),groundH(p.x,p.z)+rr(4.2,5.6),p.z+rr(-0.8,0.8));
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   7. PARTICLES (falling leaves + fireflies)
+   ═══════════════════════════════════════════════════════════════ */
+let leafPoints,leafData=[];
+function buildLeaves(){
+  const N_=360;
+  const pos=new Float32Array(N_*3);
+  for(let i=0;i<N_;i++){
+    const d={x:rr(-25,25),y:rr(0,14),z:rr(-25,25),vy:rr(0.25,0.7),
+             sx:rr(0,6.28),sp:rr(0.6,1.7),amp:rr(0.2,0.7)};
+    leafData.push(d);
+    pos[i*3]=d.x;pos[i*3+1]=d.y;pos[i*3+2]=d.z;
+  }
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  const m=new THREE.PointsMaterial({map:leafTex,size:0.24,transparent:true,alphaTest:0.4,
+    depthWrite:false,color:0xd8a44a,sizeAttenuation:true});
+  leafPoints=new THREE.Points(g,m);leafPoints.frustumCulled=false;
+  scene.add(leafPoints);
+}
+let fireflyPoints,fireflyData=[];
+function buildFireflies(){
+  const N_=150;
+  const pos=new Float32Array(N_*3);
+  for(let i=0;i<N_;i++){
+    const a=rr(0,6.283),r=rr(0,GLOOM.r);
+    const gx0=GLOOM.x+Math.cos(a)*r, gz0=GLOOM.z+Math.sin(a)*r;
+    const d={x:gx0,y:groundH(gx0,gz0)+rr(0.3,2.6),z:gz0,
+             p:rr(0,6.28),s:rr(0.3,0.9)};
+    fireflyData.push(d);
+    pos[i*3]=d.x;pos[i*3+1]=d.y;pos[i*3+2]=d.z;
+  }
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  const m=new THREE.PointsMaterial({map:glowGreen,size:0.28,transparent:true,
+    blending:THREE.AdditiveBlending,depthWrite:false,color:0xbfff9a,sizeAttenuation:true,fog:false});
+  fireflyPoints=new THREE.Points(g,m);fireflyPoints.frustumCulled=false;
+  scene.add(fireflyPoints);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   8. FIRST-PERSON TORTOISE BODY
+   ═══════════════════════════════════════════════════════════════ */
+/* The tortoise lives in the world, not glued to the lens: the rig follows the
+   player's feet and yaw, so looking down shows your own shell, legs and snout,
+   and the sun throws its shadow on the path. */
+const bodyRig=new THREE.Group();scene.add(bodyRig);
+let legs=[],snout,head,shellMesh,lanternHeld,neck;
+(function buildBody(){
+  const texShell=makeShellTextures();
+  const shellMat=new THREE.MeshStandardMaterial({
+    map:texShell.map,normalMap:texShell.nrm,normalScale:new THREE.Vector2(1.6,1.6),
+    roughness:0.62,metalness:0.04});
+  const scuteMat=new THREE.MeshStandardMaterial({color:0x33240e,roughness:0.75});
+  const skinMat=new THREE.MeshStandardMaterial({color:0x4a5230,roughness:0.93});
+
+  // --- carapace: an ellipsoid dome sitting behind the head ---
+  shellMesh=new THREE.Mesh(new THREE.SphereGeometry(1,30,20),shellMat);
+  shellMesh.scale.set(0.30,0.205,0.37);
+  shellMesh.position.set(0,0.165,0.30);
+  shellMesh.castShadow=true;shellMesh.receiveShadow=true;
+  bodyRig.add(shellMesh);
+  // scutes — a ring of plates plus a central row, so it reads as a tortoise
+  const plate=new THREE.SphereGeometry(1,10,8);
+  const addScute=(x,y,z,sx,sy,sz,ry)=>{
+    const m=new THREE.Mesh(plate,scuteMat);
+    m.position.set(x,y,z);m.scale.set(sx,sy,sz);m.rotation.y=ry||0;
+    m.castShadow=true;bodyRig.add(m);
+  };
+  // the texture carries the plates; no extra bumps needed
+  // plastron rim
+  const rim=new THREE.Mesh(new THREE.TorusGeometry(0.30,0.030,8,30),scuteMat);
+  rim.rotation.x=Math.PI/2;rim.position.set(0,0.10,0.30);rim.scale.set(1,1.2,1);
+  rim.castShadow=true;bodyRig.add(rim);
+
+  // --- neck + head, just under the eye line ---
+  neck=new THREE.Mesh(new THREE.CylinderGeometry(0.052,0.068,0.16,10),skinMat);
+  neck.rotation.x=1.0;neck.position.set(0,0.245,0.085);
+  neck.castShadow=true;bodyRig.add(neck);
+  head=new THREE.Mesh(new THREE.SphereGeometry(0.058,16,12),skinMat);
+  head.scale.set(1,0.95,1.30);head.position.set(0,0.300,-0.015);
+  head.castShadow=true;bodyRig.add(head);
+  snout=new THREE.Mesh(new THREE.ConeGeometry(0.019,0.072,14,1,true),
+    new THREE.MeshStandardMaterial({color:0x5a5636,roughness:0.72}));
+  snout.rotation.x=-Math.PI/2-0.30;snout.position.set(0,0.247,-0.118);
+  snout.castShadow=true;bodyRig.add(snout);
+
+  // --- four legs; the front pair swings in view when you look down ---
+  const legGeo=new THREE.CapsuleGeometry(0.052,0.10,5,10);
+  const footGeo=new THREE.SphereGeometry(0.058,10,8);
+  for(const [x,z,front] of [[-0.20,-0.02,1],[0.20,-0.02,1],[-0.19,0.50,0],[0.19,0.50,0]]){
+    const g=new THREE.Group();
+    g.position.set(x,0.135,z);
+    const l=new THREE.Mesh(legGeo,skinMat);
+    l.position.y=-0.03;l.rotation.z=x<0?0.30:-0.30;l.castShadow=true;
+    const f=new THREE.Mesh(footGeo,skinMat);
+    f.position.set(x<0?-0.035:0.035,-0.095,0.012);f.scale.set(1,0.62,1.2);f.castShadow=true;
+    g.add(l);g.add(f);
+    g.userData.front=front;g.userData.side=x<0?-1:1;
+    bodyRig.add(g);legs.push(g);
+  }
+  // --- tail ---
+  const tail=new THREE.Mesh(new THREE.ConeGeometry(0.038,0.13,8),skinMat);
+  tail.rotation.x=-1.9;tail.position.set(0,0.135,0.62);tail.castShadow=true;
+  bodyRig.add(tail);
+
+  // Collect the body meshes so they can be made invisible-but-shadow-casting:
+  // you never see yourself while crawling, yet your shadow still slides along
+  // the path ahead of you, which is most of what sells the body as real.
+  bodyRig.traverse(o=>{ if(o.isMesh)o.userData.realMat=o.material; });
+
+  // --- the firefly jar rides on the shell once you've found it ---
+  lanternHeld=makeLanternMesh();
+  lanternHeld.scale.setScalar(0.8);
+  lanternHeld.position.set(0.0,0.36,0.10);
+  lanternHeld.visible=false;
+  bodyRig.add(lanternHeld);
+})();
+
+/* ═══════════════════════════════════════════════════════════════
+   9. AUDIO (procedural)
+   ═══════════════════════════════════════════════════════════════ */
+/* invisible to the camera (no colour, no depth) but still traversed by the
+   shadow pass, so the carapace casts a shadow even while it is not drawn */
+const INVIS_MAT=new THREE.MeshBasicMaterial({colorWrite:false,depthWrite:false});
+let bodyShown=null;
+function setBodyVisible(show){
+  if(bodyShown===show)return;
+  bodyShown=show;
+  bodyRig.traverse(o=>{
+    if(!o.isMesh||!o.userData.realMat)return;
+    o.material=show?o.userData.realMat:INVIS_MAT;
+  });
+}
+
+/* a whisper of fill light so the tortoise isn't a silhouette in deep shade */
+const fillLight=new THREE.PointLight(0xffeedc,0.22,3.0,2);
+fillLight.position.set(0,0.95,0.25);
+bodyRig.add(fillLight);
+
+const AUDIO={ctx:null,master:null,muted:false,ready:false};
+function initAudio(){
+  if(AUDIO.ready)return;
+  try{
+    const C=window.AudioContext||window.webkitAudioContext;
+    AUDIO.ctx=new C();
+    AUDIO.master=AUDIO.ctx.createGain();
+    AUDIO.master.gain.value=0.55;
+    AUDIO.master.connect(AUDIO.ctx.destination);
+    startAmbience();
+    AUDIO.ready=true;
+  }catch(e){console.warn('audio unavailable',e);}
+}
+function noiseBuf(sec){
+  const ctx=AUDIO.ctx,len=Math.floor(ctx.sampleRate*sec);
+  const b=ctx.createBuffer(1,len,ctx.sampleRate);
+  const d=b.getChannelData(0);
+  let last=0;
+  for(let i=0;i<len;i++){
+    const w=Math.random()*2-1;
+    last=(last+0.02*w)/1.02;d[i]=last*3.2;
+  }
+  return b;
+}
+let windGain;
+function startAmbience(){
+  const ctx=AUDIO.ctx;
+  const src=ctx.createBufferSource();
+  src.buffer=noiseBuf(4);src.loop=true;
+  const f=ctx.createBiquadFilter();f.type='lowpass';f.frequency.value=420;f.Q.value=0.6;
+  windGain=ctx.createGain();windGain.gain.value=0.10;
+  src.connect(f);f.connect(windGain);windGain.connect(AUDIO.master);
+  src.start();
+  // slow gust LFO
+  const lfo=ctx.createOscillator();lfo.frequency.value=0.07;
+  const lg=ctx.createGain();lg.gain.value=260;
+  lfo.connect(lg);lg.connect(f.frequency);lfo.start();
+}
+function tone(freq,dur,type,vol,slideTo,delay){
+  if(!AUDIO.ready||AUDIO.muted)return;
+  const ctx=AUDIO.ctx,t0=ctx.currentTime+(delay||0);
+  const o=ctx.createOscillator(),g=ctx.createGain();
+  o.type=type||'sine';o.frequency.setValueAtTime(freq,t0);
+  if(slideTo)o.frequency.exponentialRampToValueAtTime(Math.max(slideTo,1),t0+dur);
+  g.gain.setValueAtTime(0.0001,t0);
+  g.gain.exponentialRampToValueAtTime(vol||0.12,t0+0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001,t0+dur);
+  o.connect(g);g.connect(AUDIO.master);o.start(t0);o.stop(t0+dur+0.05);
+}
+function noiseHit(dur,freq,q,vol,type){
+  if(!AUDIO.ready||AUDIO.muted)return;
+  const ctx=AUDIO.ctx,t0=ctx.currentTime;
+  const s=ctx.createBufferSource();s.buffer=noiseBuf(0.3);
+  const f=ctx.createBiquadFilter();f.type=type||'bandpass';f.frequency.value=freq;f.Q.value=q||1;
+  const g=ctx.createGain();
+  g.gain.setValueAtTime(vol||0.12,t0);
+  g.gain.exponentialRampToValueAtTime(0.0001,t0+dur);
+  s.connect(f);f.connect(g);g.connect(AUDIO.master);s.start(t0);s.stop(t0+dur+0.05);
+}
+const SFX={
+  step(){noiseHit(0.13,rr(420,780),1.3,0.075);tone(rr(70,100),0.09,'sine',0.05);},
+  pickup(){tone(680,0.14,'sine',0.14);tone(1020,0.22,'sine',0.11,null,0.08);},
+  stone(){tone(523,0.3,'sine',0.16);tone(784,0.35,'sine',0.14,null,0.1);tone(1046,0.6,'sine',0.13,null,0.2);},
+  eat(){noiseHit(0.18,300,0.8,0.12,'lowpass');tone(240,0.16,'triangle',0.07,180);},
+  hurt(){noiseHit(0.3,180,0.6,0.22,'lowpass');tone(140,0.35,'sawtooth',0.1,60);},
+  caw(){tone(rr(700,900),0.16,'sawtooth',0.1,rr(380,520));
+        tone(rr(600,800),0.14,'square',0.055,rr(300,420),0.16);},
+  shell(){noiseHit(0.22,220,1.1,0.13,'lowpass');},
+  gate(){[262,330,392,523,659].forEach((f,i)=>tone(f,0.9,'sine',0.13,null,i*0.13));},
+  win(){[523,659,784,1046,1318].forEach((f,i)=>tone(f,1.2,'sine',0.14,null,i*0.16));},
+  die(){[392,330,262,196].forEach((f,i)=>tone(f,0.9,'triangle',0.14,null,i*0.22));},
+  chirp(){const f=rr(2200,3600);tone(f,0.07,'sine',0.045,f*1.5);
+          tone(f*1.2,0.06,'sine',0.035,f*0.8,0.09);},
+  near(){tone(1320,0.5,'sine',0.045);}
+};
+
+/* ═══════════════════════════════════════════════════════════════
+   10. PLAYER / GAME STATE
+   ═══════════════════════════════════════════════════════════════ */
+const EYE=0.34, RADIUS=0.40;
+const P={
+  pos:new THREE.Vector3(),vel:new THREE.Vector3(),
+  yaw:0,pitch:0,bob:0,
+  hp:100,sp:100,
+  hidden:false,hideAmt:0,
+  boost:0,lastHurt:99,
+  stones:0,berries:0,shrooms:0,hasLantern:false,lanternOn:false,
+  berriesEaten:0,slot:0,time:0,walkPhase:0
+};
+let state='loading';                // loading | menu | play | pause | dead | win
+const keys={};
+let gateOpenAmt=0;
+
+function resetPlayer(){
+  const p=cellCenter(START_CELL[0],START_CELL[1]);
+  P.pos.set(p.x,EYE,p.z);P.vel.set(0,0,0);
+  // face whichever way the corridor actually runs
+  const sgx=2*START_CELL[0]+1, sgy=2*START_CELL[1]+1;
+  P.yaw=Math.PI*0.5;
+  if(!isSolid(sgx+1,sgy))P.yaw=-Math.PI/2;        // east
+  else if(!isSolid(sgx,sgy+1))P.yaw=Math.PI;      // south
+  else if(!isSolid(sgx-1,sgy))P.yaw=Math.PI/2;    // west
+  else P.yaw=0;                                    // north
+  P.pitch=-0.05;
+  P.hp=100;P.sp=100;P.hidden=false;P.hideAmt=0;P.boost=0;P.lastHurt=99;
+  P.stones=0;P.berries=0;P.shrooms=0;P.hasLantern=false;P.lanternOn=false;
+  P.berriesEaten=0;P.slot=0;P.time=0;
+  huntedHintShown=false;gloomHintShown=false;
+  gateLocked=true;gateOpenAmt=0;
+  if(gateGroup){gateGroup.userData.curtain.position.y=0;
+    gateGroup.userData.curtain.visible=true;gateBeam.material.opacity=0;}
+  for(const it of items){it.collected=false;it.seen=false;it.mesh.visible=true;}
+  seen.fill(0);
+  for(const c of crows){
+    const cell=openCells[Math.floor(RNG()*openCells.length)];
+    const pp=cellCenter(cell[0],cell[1]);
+    c.mesh.position.set(pp.x,groundH(pp.x,pp.z)+rr(4,5.4),pp.z);
+    c.state='patrol';c.t=0;c.cooldown=0;c.hidTime=0;crowNewWaypoint(c);
+  }
+  lanternHeld.visible=false;
+  updateHUD();updateHotbar();updateObjective();
+}
+
+/* --- tile collision ------------------------------------------- */
+function blocked(x,z){
+  const gx=worldToGX(x),gz=worldToGZ(z);
+  for(let j=-1;j<=1;j++)for(let i=-1;i<=1;i++){
+    const tx=gx+i,tz=gz+j;
+    if(tx>=G)continue;                   // east of the grid is open meadow, not wall
+    let sld=isSolid(tx,tz);
+    if(tx===EXIT_GX&&tz===EXIT_GY)sld=gateLocked?1:0;
+    if(!sld)continue;
+    const cx=tileX(tx),cz=tileZ(tz),h=T/2;
+    const nx=clamp(x,cx-h,cx+h), nz=clamp(z,cz-h,cz+h);
+    const dx=x-nx,dz=z-nz;
+    if(dx*dx+dz*dz<RADIUS*RADIUS)return true;
+  }
+  return false;
+}
+const blockedWorld=blocked;
+
+/* ═══════════════════════════════════════════════════════════════
+   11. HUD
+   ═══════════════════════════════════════════════════════════════ */
+const el={
+  hud:$('hud'),obj:$('objtext'),stones:$('stones').children,
+  hp:$('hp').firstElementChild,sp:$('sp').firstElementChild,
+  prompt:$('prompt'),toast:$('toast'),fps:$('fps'),
+  dmg:$('damage'),hunted:$('hunted'),shellview:$('shellview'),
+  slots:document.querySelectorAll('.slot'),
+  map:$('minimap').getContext('2d')
+};
+let toastTimer=0;
+function toast(html,secs){
+  el.toast.innerHTML=html;el.toast.style.opacity='1';toastTimer=secs||3.2;
+}
+function updateHUD(){
+  el.hp.style.width=clamp(P.hp,0,100)+'%';
+  el.sp.style.width=clamp(P.sp,0,100)+'%';
+  for(let i=0;i<3;i++)el.stones[i].className='stone'+(i<P.stones?' got':'');
+}
+function updateHotbar(){
+  const counts=[P.berries,P.shrooms,P.hasLantern?1:0];
+  el.slots.forEach((s,i)=>{
+    const have=counts[i]>0;
+    s.classList.toggle('empty',!have);
+    s.classList.toggle('sel',P.slot===i);
+    const n=s.querySelector('.n');
+    n.textContent=i===2?(P.hasLantern?(P.lanternOn?'ON':'off'):''):counts[i];
+  });
+}
+function updateObjective(){
+  if(P.stones<3){
+    el.obj.innerHTML=`Find the three <b style="color:#e8c56a">Sunstones</b> hidden in the Hollow. `+
+      `<span style="opacity:.7">(${P.stones}/3)</span>`;
+  }else{
+    el.obj.innerHTML=`The <b style="color:#e8c56a">Sun Gate</b> stands open to the <b>east</b>. `+
+      `<span style="opacity:.7">Follow the beam of light.</span>`;
+  }
+}
+function show(id,on){$(id).classList.toggle('hide',!on);}
+
+/* minimap ------------------------------------------------------- */
+const mapC=$('minimap');
+function drawMap(){
+  const ctx=el.map,S=mapC.width,cell=S/G;
+  ctx.clearRect(0,0,S,S);
+  ctx.fillStyle='rgba(8,14,7,0.55)';ctx.fillRect(0,0,S,S);
+  for(let y=0;y<G;y++)for(let x=0;x<G;x++){
+    if(!seen[gi(x,y)])continue;
+    const s=solid[gi(x,y)];
+    ctx.fillStyle=s?'rgba(44,66,32,0.95)':'rgba(190,200,165,0.62)';
+    ctx.fillRect(x*cell,y*cell,cell+0.6,cell+0.6);
+  }
+  // items you've laid eyes on
+  for(const it of items){
+    if(it.collected||!it.seen)continue;
+    const mx=(it.x+HALF)/T*cell,my=(it.z+HALF)/T*cell;
+    ctx.fillStyle=it.type==='stone'?'#ffcb52':(it.type==='lantern'?'#ffe9a8':
+                  (it.type==='berry'?'#e0526d':'#7fe6ff'));
+    ctx.beginPath();ctx.arc(mx,my,it.type==='stone'?4.5:3,0,6.283);ctx.fill();
+  }
+  // gate
+  if(!gateLocked){
+    const mx=(GATE_X+HALF)/T*cell,my=(GATE_Z+HALF)/T*cell;
+    ctx.fillStyle='#fff0a0';ctx.beginPath();ctx.arc(mx,my,5.5,0,6.283);ctx.fill();
+    ctx.strokeStyle='rgba(255,240,160,0.6)';ctx.lineWidth=2;
+    ctx.beginPath();ctx.arc(mx,my,9,0,6.283);ctx.stroke();
+  }
+  // crows
+  for(const c of crows){
+    if(c.state!=='hunt'&&c.state!=='attack')continue;
+    const mx=(c.mesh.position.x+HALF)/T*cell,my=(c.mesh.position.z+HALF)/T*cell;
+    ctx.fillStyle='#ff5a4a';ctx.beginPath();ctx.arc(mx,my,4,0,6.283);ctx.fill();
+  }
+  // player
+  const px=(P.pos.x+HALF)/T*cell,py=(P.pos.z+HALF)/T*cell;
+  ctx.save();ctx.translate(px,py);ctx.rotate(-P.yaw+Math.PI/2);
+  ctx.fillStyle='#e8c56a';
+  ctx.beginPath();ctx.moveTo(0,-7);ctx.lineTo(5,6);ctx.lineTo(0,3);ctx.lineTo(-5,6);
+  ctx.closePath();ctx.fill();
+  ctx.restore();
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   12. INPUT
+   ═══════════════════════════════════════════════════════════════ */
+addEventListener('contextmenu',e=>e.preventDefault());
+addEventListener('keydown',e=>{
+  if(keys[e.code]!==true)onKeyDown(e);
+  keys[e.code]=true;
+  if(['Space','Tab','KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown'].includes(e.code))e.preventDefault();
+});
+addEventListener('keyup',e=>{keys[e.code]=false;});
+const isLocked=()=>document.pointerLockElement===canvas;
+addEventListener('mousemove',e=>{
+  if(state!=='play')return;
+  const s=isLocked()?0.0022:0.0016;      // unlocked fallback: steer with plain mouse motion
+  P.yaw-=(e.movementX||0)*s;
+  P.pitch=clamp(P.pitch-(e.movementY||0)*s,-1.25,1.05);
+});
+addEventListener('mousedown',e=>{
+  if(state==='play'&&e.button===0)useItem();
+});
+function onKeyDown(e){
+  if(e.code==='KeyM'){AUDIO.muted=!AUDIO.muted;
+    if(AUDIO.master)AUDIO.master.gain.value=AUDIO.muted?0:0.55;
+    toast(AUDIO.muted?'Sound muted':'Sound on',1.4);return;}
+  if((state==='dead'||state==='win')&&e.code==='KeyR'){restart();return;}
+  if((e.code==='Escape'||e.code==='KeyP')&&state==='play'){pauseGame();return;}
+  if(state!=='play')return;
+  if(e.code==='KeyE')tryPickup();
+  if(e.code==='KeyQ')useItem();
+  if(e.code==='Digit1'){P.slot=0;updateHotbar();}
+  if(e.code==='Digit2'){P.slot=1;updateHotbar();}
+  if(e.code==='Digit3'){P.slot=2;updateHotbar();}
+  if(e.code==='KeyF')toggleLantern();
+}
+
+/* pointer lock plumbing — the game runs with or without a captured mouse */
+function lock(){
+  try{const p=canvas.requestPointerLock();if(p&&p.catch)p.catch(()=>{});}catch(e){}
+}
+function startPlay(){
+  if(state!=='menu'&&state!=='pause')return;
+  state='play';show('menu',false);show('pause',false);
+  el.hud.classList.add('on');
+  clock.getDelta();                       // drop the paused time
+  lock();
+  setTimeout(()=>{
+    if(state==='play'&&!isLocked())
+      toast('Mouse not captured — <b>click again</b> to capture, or steer with the <b>arrow keys</b>',5);
+  },350);
+}
+function pauseGame(){
+  if(state!=='play')return;
+  state='pause';show('pause',true);
+  if(isLocked())document.exitPointerLock();
+}
+document.addEventListener('pointerlockchange',()=>{
+  if(!isLocked()&&state==='play'&&wasLocked)pauseGame();
+  wasLocked=isLocked();
+});
+let wasLocked=false;
+$('startbtn').addEventListener('click',e=>{e.stopPropagation();initAudio();startPlay();});
+$('menu').addEventListener('click',()=>{initAudio();startPlay();});
+$('pause').addEventListener('click',()=>startPlay());
+$('app').addEventListener('click',()=>{if(state==='play'&&!isLocked())lock();});
+$('dead').addEventListener('click',restart);
+$('win').addEventListener('click',restart);
+
+function restart(){
+  show('dead',false);show('win',false);
+  resetPlayer();
+  state='menu';show('menu',true);el.hud.classList.remove('on');
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   13. GAMEPLAY ACTIONS
+   ═══════════════════════════════════════════════════════════════ */
+let nearItem=null;
+function tryPickup(){
+  if(!nearItem)return;
+  const it=nearItem;
+  it.collected=true;it.mesh.visible=false;
+  if(it.type==='stone'){
+    P.stones++;SFX.stone();
+    toast(`<b>Sunstone</b> recovered — ${P.stones} of 3`,3.2);
+    if(P.stones>=3)openGate();
+    updateObjective();
+  }else if(it.type==='berry'){
+    P.berries++;SFX.pickup();toast('Picked up <b>Sunberries</b> — press <b>1</b> then <b>Q</b> to eat',2.8);
+  }else if(it.type==='shroom'){
+    P.shrooms++;SFX.pickup();toast('Picked up a <b>Glowcap</b> — press <b>2</b> then <b>Q</b> for a burst of speed',2.8);
+  }else if(it.type==='lantern'){
+    P.hasLantern=true;P.lanternOn=true;SFX.pickup();
+    toast('Found the <b>Firefly Jar</b> — press <b>F</b> to light your way',3.4);
+  }
+  updateHUD();updateHotbar();
+  nearItem=null;el.prompt.style.opacity='0';
+}
+function useItem(){
+  if(P.slot===0){
+    if(P.berries<=0){toast('No berries left',1.2);return;}
+    if(P.hp>=100){toast('You feel perfectly well',1.2);return;}
+    P.berries--;P.berriesEaten++;P.hp=clamp(P.hp+32,0,100);
+    SFX.eat();toast('You eat the berries — <b>+32 vitality</b>',1.8);
+  }else if(P.slot===1){
+    if(P.shrooms<=0){toast('No glowcaps left',1.2);return;}
+    P.shrooms--;P.sp=100;P.boost=9;
+    SFX.eat();tone(880,0.5,'sine',0.1,1400);
+    toast('The glowcap hums — <b>stamina restored, legs quickened</b>',2.2);
+  }else{
+    toggleLantern();
+  }
+  updateHUD();updateHotbar();
+}
+function toggleLantern(){
+  if(!P.hasLantern){toast('You have no lantern yet',1.4);return;}
+  P.lanternOn=!P.lanternOn;
+  lanternHeld.visible=P.lanternOn;
+  tone(P.lanternOn?880:440,0.16,'sine',0.09);
+  updateHotbar();
+}
+function openGate(){
+  gateLocked=false;SFX.gate();
+  toast('A deep hum rolls through the roots — the <b>Sun Gate</b> has opened to the <b>east</b>',5);
+}
+function hurt(dmg,reason){
+  if(P.hp<=0)return;
+  P.hp=clamp(P.hp-dmg,0,100);P.lastHurt=0;
+  el.dmg.style.opacity=String(clamp(0.35+dmg/50,0,1));
+  setTimeout(()=>{el.dmg.style.opacity='0';},110);
+  SFX.hurt();updateHUD();
+  if(P.hp<=0)die(reason);
+}
+function die(){
+  state='dead';SFX.die();
+  document.exitPointerLock();
+  show('dead',true);el.hud.classList.remove('on');
+}
+function winGame(){
+  state='win';SFX.win();
+  document.exitPointerLock();
+  const m=Math.floor(P.time/60),s=Math.floor(P.time%60);
+  $('wt').textContent=m+':'+String(s).padStart(2,'0');
+  $('wb').textContent=P.berriesEaten;
+  $('ws').textContent=P.stones;
+  show('win',true);el.hud.classList.remove('on');
+}
+
+/* line of sight over the tile grid */
+function losClear(ax,az,bx,bz){
+  const dx=bx-ax,dz=bz-az,d=Math.hypot(dx,dz);
+  const steps=Math.ceil(d/0.5);
+  for(let i=1;i<steps;i++){
+    const t=i/steps;
+    const gx=worldToGX(ax+dx*t),gz=worldToGZ(az+dz*t);
+    if(isSolid(gx,gz))return false;
+  }
+  return true;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   14. UPDATE
+   ═══════════════════════════════════════════════════════════════ */
+const fwd=new THREE.Vector3(),right=new THREE.Vector3();
+const _bodyN=new THREE.Vector3(),_tiltQ=new THREE.Quaternion(),_yawQ=new THREE.Quaternion(),
+      _rollQ=new THREE.Quaternion(),_upAxis=new THREE.Vector3(0,1,0),
+      _zAxis=new THREE.Vector3(0,0,1);
+let chirpTimer=3,nearChime=0,huntedHintShown=false,gloomHintShown=false;
+let envCur=ENV_BASE;
+
+function update(dt){
+  P.time+=dt;
+  windU.value+=dt;
+
+  /* ---- hide in shell ---- */
+  const wantHide=!!keys['Space'];
+  if(wantHide!==P.hidden){
+    P.hidden=wantHide;
+    SFX.shell();
+  }
+  P.hideAmt=lerp(P.hideAmt,P.hidden?1:0,1-Math.pow(0.0005,dt));
+  el.shellview.style.opacity=String(P.hideAmt*0.95);
+
+  /* ---- movement ---- */
+  fwd.set(-Math.sin(P.yaw),0,-Math.cos(P.yaw));
+  right.set(Math.cos(P.yaw),0,-Math.sin(P.yaw));
+  let ix=0,iz=0;
+  if(!P.hidden){
+    if(keys['KeyW'])iz+=1;
+    if(keys['KeyS'])iz-=1;
+    if(keys['KeyD'])ix+=1;
+    if(keys['KeyA'])ix-=1;
+  }
+  // arrow keys also steer (works without a captured mouse)
+  const look=2.0*dt;
+  if(keys['ArrowLeft'])P.yaw+=look;
+  if(keys['ArrowRight'])P.yaw-=look;
+  if(keys['ArrowUp'])P.pitch=clamp(P.pitch+look*0.7,-1.25,1.05);
+  if(keys['ArrowDown'])P.pitch=clamp(P.pitch-look*0.7,-1.25,1.05);
+
+  const mag=Math.hypot(ix,iz);
+  if(mag>0){ix/=mag;iz/=mag;}
+  const sprinting=(!!keys['ShiftLeft']||!!keys['ShiftRight'])&&mag>0&&P.sp>1&&!P.hidden;
+  const boosted=P.boost>0;
+  let speed=2.05;
+  if(sprinting)speed=3.5;
+  if(boosted)speed*=1.35;
+  if(P.hp<30)speed*=0.82;
+
+  const wish=_v.set(fwd.x*iz+right.x*ix,0,fwd.z*iz+right.z*ix);
+  if(wish.lengthSq()>0)wish.normalize().multiplyScalar(speed);
+  // smooth accel/decel — a tortoise has weight
+  P.vel.x=lerp(P.vel.x,wish.x,1-Math.pow(0.0015,dt));
+  P.vel.z=lerp(P.vel.z,wish.z,1-Math.pow(0.0015,dt));
+
+  const nx=P.pos.x+P.vel.x*dt, nz=P.pos.z+P.vel.z*dt;
+  if(!blockedWorld(nx,P.pos.z))P.pos.x=nx;else P.vel.x*=0.2;
+  if(!blockedWorld(P.pos.x,nz))P.pos.z=nz;else P.vel.z*=0.2;
+  // world bounds in the meadow
+  P.pos.x=clamp(P.pos.x,-HALF+0.4,HALF+60);
+  P.pos.z=clamp(P.pos.z,-HALF+0.4,HALF-0.4);
+
+  const spd=Math.hypot(P.vel.x,P.vel.z);
+
+  /* stamina */
+  if(sprinting)P.sp=clamp(P.sp-23*dt,0,100);
+  else P.sp=clamp(P.sp+(P.hidden?26:(spd>0.2?9:16))*dt,0,100);
+  if(P.boost>0)P.boost-=dt;
+
+  /* health regen */
+  P.lastHurt+=dt;
+  if(P.lastHurt>6&&P.hp<100)P.hp=clamp(P.hp+2.4*dt,0,100);
+
+  /* ---- head bob + footsteps ---- */
+  const prevBob=P.bob;
+  P.bob+=spd*dt*3.4;
+  if(spd>0.25&&Math.floor(P.bob/Math.PI)!==Math.floor(prevBob/Math.PI))SFX.step();
+  const bobY=Math.sin(P.bob)*0.028*clamp(spd/2,0,1.3);
+  const bobX=Math.cos(P.bob*0.5)*0.022*clamp(spd/2,0,1.3);
+  const hideDrop=P.hideAmt*0.16;
+
+  const eyeFwd=-P.hideAmt*0.40;              // pulling in draws the eyes back into the shell
+  const gH=groundH(P.pos.x,P.pos.z);
+  P.pos.y=gH+EYE;
+  camera.position.set(P.pos.x-Math.sin(P.yaw)*eyeFwd+bobX*0.4,
+                     gH+EYE+bobY-hideDrop,
+                     P.pos.z-Math.cos(P.yaw)*eyeFwd);
+  camera.rotation.set(P.pitch-P.hideAmt*0.10,P.yaw,Math.sin(P.bob*0.5)*0.012);
+  camera.fov=lerp(camera.fov,P.hidden?62:(sprinting?80:74),1-Math.pow(0.002,dt));
+  camera.updateProjectionMatrix();
+
+  /* You never see your own body while crawling — only when you pull in does
+     the view slide back under the carapace and the shell close around you.
+     The rig stays in the scene either way so its shadow never disappears. */
+  setBodyVisible(P.hideAmt>0.015);
+
+  /* body rig: rides the ground, leans with the slope, never follows the pitch */
+  bodyRig.position.set(P.pos.x,gH+bobY*0.45,P.pos.z);
+  groundNormal(P.pos.x,P.pos.z,_bodyN);
+  _tiltQ.setFromUnitVectors(_upAxis,_bodyN);
+  _yawQ.setFromAxisAngle(_upAxis,P.yaw);
+  _rollQ.setFromAxisAngle(_zAxis,Math.sin(P.bob*0.5)*0.035*clamp(spd/2,0,1));
+  bodyRig.quaternion.copy(_tiltQ).multiply(_yawQ).multiply(_rollQ);
+  const walk=clamp(spd/2.2,0,1);
+  for(let i=0;i<legs.length;i++){
+    const g=legs[i];
+    const ph=P.bob+(i%2?Math.PI:0)+(g.userData.front?0:Math.PI);
+    g.rotation.x=Math.sin(ph)*0.55*walk;
+    g.position.y=0.135+Math.abs(Math.sin(ph))*0.018*walk-P.hideAmt*0.075;
+    g.scale.setScalar(1-P.hideAmt*0.45);
+  }
+  // pulling into the shell: head and legs draw in, the world narrows
+  const retract=P.hideAmt;
+  head.position.set(0,0.300-retract*0.050,-0.015+retract*0.22);
+  head.scale.setScalar(1-retract*0.35);
+  snout.position.set(0,0.247-retract*0.05,-0.118+retract*0.24);
+  snout.scale.setScalar(1-retract*0.4);
+  neck.position.z=0.095+retract*0.10;
+  neck.scale.setScalar(1-retract*0.5);
+  head.position.y+=Math.sin(P.bob)*0.008*walk;
+
+  /* ---- sun follows the player so shadows stay crisp ---- */
+  sun.position.set(P.pos.x,gH,P.pos.z).addScaledVector(SUN_DIR,60);
+  sun.target.position.set(P.pos.x,gH,P.pos.z);
+  sun.target.updateMatrixWorld();
+  sky.position.copy(camera.position);
+
+  /* ---- gloom grove ---- */
+  const gd=Math.hypot(P.pos.x-GLOOM.x,P.pos.z-GLOOM.z)/GLOOM.r;
+  const gl=1-smoothstep(0.72,1.15,gd);
+  const lanternLit=P.hasLantern&&P.lanternOn;
+  scene.fog.density=lerp(FOG_BASE,0.115,gl)*(lanternLit?0.82:1);
+  hemi.intensity=lerp(0.20,0.03,gl);
+  amb.intensity=lerp(0.06,0.01,gl);
+  sun.intensity=lerp(3.8,0.34,gl);
+  const envWant=lerp(ENV_BASE,0.10,gl);
+  if(Math.abs(envWant-envCur)>0.01){envCur=envWant;setEnvIntensity(envCur);}
+  if(gl>0.5&&!gloomHintShown){
+    gloomHintShown=true;
+    toast(P.hasLantern?'The Gloom Grove — <b>press F</b> if your lantern is dark'
+                     :'The <b>Gloom Grove</b>. Too dark to see far… something must light the way.',4.5);
+  }
+  lanternHeld.visible=lanternLit;
+
+  /* ---- explored tiles ---- */
+  const pgx=worldToGX(P.pos.x),pgz=worldToGZ(P.pos.z);
+  for(let j=-2;j<=2;j++)for(let i=-2;i<=2;i++){
+    const tx=pgx+i,tz=pgz+j;
+    if(tx<0||tz<0||tx>=G||tz>=G)continue;
+    if(i*i+j*j<=5)seen[gi(tx,tz)]=1;
+  }
+
+  /* ---- items ---- */
+  nearItem=null;let bestD=2.0;
+  for(const it of items){
+    if(it.collected)continue;
+    const m=it.mesh;
+    m.position.y=it.baseY+Math.sin(P.time*1.8+it.phase)*0.05;
+    m.rotation.y+=dt*(it.type==='stone'?0.9:0.35);
+    if(it.type==='stone'&&m.userData.shaft)
+      m.userData.shaft.material.opacity=0.105+Math.sin(P.time*0.9+it.phase)*0.030;
+    const d=Math.hypot(it.x-P.pos.x,it.z-P.pos.z);
+    if(d<11&&losClear(P.pos.x,P.pos.z,it.x,it.z))it.seen=true;
+    if(d<bestD&&!P.hidden){bestD=d;nearItem=it;}
+    if(it.type==='stone'&&d<9&&!it.collected){
+      nearChime-=dt;
+      if(nearChime<=0){nearChime=2.4;SFX.near();}
+    }
+  }
+  if(nearItem){
+    const def=ITEM_DEF[nearItem.type];
+    el.prompt.innerHTML=`<b>[E]</b> ${def.hint}`;
+    el.prompt.style.opacity='1';
+  }else el.prompt.style.opacity='0';
+
+  /* ---- hazards ---- */
+  let inThorns=false;
+  for(const h of hazards){
+    if(Math.hypot(h.x-P.pos.x,h.z-P.pos.z)<h.r){inThorns=true;break;}
+  }
+  if(inThorns&&!P.hidden){
+    P.hp=clamp(P.hp-11*dt,0,100);P.lastHurt=0;updateHUD();
+    el.dmg.style.opacity='0.5';
+    if(P.hp<=0)die();
+  }else if(!inThorns&&el.dmg.style.opacity==='0.5')el.dmg.style.opacity='0';
+
+  /* ---- crows ---- */
+  let anyHunting=false;
+  for(const c of crows)updateCrow(c,dt,()=>{anyHunting=true;});
+  el.hunted.style.opacity=anyHunting&&!P.hidden?String(0.45+Math.sin(P.time*7)*0.2):'0';
+  if(anyHunting&&!huntedHintShown){
+    huntedHintShown=true;
+    toast('A crow has seen you — <b>hold SPACE</b> to pull into your shell!',4);
+  }
+
+  /* ---- gate ---- */
+  if(!gateLocked&&gateOpenAmt<1){
+    gateOpenAmt=Math.min(1,gateOpenAmt+dt*0.5);
+    const e=1-Math.pow(1-gateOpenAmt,3);
+    const cur=gateGroup.userData.curtain;
+    cur.position.y=e*4.6;
+    cur.visible=gateOpenAmt<0.995;
+  }
+  if(gateBeam)gateBeam.material.opacity=gateLocked?0:(0.13+Math.sin(P.time*1.4)*0.035)*gateOpenAmt;
+
+  /* ---- win check ---- */
+  if(!gateLocked&&P.pos.x>HALF+4.5)winGame();
+
+  /* ---- particles ---- */
+  updateLeaves(dt);updateFireflies(dt);
+
+  /* ---- ambience ---- */
+  chirpTimer-=dt;
+  if(chirpTimer<=0){chirpTimer=rr(2.5,8);if(RNG()<0.75)SFX.chirp();}
+  if(windGain)windGain.gain.value=lerp(windGain.gain.value,0.06+gl*0.05,dt*2);
+
+  /* ---- hud ---- */
+  updateHUD();
+  if(toastTimer>0){toastTimer-=dt;if(toastTimer<=0)el.toast.style.opacity='0';}
+}
+
+function updateCrow(c,dt,onHunt){
+  const m=c.mesh;
+  c.flap+=dt*(c.state==='patrol'?9:15);
+  const fl=Math.sin(c.flap);
+  c.mesh.userData.wings[0].rotation.z=fl*0.85;
+  c.mesh.userData.wings[1].rotation.z=-fl*0.85;
+  if(c.cooldown>0)c.cooldown-=dt;
+
+  const toP=_v.set(P.pos.x-m.position.x,0,P.pos.z-m.position.z);
+  const dxz=toP.length();
+
+  if(c.state==='patrol'){
+    const d=_v2.copy(c.wp).sub(m.position);
+    if(d.length()<1.6)crowNewWaypoint(c);
+    d.normalize().multiplyScalar(3.0);
+    c.vel.lerp(d,1-Math.pow(0.04,dt));
+    if(dxz<15&&!P.hidden&&c.cooldown<=0&&
+       losClear(m.position.x,m.position.z,P.pos.x,P.pos.z)&&m.position.y<7){
+      c.state='hunt';c.t=0;c.hidTime=0;SFX.caw();
+    }
+  }else if(c.state==='hunt'){
+    onHunt();
+    c.t+=dt;
+    if(P.hidden)c.hidTime+=dt;else c.hidTime=0;
+    if(c.hidTime>2.2||c.t>16||dxz>24){c.state='retreat';c.t=0;c.cooldown=6;SFX.caw();}
+    // fly toward the player; climb above the hedges when the way is blocked
+    const dir=_v2.copy(toP);
+    if(dxz>0.01)dir.normalize();
+    const aheadX=m.position.x+dir.x*1.4, aheadZ=m.position.z+dir.z*1.4;
+    const wayBlocked=isSolid(worldToGX(aheadX),worldToGZ(aheadZ));
+    const gA=groundH(m.position.x,m.position.z);
+    const targetY=wayBlocked?gA+4.8:clamp(P.pos.y+0.55,gA+0.8,gA+4.8);
+    const sp=wayBlocked?4.4:5.4;
+    c.vel.x=lerp(c.vel.x,dir.x*sp,1-Math.pow(0.02,dt));
+    c.vel.z=lerp(c.vel.z,dir.z*sp,1-Math.pow(0.02,dt));
+    c.vel.y=lerp(c.vel.y,(targetY-m.position.y)*2.6,1-Math.pow(0.02,dt));
+    if(dxz<0.95&&Math.abs(m.position.y-P.pos.y)<1.3){
+      if(!P.hidden){hurt(17);SFX.caw();}
+      c.state='retreat';c.t=0;c.cooldown=7;
+    }
+    if(RNG()<dt*0.55)SFX.caw();
+  }else{ // retreat
+    c.t+=dt;
+    if(c.t>4){c.state='patrol';crowNewWaypoint(c);}
+    const away=_v2.set(m.position.x-P.pos.x,0,m.position.z-P.pos.z);
+    if(away.lengthSq()<0.01)away.set(1,0,0);
+    away.normalize().multiplyScalar(4.5);
+    c.vel.x=lerp(c.vel.x,away.x,1-Math.pow(0.05,dt));
+    c.vel.z=lerp(c.vel.z,away.z,1-Math.pow(0.05,dt));
+    c.vel.y=lerp(c.vel.y,(groundH(m.position.x,m.position.z)+5.2-m.position.y)*2.4,
+                 1-Math.pow(0.05,dt));
+  }
+
+  m.position.addScaledVector(c.vel,dt);
+  const cg=groundH(m.position.x,m.position.z);
+  m.position.y=clamp(m.position.y,cg+0.5,cg+9);
+  // keep crows inside the grove
+  m.position.x=clamp(m.position.x,-HALF+1,HALF-1);
+  m.position.z=clamp(m.position.z,-HALF+1,HALF-1);
+  // push out of hedges when flying low
+  if(m.position.y<cg+3.4&&isSolid(worldToGX(m.position.x),worldToGZ(m.position.z)))
+    m.position.y=lerp(m.position.y,cg+4.6,1-Math.pow(0.02,dt));
+  // face travel direction
+  if(c.vel.lengthSq()>0.05){
+    const yaw=Math.atan2(c.vel.x,c.vel.z);
+    m.rotation.y=yaw;
+    m.rotation.x=clamp(-c.vel.y*0.12,-0.5,0.5);
+  }
+}
+
+function updateLeaves(dt){
+  const p=leafPoints.geometry.attributes.position;
+  for(let i=0;i<leafData.length;i++){
+    const d=leafData[i];
+    d.y-=d.vy*dt;d.sx+=d.sp*dt;
+    if(d.y<groundH(d.x,d.z)-0.35){
+      d.y=groundH(d.x,d.z)+rr(9,15);
+      d.x=P.pos.x+rr(-22,22);d.z=P.pos.z+rr(-22,22);
+    }
+    // recycle around the player
+    if(Math.abs(d.x-P.pos.x)>26)d.x=P.pos.x+rr(-22,22);
+    if(Math.abs(d.z-P.pos.z)>26)d.z=P.pos.z+rr(-22,22);
+    p.setXYZ(i,d.x+Math.sin(d.sx)*d.amp,d.y,d.z+Math.cos(d.sx*0.8)*d.amp);
+  }
+  p.needsUpdate=true;
+}
+function updateFireflies(dt){
+  const p=fireflyPoints.geometry.attributes.position;
+  for(let i=0;i<fireflyData.length;i++){
+    const d=fireflyData[i];
+    d.p+=dt*d.s;
+    p.setXYZ(i,d.x+Math.sin(d.p*1.3)*0.7,d.y+Math.sin(d.p*0.8+1)*0.35,
+             d.z+Math.cos(d.p)*0.7);
+  }
+  p.needsUpdate=true;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   15. MAIN LOOP
+   ═══════════════════════════════════════════════════════════════ */
+const clock=new THREE.Clock();
+let fpsAcc=0,fpsCount=0,mapAcc=0,ripple=null;
+
+/* Adaptive resolution: hold a playable framerate on modest GPUs without
+   asking the player to fiddle with settings. */
+const MAX_DPR=Math.min(devicePixelRatio,1.25);
+let quality=1, qAcc=0, qFrames=0, qCooldown=2.5, shadowsTrimmed=false;
+function adaptQuality(dt){
+  qAcc+=dt;qFrames++;
+  if(qCooldown>0){qCooldown-=dt;return;}
+  if(qAcc<1.6)return;
+  const fps=qFrames/qAcc;qAcc=0;qFrames=0;
+  if(fps<42&&quality>0.60){
+    quality=Math.max(0.60,quality-0.14);
+    renderer.setPixelRatio(MAX_DPR*quality);
+    buildTargets();
+    qCooldown=2;
+  }else if(fps<34&&POST.ao){
+    POST.ao=false;qCooldown=2.5;
+  }else if(fps<32&&POST.bloom){
+    POST.bloom=false;qCooldown=2.5;
+  }else if(fps<28&&POST.fxaa){
+    POST.fxaa=false;qCooldown=2.5;
+  }else if(fps<26&&!shadowsTrimmed){
+    shadowsTrimmed=true;
+    sun.shadow.mapSize.set(1024,1024);
+    if(sun.shadow.map){sun.shadow.map.dispose();sun.shadow.map=null;}
+    qCooldown=2.5;
+  }else if(fps>57&&quality<1){
+    quality=Math.min(1,quality+0.1);
+    renderer.setPixelRatio(MAX_DPR*quality);
+    buildTargets();
+    qCooldown=3;
+  }
+}
+function animate(){
+  requestAnimationFrame(animate);
+  const dt=Math.min(clock.getDelta(),0.05);
+  if(state==='play')update(dt);
+  if(ripple){ripple.offset.x+=dt*0.012;ripple.offset.y+=dt*0.008;}
+  // fps + map at a lower rate
+  fpsAcc+=dt;fpsCount++;
+  if(fpsAcc>0.5){el.fps.textContent=Math.round(fpsCount/fpsAcc)+' fps';fpsAcc=0;fpsCount=0;}
+  if(state==='play')adaptQuality(dt);
+  mapAcc+=dt;
+  if(mapAcc>0.1&&state==='play'){mapAcc=0;drawMap();}
+  renderFrame();
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   16. BOOT
+   ═══════════════════════════════════════════════════════════════ */
+const BOOT={t0:performance.now(),phases:[],last:performance.now()};
+function setLoad(pct,txt){
+  $('loadbar').style.width=pct+'%';
+  if(txt){
+    const now=performance.now();
+    if(BOOT.phases.length||true)BOOT.phases.push([$('loadtext').textContent,Math.round(now-BOOT.last)]);
+    BOOT.last=now;
+    $('loadtext').textContent=txt;
+  }
+}
+// plain timer, not rAF: rAF is frozen while the tab is hidden, which would
+// leave the loading screen stuck forever on a background tab.
+const frame=()=>new Promise(r=>setTimeout(r,18));
+
+async function boot(){
+ try{
+  setLoad(12,'Growing the hedges…');await frame();
+  buildHedges();
+  setLoad(38,'Scattering the undergrowth…');await frame();
+  buildClutter();
+  setLoad(50,'Planting the outer wood…');await frame();
+  buildOutside();buildGloom();
+  setLoad(64,'Hiding the Sunstones…');await frame();
+  placeItems();buildHazards();buildGate();ripple=buildPond();
+  setLoad(74,'Bedding it all into the soil…');await frame();
+  buildGroundDressing();
+  setLoad(82,'Waking the crows…');await frame();
+  spawnCrows(2);buildLeaves();buildFireflies();
+  setLoad(88,'Letting in the light…');await frame();
+  buildEnvironment();
+  collectMaterials();
+  setLoad(94,'Settling the shadows…');await frame();
+  resetPlayer();
+  camera.position.set(P.pos.x,groundH(P.pos.x,P.pos.z)+EYE,P.pos.z);
+  buildTargets();
+  renderer.compile(scene,camera);
+  renderFrame();
+  setLoad(100,'Ready');await frame();
+  $('loading').style.opacity='0';
+  setTimeout(()=>{$('loading').style.display='none';},520);
+  BOOT.total=Math.round(performance.now()-BOOT.t0);
+  BOOT.phases.push(['ready',0]);
+  state='menu';show('menu',true);
+  animate();
+ }catch(err){
+  console.error('boot failed',err);
+  window.__bootError=(err&&err.stack)||String(err);
+  $('loadtext').textContent='Something broke while waking the forest — see the console.';
+ }
+}
+
+function placeItems(){
+  // --- Sunstones: far dead ends, well separated, one inside the gloom ---
+  let ends=deadEnds().filter(c=>dist[c[1]*N+c[0]]>6);
+  if(ends.length<6)ends=openCells.filter(c=>dist[c[1]*N+c[0]]>8);
+  ends.sort((a,b)=>dist[b[1]*N+b[0]]-dist[a[1]*N+a[0]]);
+  const chosen=[];
+  // one stone in the gloom grove (nearest open cell to its centre)
+  let best=null,bestD=1e9;
+  for(const c of openCells){
+    const p=cellCenter(c[0],c[1]);
+    const d=Math.hypot(p.x-GLOOM.x,p.z-GLOOM.z);
+    if(d<bestD){bestD=d;best=c;}
+  }
+  if(best)chosen.push(best);
+  for(const c of ends){
+    if(chosen.length>=3)break;
+    let ok=true;
+    for(const o of chosen)if(Math.abs(o[0]-c[0])+Math.abs(o[1]-c[1])<9)ok=false;
+    if(ok)chosen.push(c);
+  }
+  while(chosen.length<3){
+    const c=openCells[Math.floor(RNG()*openCells.length)];
+    if(dist[c[1]*N+c[0]]>10)chosen.push(c);
+  }
+  const taken=new Set();
+  for(const c of chosen.slice(0,3)){
+    const p=cellCenter(c[0],c[1]);
+    addItem('stone',p.x,p.z,0.5);
+    taken.add(c[1]*N+c[0]);
+  }
+  // --- lantern: a dead end reasonably close to the start ---
+  const early=deadEnds().filter(c=>{const d=dist[c[1]*N+c[0]];return d>3&&d<16&&!taken.has(c[1]*N+c[0]);});
+  const lan=early.length?early[Math.floor(RNG()*early.length)]:openCells[5];
+  const lp=cellCenter(lan[0],lan[1]);
+  addItem('lantern',lp.x,lp.z,0.12);
+  taken.add(lan[1]*N+lan[0]);
+  // --- berries & glowcaps ---
+  const pool=openCells.filter(c=>dist[c[1]*N+c[0]]>1&&!taken.has(c[1]*N+c[0]));
+  for(let i=0;i<16&&pool.length;i++){
+    const c=pool.splice(Math.floor(RNG()*pool.length),1)[0];
+    const p=cellCenter(c[0],c[1]);
+    addItem('berry',p.x+rr(-0.8,0.8),p.z+rr(-0.8,0.8),0.14);
+  }
+  for(let i=0;i<9&&pool.length;i++){
+    const c=pool.splice(Math.floor(RNG()*pool.length),1)[0];
+    const p=cellCenter(c[0],c[1]);
+    addItem('shroom',p.x+rr(-0.8,0.8),p.z+rr(-0.8,0.8),0.06);
+  }
+}
+
+/* dev hooks (handy for testing) */
+window.__game={
+  P,items,crows,keys,hazards,renderer,scene,camera,sun,hemi,AUDIO,POST,BOOT,
+  renderFrame,buildTargets,matComposite,
+
+  press(code,down){keys[code]=!!down;},
+  look(yaw,pitch){P.yaw=yaw;if(pitch!=null)P.pitch=pitch;},
+  play(){startPlay();},
+  /* step the simulation by hand (used for automated testing; rAF is frozen
+     while the tab is hidden, which is also what pauses the game for real players) */
+  tick(dt,steps){const n=steps||1;for(let i=0;i<n;i++)if(state==='play')update(dt||0.033);
+    drawMap();renderFrame();return this.info();},
+  get state(){return state;},
+  teleport(x,z){P.pos.x=x;P.pos.z=z;},
+  toCell(cx,cy){const p=cellCenter(cx,cy);P.pos.x=p.x;P.pos.z=p.z;},
+  toStone(i){const s=items.filter(t=>t.type==='stone')[i||0];if(s){P.pos.x=s.x;P.pos.z=s.z;}},
+  toGate(){P.pos.x=GATE_X-3;P.pos.z=GATE_Z;},
+  giveStones(){for(const it of items)if(it.type==='stone'&&!it.collected){
+      it.collected=true;it.mesh.visible=false;P.stones++;}
+    openGate();updateHUD();updateObjective();},
+  god(){P.hp=100;setInterval(()=>P.hp=100,500);},
+  info(){return{pos:P.pos.toArray().map(v=>+v.toFixed(2)),hp:P.hp,stones:P.stones,
+    state,gateLocked,items:items.filter(i=>!i.collected).length,
+    tris:renderer.info.render.triangles,calls:renderer.info.render.calls};}
+};
+
+boot();
+}   /* end startGame */
+
+/* --- loader ------------------------------------------------------------- */
+function loadFailed(){
+  var t=document.getElementById('loadtext');
+  if(t)t.innerHTML='Could not load the 3D library.<br>Check your internet connection and reload.';
+}
+if(window.THREE){
+  startGame(window.THREE);
+}else{
+  /* fall back to the ES-module build on a CDN that allows cross-origin imports */
+  try{
+    import('https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js')
+      .then(function(m){ startGame(m); })
+      .catch(loadFailed);
+  }catch(e){ loadFailed(); }
+}
+})();
+</script>
+</body>
+</html>
