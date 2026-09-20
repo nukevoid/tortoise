@@ -24,7 +24,7 @@ mark done tasks like - [X]
 
 ## Tasks
 
-- [ ] Make obstacles (bushes, trees) smooth with many polygons
+- [X] Make obstacles (bushes, trees) smooth with many polygons
 - [ ] Fix problem when player can move formad becose upper body is toching something, but direct view is cler
 - [ ] Fix "in the shell" view
 - [ ] Fix terrain texture resolution 

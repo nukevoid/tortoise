@@ -714,9 +714,9 @@ class IB{                                   // instance builder
     if(buckets.size===0){
       const m=new THREE.InstancedMesh(geo,mat,1);m.count=0;group.add(m);return group;
     }
-    for(const arr of buckets.values()){
+    const fill=(arr,g2)=>{
       const n=arr.length;
-      const m=new THREE.InstancedMesh(geo,mat,n);
+      const m=new THREE.InstancedMesh(g2,mat,n);
       for(let i=0;i<n;i++){
         const it=arr[i];
         if(it.length>10)_q.set(it[3],it[4],it[5],it[10]);
@@ -730,24 +730,55 @@ class IB{                                   // instance builder
       m.castShadow=!!cast;m.receiveShadow=recv!==false;
       m.frustumCulled=true;
       m.computeBoundingSphere();
-      group.add(m);
+      return m;
+    };
+    for(const arr of buckets.values()){
+      group.add(fill(arr,geo));
     }
     return group;
   }
 }
 
+/* A blob is a unit sphere pushed around by a smooth field.
+   IcosahedronGeometry is NON-INDEXED, so computeVertexNormals() hands back one
+   flat normal per triangle and the bush reads as a cut gemstone no matter how
+   many polygons it has. Deriving the normal analytically from the displacement
+   field instead gives genuinely smooth shading, and the extra subdivision then
+   buys a rounder silhouette rather than merely smaller facets. */
+function blobDisp(x,y,z){
+  return 1
+    +0.19*Math.sin(x*3.1+1.2)*Math.cos(y*2.7-0.4)
+    +0.15*Math.sin(z*3.7+2.1)*Math.cos(x*2.3+1.1)
+    +0.10*Math.sin(y*4.6-0.8);
+}
+const _bd=new THREE.Vector3(),_bt1=new THREE.Vector3(),_bt2=new THREE.Vector3(),
+      _bp0=new THREE.Vector3(),_bpa=new THREE.Vector3(),_bpb=new THREE.Vector3(),
+      _bda=new THREE.Vector3(),_bdb=new THREE.Vector3(),_bn=new THREE.Vector3();
+function blobPoint(dir,out){
+  return out.copy(dir).multiplyScalar(blobDisp(dir.x,dir.y,dir.z));
+}
 function blobGeo(detail){
   const g=new THREE.IcosahedronGeometry(1,detail);
   const p=g.attributes.position;
+  const nrm=new Float32Array(p.count*3);
+  const E=0.012;
   for(let i=0;i<p.count;i++){
-    const x=p.getX(i),y=p.getY(i),z=p.getZ(i);
-    const d=1
-      +0.19*Math.sin(x*3.1+1.2)*Math.cos(y*2.7-0.4)
-      +0.15*Math.sin(z*3.7+2.1)*Math.cos(x*2.3+1.1)
-      +0.10*Math.sin(y*4.6-0.8);
-    p.setXYZ(i,x*d,y*d,z*d);
+    _bd.set(p.getX(i),p.getY(i),p.getZ(i)).normalize();
+    // two tangent directions around this point of the sphere
+    _bt1.set(0,1,0);
+    if(Math.abs(_bd.y)>0.9)_bt1.set(1,0,0);
+    _bt1.cross(_bd).normalize();
+    _bt2.crossVectors(_bd,_bt1).normalize();
+    blobPoint(_bd,_bp0);
+    blobPoint(_bda.copy(_bd).addScaledVector(_bt1,E).normalize(),_bpa);
+    blobPoint(_bdb.copy(_bd).addScaledVector(_bt2,E).normalize(),_bpb);
+    _bn.crossVectors(_bpa.sub(_bp0),_bpb.sub(_bp0)).normalize();
+    if(_bn.dot(_bd)<0)_bn.negate();
+    p.setXYZ(i,_bp0.x,_bp0.y,_bp0.z);
+    nrm[i*3]=_bn.x;nrm[i*3+1]=_bn.y;nrm[i*3+2]=_bn.z;
   }
-  g.computeVertexNormals();
+  p.needsUpdate=true;
+  g.setAttribute('normal',new THREE.BufferAttribute(nrm,3));
   return g;
 }
 
@@ -1537,8 +1568,7 @@ const glowGreen=makeGlowSprite('rgba(160,255,190,1)');
 })();
 
 /* --- hedge walls, trees, clutter --- */
-const GEO_BLOB=blobGeo(1);
-const GEO_BLOB2=blobGeo(2);
+const GEO_BLOB=blobGeo(2);        // 180 smooth-shaded faces per bush
 const GEO_ROCK=rockGeo();
 const GEO_GRASS=grassTuftGeo();
 
@@ -1619,7 +1649,7 @@ function buildGroundDressing(){
   litter.renderOrder=1;
   worldGroup.add(litter);
 
-  const flareGeo=new THREE.ConeGeometry(1,1,12,1,true);flareGeo.translate(0,0.5,0);
+  const flareGeo=new THREE.ConeGeometry(1,1,20,2,true);flareGeo.translate(0,0.5,0);
   const flare=flareIB.build(flareGeo,matBark,true,true);
   worldGroup.add(flare);
 }
@@ -1635,10 +1665,10 @@ function buildHedges(){
     const cx=tileX(gx),cz=tileZ(gy);
     const gy0=groundH(cx,cz);
     const border=(gx===0||gy===0||gx===G-1||gy===G-1);
-    const n=border?6:5;
+    const n=border?5:4;
     for(let i=0;i<n;i++){
       const ox=rr(-0.95,0.95),oz=rr(-0.95,0.95);
-      const sc=rr(0.62,1.0);
+      const sc=rr(0.72,1.14);
       const sy=sc*rr(0.8,1.15);
       // lower half of the cluster is bedded into the ground, upper half stacks on it
       const grounded=i<Math.ceil(n*0.6);
@@ -1680,7 +1710,7 @@ function buildHedges(){
     }
   }
   worldGroup.add(bush.build(GEO_BLOB,matFoliage,true,true));
-  worldGroup.add(trunk.build(new THREE.CylinderGeometry(0.72,1.18,2,14,3),matBark,true,true));
+  worldGroup.add(trunk.build(new THREE.CylinderGeometry(0.72,1.18,2,20,4),matBark,true,true));
   worldGroup.add(canopy.build(GEO_BLOB,matCanopy,true,true));
   const cardGeo=leafGeo(0.50,0.62,3,4,0.85,0.35);
   worldGroup.add(card.build(cardGeo,matLeafCard,true,true));
@@ -1875,7 +1905,7 @@ function buildOutside(){
   }
   worldGroup.add(bush.build(GEO_BLOB,matFoliage,true,true));
   worldGroup.add(card.build(leafGeo(0.50,0.62,3,4,0.85,0.35),matLeafCard,true,true));
-  worldGroup.add(trunk.build(new THREE.CylinderGeometry(0.72,1.18,2,14,3),matBark,true,true));
+  worldGroup.add(trunk.build(new THREE.CylinderGeometry(0.72,1.18,2,20,4),matBark,true,true));
   worldGroup.add(canopy.build(GEO_BLOB,matCanopy,true,true));
 }
 
@@ -1902,7 +1932,7 @@ function buildGloom(){
     }
   }
   worldGroup.add(canopy.build(GEO_BLOB,matCanopy,true,true));
-  worldGroup.add(trunk.build(new THREE.CylinderGeometry(0.72,1.18,2,14,3),matBark,true,true));
+  worldGroup.add(trunk.build(new THREE.CylinderGeometry(0.72,1.18,2,20,4),matBark,true,true));
 }
 
 /* the Sun Gate --------------------------------------------------- */
@@ -1910,7 +1940,7 @@ let gateGroup,gateBeam;
 function buildGate(){
   gateGroup=new THREE.Group();
   gateGroup.position.set(GATE_X,groundH(GATE_X,GATE_Z)-0.1,GATE_Z);
-  const postGeo=new THREE.CylinderGeometry(0.22,0.32,3.6,16,3);
+  const postGeo=new THREE.CylinderGeometry(0.22,0.32,3.6,22,4);
   const matPost=new THREE.MeshStandardMaterial({map:texBark.map,normalMap:texBark.nrm,
     roughnessMap:texBark.rough,roughness:1,normalScale:new THREE.Vector2(1.5,1.5)});
   for(const s of [-1,1]){
