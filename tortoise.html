@@ -4934,18 +4934,28 @@ const SHELL={
    for the table): on the beat rights in 1.67s, 120ms of slop still rights
    every time in 2.17s, and mashing at 4, 8 or 14 presses a second never
    does. */
+/* How big the tortoise is, as one number.
+
+   The shell was 0.60m across and 0.74m long, which is a very large tortoise
+   and made the Hollow feel like a garden rather than a world seen from
+   ankle height. Three quarters of that is 0.45 by 0.55, and everything that
+   describes the animal is expressed through this so they cannot drift apart:
+   the rig, the eye, the collision radius it is stopped at, the dome it rocks
+   on when upturned, and how deep it can wade. */
+const TORTOISE=0.75;
+
 const FLIP={
   period:1.10,          // one full left-right cycle, the same however far it swings
   gain:0.40,            // amplitude from one heave landed on the beat
   decay:0.70,           // ...and what survives a second of doing nothing
   reload:0.26,          // a tortoise cannot heave faster than this
   tipAngle:1.05,        // swing this far and it is over
-  shellR:0.22,          // the dome it rocks on, which is what it rolls along
+  shellR:0.22*TORTOISE, // the dome it rocks on, which is what it rolls along
   rightTime:0.52,       // the roll onto its feet
-  lift:0.30,            // the upturned shell rests ON the ground, not in it
-  hop:0.13,             // ...and lifts as it pivots over its edge
-  camHeight:1.05,
-  camBack:0.62,
+  lift:0.30*TORTOISE,   // the upturned shell rests ON the ground, not in it
+  hop:0.13*TORTOISE,    // ...and lifts as it pivots over its edge
+  camHeight:1.05*TORTOISE,
+  camBack:0.62*TORTOISE,
   camPitch:-0.88
 };
 
@@ -5782,6 +5792,7 @@ function buildFireflies(){
    player's feet and yaw, so looking down shows your own shell, legs and snout,
    and the sun throws its shadow on the path. */
 const bodyRig=new THREE.Group();scene.add(bodyRig);
+bodyRig.scale.setScalar(TORTOISE);
 let legs=[],snout,head,shellMesh,lanternHeld,neck,shellRoof,shellFloor;
 (function buildBody(){
   const texShell=makeShellTextures();
@@ -6063,7 +6074,11 @@ const SFX={
 /* ═══════════════════════════════════════════════════════════════
    10. PLAYER / GAME STATE
    ═══════════════════════════════════════════════════════════════ */
-const EYE=0.34, RADIUS=0.33;
+/* Eye height and the radius the player is stopped at, both of them the
+   animal's own size: a smaller tortoise sees from lower down and fits
+   closer to a hedge, and if only one of the two moved the game would go
+   back to stopping people in front of open-looking ground. */
+const EYE=0.34*TORTOISE, RADIUS=0.33*TORTOISE;
 const P={
   pos:new THREE.Vector3(),vel:new THREE.Vector3(),
   yaw:0,pitch:0,bob:0,
@@ -6129,7 +6144,7 @@ function resetPlayer(){
 }
 
 /* --- tile collision ------------------------------------------- */
-const WADE_MAX=0.20;                    // deeper than this and it will not go in
+const WADE_MAX=0.20*TORTOISE;           // deeper than this and it will not go in
 function blocked(x,z){
   if(waterDepth(x,z)>WADE_MAX)return true;
   const gx=worldToGX(x),gz=worldToGZ(z);
