@@ -1079,16 +1079,27 @@ function gustAt(x,z){
 }
 /* The slow swell that decides whether the air is resting or working.
 
-   The air now rests light and works in bursts, instead of sitting at a
-   middling push the whole time. The gust term is a sine raised high, so it
-   is near nothing for most of its minute and arrives as a build and a drop;
-   the much slower spell term decides whether this stretch of the day is a
-   breezy one or a calm one, so two gusts running are rarely the same size.
-   Resting is 0.06 and a gust lands between 0.8 and 1.21, where the old
-   shape never left the 0.18-1.0 band it spent its whole time in the middle
-   of. */
+   The air rests light and works in bursts, instead of sitting at a middling
+   push the whole time. The gust term is a sine raised high, so it is near
+   nothing for most of its cycle and arrives as a build and a drop; the much
+   slower spell term decides whether this stretch of the day is a breezy one
+   or a calm one, so two gusts running are rarely the same size. Resting is
+   0.06 and a gust lands between 0.4 and 1.21.
+
+   The quiet between gusts is the point, so the gust is narrow (a ninth
+   power) and its cycle is long: still air roughly 80s at a time, a gust
+   about every 100s, and the hedges working a fifth of the time rather than
+   a third. None of that is taken out of the gusts themselves -- the power
+   they reach is untouched, they simply arrive less often.
+
+   Do not let the two periods fall into a whole-number ratio. They beat
+   against each other, and at 2:1 the gust peak lands on the spell trough
+   every time, so the strongest gusts stop happening altogether: 100s
+   against 234s is 2.34, and full-strength gusts come about ten times an
+   hour. Rain drives this clock 45% faster, which brings the gusts closer
+   together again just as the weather asks for. */
 function gustEnvelope(t){
-  const gust =Math.pow(Math.sin(t*0.104)*0.5+0.5, 4.0);       // a gust a minute
+  const gust =Math.pow(Math.sin(t*0.0628)*0.5+0.5, 9.0);      // a gust per 100s
   const spell=Math.pow(Math.sin(t*0.0268+1.7)*0.5+0.5, 1.5);  // breezy or calm
   return 0.06 + 1.15*gust*(0.30+0.70*spell);
 }

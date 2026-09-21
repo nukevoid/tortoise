@@ -64,7 +64,7 @@ mark done tasks like - [X]
 - [X] remove strafes, assign to A and D YAW rotation
 - [X] fix legs and head animation and model of tortoise (looks bed in 3rd view mode)
 - [X] bug - on lake's leaf  player movement has jitter 
-- [ ] do more time of calm wind 
+- [X] do more time of calm wind 
 - [ ] add rain drops on water when it rains
 - [ ] in V mode when hides in SHell: additional shel apiars around the body - fix it
 - [ ] in V mode uppar part of the legs visible thought shell
