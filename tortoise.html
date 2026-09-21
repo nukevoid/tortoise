@@ -102,6 +102,14 @@
   #mapwrap .cap{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--gold);
     opacity:.8;text-align:center;margin-top:6px}
   #fps{position:absolute;right:18px;bottom:18px;font-size:11px;opacity:.4;font-variant-numeric:tabular-nums}
+  /* the view toggle. Sits under the map because that is the other thing on
+     screen that is about where you are rather than how you are doing. */
+  #viewbtn{position:absolute;right:18px;top:284px;padding:5px 12px;font-size:11px;
+    letter-spacing:.14em;text-transform:uppercase;color:var(--gold);cursor:pointer;
+    border:1px solid var(--edge);border-radius:999px;background:rgba(10,16,8,.55);
+    opacity:.62;transition:opacity .2s,background .2s;user-select:none}
+  #viewbtn:hover{opacity:1}
+  #viewbtn.on{opacity:.95;background:rgba(232,197,106,.16)}
 
   /* ---------- overlays ---------- */
   .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
@@ -175,6 +183,7 @@
 
     <div id="prompt" class="panel"></div>
     <div id="toast"></div>
+    <div id="viewbtn" title="Switch between first and third person (V)">1st</div>
     <div id="fps">— fps</div>
   </div>
 
@@ -192,6 +201,7 @@
       <div>E</div><div>Pick up what's in front of you</div>
       <div>1 2 3 · Click / Q</div><div>Select and use an item</div>
       <div>F</div><div>Toggle the firefly lantern</div>
+      <div>V</div><div>First person / third person</div>
       <div>Esc · M · R</div><div>Pause · Mute · Restart</div>
     </div>
     <div class="cta" id="startbtn">Click to begin</div>
@@ -7431,6 +7441,71 @@ const SFX={
    closer to a hedge, and if only one of the two moved the game would go
    back to stopping people in front of open-looking ground. */
 const EYE=0.34*TORTOISE, RADIUS=0.33*TORTOISE;
+
+/* ---------------------------------------------------------------
+   Third person.
+
+   The animal was always there. The rig -- legs, neck, beak, shell -- stands
+   in the scene the whole time so that its shadow exists, and it is simply
+   swapped to an invisible material unless you pull into your shell or go
+   over on your back. All this does is stand the camera off behind it.
+
+   Three things make it usable rather than merely possible:
+
+     - the boom swings with the pitch rather than sliding up a pole, so the
+       eye stays on the same line of sight as it had in first person and the
+       crosshair goes on meaning what it meant;
+     - it shortens against hedges. A corridor here is about a metre and a
+       half wide, so a boom of fixed length would spend most of the game
+       inside a wall;
+     - and it stays above the ground, which on a slope it otherwise dips
+       under about every third step.
+
+   The numbers are in tortoise. The animal's eye is 25cm off the soil, so a
+   boom of 1.15m is roughly four body lengths and already reads as a long
+   way back. */
+const VIEW={
+  dist:1.25,     // the boom, when nothing is in the way
+  /* Anchored well above the shell. At 0.30 the camera sat level with the
+     dome, the animal filled the middle of the screen and you could not see
+     what you were walking into -- which is the one thing third person is
+     supposed to be better at. Aiming at a point above it puts the tortoise
+     in the bottom third and gives the corridor back. */
+  up:0.46,
+  ease:0.16,     // about this many seconds to glide between the views
+  clear:0.22,    // kept clear of whatever it backs into
+  floor:0.14,    // and of the ground under it
+  /* Crushed shorter than this by a hedge, the camera is inside the shell,
+     and the inside of the shell is not a view. The body goes back to being
+     invisible and you are effectively in first person until there is room
+     again -- which, backed into a corner, is 13% of the time.
+
+     Two numbers rather than one because the boom twitches: a single
+     threshold makes the animal flicker in and out wherever the wall behind
+     you happens to sit at exactly that distance. It goes out at the short
+     one and does not come back until the long one. */
+  hideUnder:0.36, showOver:0.50
+};
+function thirdPersonCamera(gH,roll){
+  const cp=Math.cos(P.pitch), sp=Math.sin(P.pitch);
+  // straight back along the line of sight: forward is (-sin,0,-cos)
+  const bx=Math.sin(P.yaw)*cp, by=sp, bz=Math.cos(P.yaw)*cp;
+  const ox=P.pos.x, oy=gH+VIEW.up, oz=P.pos.z;
+  let d=VIEW.dist*P.tpAmt;
+  /* Out from the animal a step at a time; the first sample inside something
+     stops it, one clearance short. Cheaper than a raycast against six
+     hundred meshes, and the maze is a grid of boxes anyway. */
+  const STEPS=12;
+  for(let i=1;i<=STEPS;i++){
+    const t=d*i/STEPS;
+    if(blockedDry(ox+bx*t,oz+bz*t)){ d=Math.max(0,t-VIEW.clear); break; }
+  }
+  P.tpDist=d;
+  const cx=ox+bx*d, cz=oz+bz*d;
+  const cy=Math.max(oy+by*d, groundH(cx,cz)+VIEW.floor);
+  camera.position.set(cx,cy,cz);
+  camera.rotation.set(P.pitch,P.yaw,roll);
+}
 const P={
   pos:new THREE.Vector3(),vel:new THREE.Vector3(),
   yaw:0,pitch:0,bob:0,
@@ -7450,7 +7525,11 @@ const P={
   flipTheta:0, flipAmp:0,          // the swing's own clock, and how far it goes
   flipPhase:'rock', flipRightT:0, flipDir:1,
   flipHeldL:false, flipHeldR:false, flipReload:0,
-  camLift:0
+  camLift:0,
+  /* Which view you asked for, and where the camera actually is. Two
+     numbers rather than one because a cut between the two is a jolt and a
+     glide is not. */
+  third:false, tpAmt:0, tpDist:0, tpBody:false
 };
 let state='loading';                // loading | menu | play | pause | dead | win
 const keys={};
@@ -7460,6 +7539,9 @@ function resetPlayer(){
   const p=cellCenter(START_CELL[0],START_CELL[1]);
   P.pos.set(p.x,EYE,p.z);P.vel.set(0,0,0);
   P.raft=null;                      // whatever you were standing on, you are not now
+  /* back behind your own eyes -- through setView, so the button on the
+     HUD says so too; setting the flag alone left it reading 3rd */
+  P.tpAmt=0; P.tpBody=false; setView(false);
   for(const R of RAFTS){R.x=R.hx;R.z=R.hz;}   // and every leaf back at its landing
   // face whichever way the corridor actually runs
   const sgx=2*START_CELL[0]+1, sgy=2*START_CELL[1]+1;
@@ -7712,7 +7794,7 @@ const el={
   hud:$('hud'),obj:$('objtext'),stones:$('stones').children,
   hp:$('hp').firstElementChild,sp:$('sp').firstElementChild,
   prompt:$('prompt'),toast:$('toast'),fps:$('fps'),
-  dmg:$('damage'),hunted:$('hunted'),shellview:$('shellview'),
+  dmg:$('damage'),hunted:$('hunted'),shellview:$('shellview'),viewbtn:$('viewbtn'),
   slots:document.querySelectorAll('.slot'),
   map:$('minimap').getContext('2d')
 };
@@ -7857,7 +7939,17 @@ function onKeyDown(e){
   if(e.code==='Digit2'){P.slot=1;updateHotbar();}
   if(e.code==='Digit3'){P.slot=2;updateHotbar();}
   if(e.code==='KeyF')toggleLantern();
+  if(e.code==='KeyV')setView(!P.third);
 }
+function setView(third){
+  P.third=!!third;
+  el.viewbtn.textContent=P.third?'3rd':'1st';
+  el.viewbtn.classList.toggle('on',P.third);
+}
+/* The button works when the mouse is not captured, which is the same deal
+   the hotbar slots have: with the pointer locked the canvas gets the click,
+   so V is the one that always works. */
+el.viewbtn.addEventListener('click',e=>{e.stopPropagation();setView(!P.third);});
 
 /* pointer lock plumbing — the game runs with or without a captured mouse */
 function lock(){
@@ -8083,7 +8175,9 @@ function update(dt){
     SFX.shell();
   }
   P.hideAmt=lerp(P.hideAmt,P.hidden?1:0,1-Math.pow(0.0005,dt));
-  el.shellview.style.opacity=String(P.hideAmt*0.95);
+  /* The shell closing over the lens is a first-person idea. Watched from
+     outside it is a brown smear across the picture. */
+  el.shellview.style.opacity=String(P.hideAmt*0.95*(1-P.tpAmt));
 
   /* ---- movement ---- */
   fwd.set(-Math.sin(P.yaw),0,-Math.cos(P.yaw));
@@ -8216,10 +8310,17 @@ function update(dt){
                         P.pos.z-Math.sin(P.yaw)*cOff+FLIP.camBack);
     camera.rotation.set(FLIP.camPitch,0,P.flipAngle*0.16);
   }else{
-    camera.position.set(P.pos.x-Math.sin(P.yaw)*eyeFwd+bobX*0.4,
-                       gH+EYE+bobY-hideDrop+P.camLift,
-                       P.pos.z-Math.cos(P.yaw)*eyeFwd);
-    camera.rotation.set(P.pitch-P.hideAmt*0.10,P.yaw,Math.sin(P.bob*0.5)*0.012);
+    P.tpAmt=lerp(P.tpAmt,P.third?1:0,1-Math.pow(0.0005,dt/VIEW.ease));
+    if(P.tpAmt<0.002)P.tpAmt=0;
+    const roll=Math.sin(P.bob*0.5)*0.012;
+    if(P.tpAmt>0){
+      thirdPersonCamera(gH,roll);
+    }else{
+      camera.position.set(P.pos.x-Math.sin(P.yaw)*eyeFwd+bobX*0.4,
+                         gH+EYE+bobY-hideDrop+P.camLift,
+                         P.pos.z-Math.cos(P.yaw)*eyeFwd);
+      camera.rotation.set(P.pitch-P.hideAmt*0.10,P.yaw,roll);
+    }
   }
   camera.fov=lerp(camera.fov,P.hidden?62:(sprinting?80:74),1-Math.pow(0.002,dt));
   camera.updateProjectionMatrix();
@@ -8227,7 +8328,10 @@ function update(dt){
   /* You never see your own body while crawling — only when you pull in does
      the view slide back under the carapace and the shell close around you.
      The rig stays in the scene either way so its shadow never disappears. */
-  setBodyVisible(P.hideAmt>0.015||P.flipped);
+  if(P.tpAmt<=0.02)P.tpBody=false;
+  else if(P.tpDist<VIEW.hideUnder)P.tpBody=false;
+  else if(P.tpDist>VIEW.showOver)P.tpBody=true;
+  setBodyVisible(P.hideAmt>0.015||P.flipped||P.tpBody);
   /* Inside the shell the eyes are inside the skull, so the head, neck and
      beak must not be drawn -- they sat 17 cm from the lens as a dark blob --
      and the lantern's glow sprite must not either, or it floods the whole
@@ -8845,7 +8949,7 @@ window.__game={
   groundH,terrainBase,waterDepth,blocked,BASINS,CREEK,surfaceAt,biomeDensity,
   flipPlayer,unflipPlayer,
   mobs,MOB_TYPES,defineMob,spawnMob,despawnMob,setMobState,mobDist,
-  RAFTS,WAY,wayDist,wayLevelAt,blockedWorld,waterProbes,bakeWaterProbes,
+  RAFTS,WAY,wayDist,wayLevelAt,blockedWorld,waterProbes,bakeWaterProbes,setView,
   mobStrike,attackTick,playerSheltered,makeThreatShadow,placeThreatShadow,
   STAGE,stageFree,stageBusy,shadowReadable,groundFavour,MOB_GROUND,GLOOM,
   get shafts(){return shaftMesh;},get motes(){return moteMesh;},

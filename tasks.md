@@ -55,8 +55,9 @@ mark done tasks like - [X]
 - [X] don't make that diagonal free cells not connected (visualy I can see next diagonal cell, but can't go to it now)
 - [X] more lighter and faster steps, it is tortoise, not Cow
 - [X] add reflection to water (cubemap like minimum)
-- [ ] add button to switch view from first to third person
+- [X] add button to switch view from first to third person
 - [ ] ground under water has to look wet - darker with weetness
 - [ ] bug: in left top sector related to lake lake water is higher than banks and terain
 - [ ] sound of wind has to depend on wind power. And do wins lighter by defaul, and stronger time to time
 - [ ] bug: some ponds looks like without water, maybe camera beneth the water plane 
+- [ ] fix legs and head animation and model of tortoise (looks bed in 3rd view mode)
