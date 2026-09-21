@@ -2715,7 +2715,15 @@ function buildHedges(){
   const woodIB=[new IB(),new IB(),new IB(),new IB()],
         leafIB=[new IB(),new IB(),new IB(),new IB()];
   const THICKET=3;
-  const core=new IB();
+  /* Two instancers for the same shape, because half of them are buried.
+
+     `core` is the mass inside the tile: never seen, only there to guarantee
+     you cannot see through a wall, so it stays on the 80-face blob. `edge`
+     is the ones on the faces and corners -- the ones the player stands a
+     hand's width from -- and those get the 320-face one. The old code ran
+     both off `core` at 80 faces, and a faceted lozenge at arm's length is
+     what "super lowpoly, stretched textures" meant. */
+  const core=new IB(), edge=new IB();
   const trunk=new IB(),canopy=new IB(),card=new IB(),crown=new IB();
   const tint=new THREE.Color();
   /* One grown bush, dropped on the ground and turned at random. Wood and
@@ -2776,131 +2784,57 @@ function buildHedges(){
        cannot see through the wall, whatever the branches happen to do. */
     tint.setRGB(rr(0.70,1.10)*autumn[0],rr(0.76,1.12)*autumn[1],rr(0.68,1.05)*autumn[2]);
     core.add(cx,gy0+0.92,cz,0,rr(0,6.28),0,1.16,1.02,1.16,tint.clone());
-    /* One thicket lying along each open face, and then whatever grown plant
-       the tile happens to get.
+    /* Faces and corners as they were before the coverage work.
 
-       A tile face is 2.6m wide and a blob is not, so a single blob dropped
-       somewhere along it left up to a metre bare -- and since collision
-       treats the whole tile as solid, that metre was open-looking floor the
-       player walked at and was stopped in front of. Packing the face with
-       two smooth blobs closed the gap and cost the hedge its character: a
-       corridor of them reads as a painted wall with no plant in it.
+       Everything between here and the crown was rebuilt three times trying
+       to close the sight-line holes -- two blobs per face, then a thicket
+       species to fill what one plant missed, then a grown plant on every
+       face and every corner with a spray of leaf cards under it. Each pass
+       measured better on the ray survey and each one read worse to play: a
+       hedge line packed edge to edge has no silhouette left, and the gap in
+       the foliage is a good part of what made a corridor look like a
+       corridor rather than a painted one.
 
-       The thicket is the gap-filler instead. It is grown, not a blob, it is
-       wider than it is deep, and it is turned to lie along the face rather
-       than spun at random, so one of them spans the face and what fills the
-       hole is branches and leaves rather than a lozenge. */
+       So this is the original arrangement, restored on purpose: one thing
+       per open face, about half of them a grown bush and the rest a blob,
+       dropped anywhere along the face; one blob at each exposed corner;
+       leaves scattered over the whole tile rather than lined up on its
+       edges. The gap between where the foliage ends and where collision
+       stops you comes back with it, and is accepted.
+
+       What does not come back is the 80-face blob at arm's length. These go
+       through `edge`, which is the 320-face one. */
     for(const f of faces){
-      /* The face as it always was: one plant or one blob, dropped somewhere
-         along it, which is what gave the hedge line its character. */
       const out=rr(0.82,1.06), side=rr(-0.78,0.78);
       const fx=cx+(f[0]?f[0]*out:side), fz=cz+(f[1]?f[1]*out:side);
       const fs=rr(0.78,1.08), fy=fs*rr(0.90,1.22);
       tint.setRGB(rr(0.72,1.18)*autumn[0],rr(0.78,1.14)*autumn[1],rr(0.7,1.1)*autumn[2]);
-      // every face gets a grown plant. There is no cheap version any more:
-      // the cheap version is the thing that looked wrong.
-      const spf=RNG()<0.72?sp0:(sp0+1+(RNG()<0.5?0:1))%3;
-      placeBush(fx,fz,fs,fy,spf,tint.clone(),rr(0.26,0.44));
+      /* A grown bush is expensive, so they are scattered rather than lining
+         every face: roughly half the faces get one, the rest get the mass.
+         Spacing them out also stops the hedge looking stamped from a single
+         repeated plant. */
+      if(RNG()<0.48){
+        const spf=RNG()<0.72?sp0:(sp0+1+(RNG()<0.5?0:1))%3;
+        placeBush(fx,fz,fs,fy,spf,tint.clone());
+      }else{
+        edge.add(fx,groundH(fx,fz)+fy*rr(0.5,0.78),fz,
+                 rr(0,6.28),rr(0,6.28),rr(0,6.28),
+                 fs*rr(0.98,1.22),fy,fs*rr(0.98,1.22),tint.clone());
+      }
       if(RNG()<0.5)baseDress(fx,fz,fs*rr(0.26,0.40));
-
-      /* ...and a thicket over whichever half of the face that left bare.
-         A face is 2.6m wide and one plant is not, so up to a metre of it had
-         nothing on it -- and since collision treats the whole tile as solid,
-         that metre was open-looking floor the player walked at and was
-         stopped in front of. Filling it with a second smooth blob closed the
-         hole and cost the hedge its character: a corridor of them reads as a
-         painted wall. The thicket is grown instead, wider than it is deep,
-         and laid along the face rather than spun at random, so what fills
-         the gap is branches you can see through. */
-      /* ...and a thicket over the half the plant above left bare, but only
-         where it actually sat off to one side and only sometimes: the face
-         now carries a grown bush of its own, a spray of leaves and a corner
-         plant at each end, so this is the last resort rather than the
-         structure it was when the faces were blobs. */
-      /* Only where the face plant actually sat well off to one side. At
-         0.26 almost two faces in three got a thicket on top of the plant
-         they already had, which is most of why the hedge carried so many
-         grown bushes; at 0.40 it goes back to being the gap-filler it was
-         meant to be. */
-      if(Math.abs(side)>0.40){
-        const tside=(side>0?-1:1)*rr(0.42,0.78);
-        const tout=rr(0.78,0.94);
-        const tx=cx+(f[0]?f[0]*tout:tside), tz=cz+(f[1]?f[1]*tout:tside);
-        const yaw=(f[0]?Math.PI/2:0)+rr(-0.12,0.12);
-        const ts=rr(0.88,1.02);
-        tint.setRGB(rr(0.72,1.18)*autumn[0],rr(0.78,1.14)*autumn[1],rr(0.7,1.1)*autumn[2]);
-        placeAlong(tx,tz,ts,ts*rr(0.92,1.14),ts*rr(0.94,1.12),yaw,THICKET,tint.clone());
-      }
-
-      /* A bank of litter along the foot of the face. A tortoise's eye is
-         0.34m off the floor and a sight-line at that height slips between
-         twigs, so something has to close the low line -- but the first
-         version of this was one smooth two-metre lozenge with a leaf texture
-         stretched over it, and measured from in front of a hedge it and its
-         relatives were 46% of everything on screen. Three small lumps at
-         different heights, sunk lower, read as heaped litter rather than as
-         a moulding; the leaves that go over them are the next block. */
-      {
-        const bout=rr(0.78,0.94), along=rr(-0.55,0.55);
-        const bx2=cx+(f[0]?f[0]*bout:along), bz2=cz+(f[1]?f[1]*bout:along);
-        // heaped leaf litter on the soil, which is flat dressing, not a ball
-        baseDress(bx2,bz2,rr(0.34,0.50),true);
-      }
-      /* Leaves along the face at the height a tortoise looks: 24 triangles
-         each and they are leaf-shaped, which is the whole argument against
-         doing this with a sphere and a texture. */
-      for(let k=0;k<6;k++){
-        const lout=rr(0.84,1.14), along=rr(-1.10,1.10);
-        const lx=cx+(f[0]?f[0]*lout:along), lz=cz+(f[1]?f[1]*lout:along);
-        tint.setRGB(rr(0.70,1.28)*autumn[0],rr(0.76,1.22)*autumn[1],rr(0.62,1.10)*autumn[2]);
-        card.add(lx,groundH(lx,lz)+rr(0.06,0.64),lz,
-                 rr(-1.4,1.4),rr(0,6.28),rr(-1.0,1.0),
-                 rr(0.9,1.7),rr(0.9,1.7),1,tint.clone());
-      }
-
     }
 
-    /* Corners too: standing at a bend, the tile that blocks you is the
-       diagonal one, and without this its corner is bare ground.
-
-       These used to be blobs, and measured from in front of a hedge they
-       were 61 of the 114 sphere hits on screen -- more than half of the
-       thing that made the Hollow look like a pile of textured balls. They
-       are grown plants now, like everything else the player can walk up to.
-       A blob is cheap and a bush is not, but a bush is what a hedge is made
-       of, and the triangles are found elsewhere. */
+    // Corners too: standing at a bend, the tile that blocks you is the
+    // diagonal one, and without this its corner is bare ground.
     for(const d of [[1,1],[1,-1],[-1,1],[-1,-1]]){
       if(isSolid(gx+d[0],gy)&&isSolid(gx,gy+d[1]))continue;   // buried inside the wall
       if(isSolid(gx+d[0],gy+d[1]))continue;                   // neighbour fills it
       const kx=cx+d[0]*rr(0.74,0.98), kz=cz+d[1]*rr(0.74,0.98);
-      const ks=rr(0.62,0.88), ky=ks*rr(0.92,1.18);
+      const ks=rr(0.60,0.86), ky=ks*rr(0.88,1.14);
       tint.setRGB(rr(0.72,1.18)*autumn[0],rr(0.78,1.14)*autumn[1],rr(0.7,1.1)*autumn[2]);
-      /* A grown plant on about half of them rather than all of them.
-
-         Every corner having its own bush is what made the hedges so heavy:
-         grown bushes were 2,959 instances and 51% of every triangle in the
-         world. A corner is also the part of a tile you are least often
-         stood against -- you walk along faces and cut across corners -- so
-         this is the cheapest half to give up.
-
-         What replaces it is leaves, not nothing. The corner still has to
-         stop a sight-line at 0.34m, and the buried core does the blocking,
-         so a spray of leaf cards over litter reads as the same hedge from
-         outside for a fortieth of the triangles. */
-      if(RNG()<0.52){
-        const spk=RNG()<0.66?sp0:(sp0+1+(RNG()<0.5?0:1))%3;
-        placeBush(kx,kz,ks,ky,spk,tint.clone(),rr(0.22,0.40));
-        if(RNG()<0.45)baseDress(kx,kz,ks*rr(0.22,0.34));
-      }else{
-        baseDress(kx,kz,ks*rr(0.26,0.40),true);
-        for(let k=0;k<5;k++){
-          const lx=kx+rr(-0.30,0.30), lz=kz+rr(-0.30,0.30);
-          tint.setRGB(rr(0.70,1.28)*autumn[0],rr(0.76,1.22)*autumn[1],rr(0.62,1.10)*autumn[2]);
-          card.add(lx,groundH(lx,lz)+rr(0.05,0.62),lz,
-                   rr(-1.4,1.4),rr(0,6.28),rr(-1.0,1.0),
-                   rr(0.9,1.6),rr(0.9,1.6),1,tint.clone());
-        }
-      }
+      edge.add(kx,groundH(kx,kz)+ky*rr(0.5,0.75),kz,
+               rr(0,6.28),rr(0,6.28),rr(0,6.28),
+               ks*rr(0.98,1.2),ky,ks*rr(0.98,1.2),tint.clone());
     }
 
     // top layer so the hedge reads as one mass ~2.6m tall -- this is the part
@@ -2910,7 +2844,7 @@ function buildHedges(){
               rr(0.92,1.3),rr(0.62,0.9),rr(0.92,1.3),tint.clone());
     // leaf cards for silhouette
     // leaves that stand proud of the mass, catching light against the gloom
-    for(let i=0;i<4;i++){
+    for(let i=0;i<6;i++){
       const a=rr(0,6.283), rad=rr(1.5,2.05);
       tint.setRGB(rr(0.75,1.35),rr(0.82,1.3),rr(0.6,1.1));
       const px=cx+Math.cos(a)*rad, pz=cz+Math.sin(a)*rad;
@@ -2918,7 +2852,7 @@ function buildHedges(){
                rr(-1.4,1.4),rr(0,6.28),rr(-1.0,1.0),
                rr(1.0,1.8),rr(1.0,1.8),1,tint.clone());
     }
-    for(let i=0;i<4;i++){
+    for(let i=0;i<7;i++){
       const a=rr(0,6.283), rad=rr(1.1,1.75);
       tint.setRGB(rr(0.62,1.25),rr(0.7,1.2),rr(0.55,1.1));
       const lx=cx+Math.cos(a)*rad, lz=cz+Math.sin(a)*rad;
@@ -2948,6 +2882,7 @@ function buildHedges(){
     if(proto[i].leaf) worldGroup.add(leafIB[i].build(proto[i].leaf,matBushLeaf,true,true,40));
   }
   worldGroup.add(core.build(GEO_BLOB_SHADOW,matFoliageCut,true,true));
+  worldGroup.add(edge.build(GEO_BLOB_SMOOTH,matFoliageCut,true,true));
   // the crown is the part that meets the sky, two metres up and never
   // walked into; the cheap blob is indistinguishable from the corridor floor
   // the crown is the hedge's outline against the sky: the smooth one
