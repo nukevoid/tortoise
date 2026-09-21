@@ -7575,6 +7575,11 @@ const FOOT_R=0.277*TORTOISE;
     }
     g.add(l);g.add(f);
     g.userData.front=front;g.userData.side=side;g.userData.foot=f;
+    /* Where this leg stands, and where it berths when the animal pulls in.
+       The stow is a place under the dome, not a scaling of the stance: see
+       the retraction in update() for why the stance itself cannot serve. */
+    g.userData.homeX=x;g.userData.homeZ=z;
+    g.userData.stowX=side*0.105;g.userData.stowZ=front?0.175:0.400;
     bodyRig.add(g);legs.push(g);
   }
   /* --- tail ---
@@ -8987,8 +8992,19 @@ function update(dt){
        half that pushes back. It was |sin| before, which lifts a foot twice
        a cycle and sets it down at both ends of the swing: a leg that hops
        rather than one that walks. */
-    g.position.y=0.150+Math.max(0,Math.cos(ph))*Math.abs(legV)*0.030-P.hideAmt*0.075;
-    g.scale.setScalar(1-P.hideAmt*0.45);
+    /* Pulling in is a withdrawal, not a shrink. The groups stand at x 0.235
+       and z 0.03 / 0.45, while the carapace -- an ellipsoid 0.30 by 0.205 by
+       0.37 about (0, 0.165, 0.30) -- has narrowed to 0.157 across by the time
+       it reaches the front pair. So legs that only got smaller and sank 7.5cm
+       stayed outside the shell they were supposedly inside, and from above
+       they were four nubs round the rim. They travel in to their berth as
+       well now, and roll so the sole turns under rather than out. */
+    const tk=P.hideAmt;
+    g.position.x=lerp(g.userData.homeX,g.userData.stowX,tk);
+    g.position.z=lerp(g.userData.homeZ,g.userData.stowZ,tk);
+    g.position.y=0.150+Math.max(0,Math.cos(ph))*Math.abs(legV)*0.030-tk*0.075;
+    g.scale.setScalar(1-tk*0.45);
+    g.rotation.z=-g.userData.side*0.45*tk;
     g.userData.foot.rotation.x=-g.rotation.x*0.62;   // the sole stays flat to the ground
   }
   // pulling into the shell: head and legs draw in, the world narrows

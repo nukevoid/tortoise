@@ -67,7 +67,7 @@ mark done tasks like - [X]
 - [X] do more time of calm wind 
 - [X] add rain drops on water when it rains
 - [X] in V mode when hides in SHell: additional shel apiars around the body - fix it
-- [ ] in V mode uppar part of the legs visible thought shell
+- [X] in V mode uppar part of the legs visible thought shell
 - [ ] in swing flipped animation rotation has to be oposite to movement
 - [ ] add smooth water - bank intersection
 - [ ] add small rocks and debris that shows only in small range 
