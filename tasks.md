@@ -52,4 +52,5 @@ mark done tasks like - [X]
 - [X] remove timer for the shell
 - [X] do step sound faster and lighter
 - [X] fix anemy plant mode  - it don't hase stem from root to flower
-- [ ] don't make that diagonal free cells not connected (visualy I can see next diagonal cell, but can't go to it now)
+- [X] don't make that diagonal free cells not connected (visualy I can see next diagonal cell, but can't go to it now)
+- [ ] more lighter and faster steps, it is tortoise, not Cow

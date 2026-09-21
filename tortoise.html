@@ -2111,7 +2111,7 @@ function stage(i){ RNG.reseed((DECO_SEED+Math.imul(i,0x9E3779B1))|0); }
    prints, and paste it here. Null means "generate one". */
 /* Generated offline with ?export and pasted here. This is the forest
    the game ships; delete it and the generator grows a fresh one. */
-const LEVEL_BAKED={"v":1,"grid":"/////yOAgwJW13fVrSouiljVX9e1ALiIaGH/d92C4ACiAd4dXAOAI4gGcF9QLwgAgNjYANY1CgCg6P8B8P//A+D//wfA/6MCAABWFQDDjQgAKNj1AFQ3IACqYsH9P9QC4ACIBf//cAuAAyjWfVdVLSCuqNrd/V01ijiq6t39VdeA4CCg/////wE=","gloomCell":[10,3],"biomes":[[-36.424,-36.349,1],[-2.832,-28.044,2],[21.427,-36.178,3],[1.629,10.874,0],[11.461,17.62,1],[-21.601,-7.412,2],[38.938,16.568,3]],"items":[["stone",13,-23.4,0.5],["stone",23.4,18.2,0.5],["stone",-28.6,18.2,0.5],["lantern",-7.8,-28.6,0.12],["berry",28.158,2.5,0.14],["berry",12.34,-38.488,0.14],["berry",-12.343,33.167,0.14],["berry",38.872,38.297,0.14],["berry",-22.957,23.213,0.14],["berry",17.525,23.084,0.14],["berry",22.64,34.455,0.14],["berry",18.323,-23.771,0.14],["shroom",-12.522,23.2,0.06],["shroom",-29.209,-12.254,0.06],["shroom",28.206,-13.525,0.06],["berry",7.529,-31.065,0.14],["shroom",7.195,-31.321,0.06],["berry",1.869,-31.444,0.14],["berry",2.079,-31.397,0.14],["shroom",2.762,-31.484,0.06],["berry",12.089,-15.123,0.14],["berry",12.072,-15.234,0.14],["shroom",12.567,-15.357,0.06],["berry",-18.704,-15.609,0.14],["shroom",-18.166,-15.531,0.06],["berry",-17.447,-36.325,0.14],["shroom",-17.668,-35.713,0.06],["berry",23.546,-35.879,0.14],["shroom",24.284,-35.792,0.06]],"hazardCells":[[13,15],[5,9],[15,6],[0,8],[1,15],[15,8],[14,1],[10,1],[14,12],[11,5],[11,14],[3,10],[2,11],[4,14]],"thornmaws":[[12.768,-18.191],[7.785,-33.717],[-18.119,-18.211],[2.766,-28.479],[-33.983,-12.642],[8.278,-13.032],[-7.715,-17.736],[2.925,-18.257],[-28.724,7.608],[17.753,-7.944],[-18.385,-33.365]],"rooms":[[5,9,3.4],[23,9,2.6],[5,23,2.6],[25,23,1.9],[15,13,1.9],[7,15,1.9],[25,17,1.9]]};
+const LEVEL_BAKED={"v":1,"grid":"/////yOAgwJW13fVrSouiljVX9e1ALiIaGH/d92C4ACiAdwdXAOAI4gGcF9QLwgAgNjQANY1CACg6P8B8P//A+D//wfA/6MCAABWFQDDjQgAINj1AFQ3IACKYsH9P9QC4ACIBf//cAuAAyjWfVdVLSCuqNrd/V01ijiq6t39VdeA4CCg/////wE=","gloomCell":[10,3],"biomes":[[-36.424,-36.349,1],[-2.832,-28.044,2],[21.427,-36.178,3],[1.629,10.874,0],[11.461,17.62,1],[-21.601,-7.412,2],[38.938,16.568,3]],"items":[["stone",13,-23.4,0.5],["stone",23.4,18.2,0.5],["stone",-28.6,18.2,0.5],["lantern",-7.8,-33.8,0.12],["berry",28.158,2.5,0.14],["berry",12.34,-38.488,0.14],["berry",-12.343,33.167,0.14],["berry",38.872,38.297,0.14],["berry",-22.957,23.213,0.14],["berry",17.525,23.084,0.14],["berry",22.64,34.455,0.14],["berry",18.323,-23.771,0.14],["shroom",-12.522,23.2,0.06],["shroom",-29.209,-12.254,0.06],["shroom",28.206,-13.525,0.06],["berry",7.529,-31.065,0.14],["shroom",7.195,-31.321,0.06],["berry",1.869,-31.444,0.14],["berry",2.079,-31.397,0.14],["shroom",2.762,-31.484,0.06],["berry",12.089,-15.123,0.14],["berry",12.072,-15.234,0.14],["shroom",12.567,-15.357,0.06],["berry",-18.704,-15.609,0.14],["shroom",-18.166,-15.531,0.06],["berry",-11.282,-29.072,0.14],["shroom",-11.503,-28.46,0.06],["berry",23.546,-35.879,0.14],["shroom",24.284,-35.792,0.06]],"hazardCells":[[13,15],[5,9],[15,6],[0,8],[1,15],[15,8],[14,1],[10,1],[14,12],[11,5],[11,14],[3,10],[2,11],[4,14]],"thornmaws":[[12.768,-18.191],[7.785,-33.717],[-18.119,-18.211],[2.766,-28.479],[-33.983,-12.642],[8.278,-13.032],[-7.715,-17.736],[2.925,-18.257],[-28.724,7.608],[-8.159,-29.072],[-17.914,28.717]],"rooms":[[5,9,3.4],[23,9,2.6],[5,23,2.6],[25,23,1.9],[15,13,1.9],[7,15,1.9],[25,17,1.9]]};
 
 let LEVEL_USED=null;               // the level actually in play
 /* Whatever the generator decided this run, so it can be written out. */
@@ -2684,6 +2684,44 @@ for(let gy=1;gy<G-1;gy++)for(let gx=1;gx<G-1;gx++){
   }
 })();
 
+
+/* Corners you can see through and cannot walk through.
+
+   Where two open tiles touch only at their corner and both ways round are
+   walled, the eye reads a way on and the feet do not get one. It is the
+   same complaint as the hedges that looked passable, in miniature, and the
+   disc of the lake makes them: a circle cut into a square grid leaves
+   stepped corners all round its rim.
+
+   One of the two orthogonal tiles is opened, and the dividing walls are
+   left alone -- the quarters stay quarters, and a pinch that could only be
+   fixed by breaching one is left as it is, since a wall that reads as a
+   wall is not the problem being fixed here. */
+(function openDiagonalPinches(){
+  const wallLine=i=>WAY_G.indexOf(i)>=0;
+  const inLake=(gx,gy)=>Math.hypot(tileX(gx),tileZ(gy))<=LAKE_OPEN;
+  const mayOpen=(gx,gy)=>
+    gx>0&&gy>0&&gx<G-1&&gy<G-1 &&
+    (inLake(gx,gy) || (!wallLine(gx)&&!wallLine(gy)));
+  /* Opening one corner can put two other tiles corner to corner, so this
+     runs until a pass changes nothing. It settles in a handful. */
+  for(let pass=0;pass<12;pass++){
+    let changed=0;
+    for(let gy=1;gy<G-1;gy++)for(let gx=1;gx<G-1;gx++){
+      if(solid[gi(gx,gy)])continue;
+      for(const [dx,dy] of [[1,1],[1,-1]]){
+        const nx=gx+dx, ny=gy+dy;
+        if(nx<1||ny<1||nx>=G-1||ny>=G-1)continue;
+        if(solid[gi(nx,ny)])continue;
+        if(!solid[gi(nx,gy)]||!solid[gi(gx,ny)])continue;   // already walkable
+        if(mayOpen(nx,gy)){solid[gi(nx,gy)]=0;changed++;}
+        else if(mayOpen(gx,ny)){solid[gi(gx,ny)]=0;changed++;}
+      }
+    }
+    if(!changed)break;
+  }
+})();
+
 RNG.reseed(DECO_SEED);RNG.reseed(DECO_SEED);
 if(LEVEL_USED&&LEVEL_USED.biomes)BIOME_SEEDS=LEVEL_USED.biomes.map(a=>[a[0],a[1],a[2]]);
 else seedBiomes();
@@ -2972,12 +3010,22 @@ CREEK.srcY=terrainBase(CREEK.pts[0][0],CREEK.pts[0][1]);
 CREEK.dstY=POND.floor+CREEK.depth*0.9;
 /* Water in the maze, and a rule about it: anything the player has to walk
    through stays wadeable. waterDepth at the middle of a basin comes out at
-   0.62 of its depth, and WADE_MAX is 0.20, so a basin dug deeper than about
-   0.32 becomes a wall -- and a wall dropped at random into a maze can cut
-   the level in half. Puddles and marshes are kept under that; only the
-   meadow beyond the gate gets water you cannot cross. */
+   0.62 of its depth, so a basin dug deeper than WADE_MAX/0.62 becomes a
+   wall -- and a wall dropped at random into a maze can cut the level in
+   half. Only the lake and the meadow get water you cannot cross.
+
+   This had drifted. The number was 0.30 and the comment said WADE_MAX was
+   0.20, but WADE_MAX became 0.15 when the tortoise was scaled down, so the
+   deepest marshes stood at 0.186 and were quietly impassable. That is what
+   was making corners you could see through and not walk through: a marsh in
+   the connecting tile, leaving only the diagonal. Derived from WADE_MAX now
+   rather than written down beside it, with a centimetre of margin. */
 const PUDDLES=[];
-const MAX_WADEABLE_DEPTH=0.30;
+/* (WADE_MAX - 0.01) / 0.62, with WADE_MAX = 0.20*TORTOISE = 0.15. Both of
+   those are declared further down, where they belong with the player, so
+   the arithmetic is written out; the check beside WADE_MAX shouts if the
+   two ever drift apart again. */
+const MAX_WADEABLE_DEPTH=0.2258;
 for(const c of openCells){
   if(dist[c[1]*N+c[0]]<3)continue;
   if(RNG()<0.115){
@@ -7338,6 +7386,11 @@ function resetPlayer(){
 
 /* --- tile collision ------------------------------------------- */
 const WADE_MAX=0.20*TORTOISE;           // deeper than this and it will not go in
+/* The marsh generator caps its depth against this, and cannot see it from
+   where it runs. If someone changes one and not the other, the marshes go
+   back to being invisible walls. */
+if(Math.abs(MAX_WADEABLE_DEPTH*0.62-(WADE_MAX-0.01))>0.002)
+  console.warn('wade limits have drifted:',MAX_WADEABLE_DEPTH*0.62,'vs',WADE_MAX-0.01);
 function blocked(x,z){
   if(waterDepth(x,z)>WADE_MAX)return true;
   const gx=worldToGX(x),gz=worldToGZ(z);
