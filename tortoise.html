@@ -894,8 +894,22 @@ function grassTuftGeo(){
     const segs=4;
     const hue=0.85+rnd()*0.35;
     const twist=(rnd()-0.5)*0.9;
-    for(let s=0;s<=segs;s++){
-      const t=s/segs,y=h*t;
+    /* One extra ring below the origin, so every blade carries 5cm of itself
+       underground.
+
+       Tinting the base to soil colour made the colours agree and did nothing
+       about the shape: the blade is a strip with a flat bottom, and that
+       straight horizontal edge stayed visible sitting on the floor, because
+       an edge is a silhouette whatever colour it is. The tuft was only
+       planted 35mm down and the ground is not flat, so on any slope the cut
+       came out into the open.
+
+       A blade that continues below the surface has no bottom edge to see.
+       The wind ignores it -- the sway is weighted by max(y,0) -- so the
+       buried part stays still while the rest moves, which is also what a
+       rooted plant does. */
+    for(let s=-1;s<=segs;s++){
+      const t=Math.max(s,0)/segs, y=(s<0?-0.05:h*t);
       // blades arch over rather than standing dead straight
       const arch=t*t;
       const cx=ox+bx*arch,cz=oz+bz*arch;
@@ -908,10 +922,10 @@ function grassTuftGeo(){
       const r=0.040*sh+0.030*t*sh,g2=0.105*sh+0.095*t*sh,bl=0.020*sh;
       col.push(r,g2,bl,r,g2,bl);
     }
-    for(let s=0;s<segs;s++){
+    for(let s=0;s<segs+1;s++){
       const a0=v+s*2;idx.push(a0,a0+2,a0+1,a0+1,a0+2,a0+3);
     }
-    v+=(segs+1)*2;
+    v+=(segs+2)*2;
   }
   const g=new THREE.BufferGeometry();
   g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
@@ -958,7 +972,92 @@ function gustEnvelope(t){
    vertex shader collapses the triangle to a point so it is never rasterised
    at all. No extra meshes, no extra draw calls, no change to the instance
    count. */
-function patchFoliage(mat,amp,trans,rimCut,far){
+/* ---------------------------------------------------------------
+   Bedding plants into the soil.
+
+   A blade of grass is a flat strip and a trunk is a cylinder, and both met
+   the ground along a hard straight line: green, then brown, with nothing in
+   between. What sells the join is three things at once, none of which needs
+   new geometry:
+
+     1. the albedo drifts toward soil over the last few centimetres, so the
+        two colours meet rather than butt up against each other;
+     2. it darkens as it goes, which is the contact shadow every plant casts
+        on the ground it stands on -- this is the one the eye actually reads
+        as "sitting in" rather than "stuck on";
+     3. the shading normal bends toward straight up, so light falls on the
+        bottom of the blade the way it falls on the soil beside it, instead
+        of the blade being lit as its own separate vertical surface.
+
+   All three need one number: how far this fragment is above the ground
+   under it. Rather than re-deriving the terrain in GLSL -- terrainBase is a
+   dozen sines, but groundH also carves the basins and the creek out of it,
+   which is a loop over data -- it comes from the instance itself. Every
+   plant was placed at a known height, so the instance matrix already
+   carries the answer:
+
+     drop  how much of the instance's own Y scale to come down by. 0 when
+           the geometry stands on its origin (grass, the trunk flare), 1
+           when the origin is its middle (the trunks, whose cylinder runs
+           -1..+1 about its centre).
+     lift  how far the placement sank it, added back: grass goes in 35mm,
+           a trunk 300mm, the flare 140mm.
+     band  the metres over which the blend happens.
+
+   One varying and about six instructions, and no depth buffer -- which
+   matters here, because the litter discs do not write depth and the
+   near-fade discards, so the depth buffer has holes in it exactly where the
+   ground meets the plants. */
+/* The soil tone is measured, not picked. The ground's albedo is its map
+   times the material colour, and the map is an sRGB canvas: averaging it
+   gives sRGB (90,77,49), which converts to linear (0.085,0.054,0.016) once
+   the material's own 0xeadcc0 is folded in. The first version of this used
+   (0.34,0.25,0.15) -- the sRGB numbers used directly as if they were linear
+   -- and it turned every blade of grass white at the root, because a shader
+   works in linear and that is four times too bright. */
+const GBLEND={ soil:[0.085,0.054,0.016], mix:0.75, dark:0.55, flat:0.70 };
+function groundBlendVert(sh,gb){
+  sh.uniforms.uGDrop={value:gb.drop||0};
+  sh.uniforms.uGLift={value:gb.lift||0};
+  sh.uniforms.uGBand={value:gb.band||0.12};
+  sh.vertexShader='varying float vUpG;uniform float uGDrop;uniform float uGLift;\n'
+    +sh.vertexShader.replace('#include <project_vertex>',
+    `#include <project_vertex>
+     #ifdef USE_INSTANCING
+       mat4 gM = modelMatrix * instanceMatrix;
+       // the instance's own base, brought back up by however far it was sunk
+       float gBase = gM[3].y - uGDrop*length(gM[1].xyz) + uGLift;
+       vUpG = (gM * vec4(transformed,1.0)).y - gBase;
+     #else
+       vUpG = 999.0;
+     #endif`);
+}
+function groundBlendFrag(sh){
+  sh.uniforms.uGSoil={value:new THREE.Vector3().fromArray(GBLEND.soil)};
+  sh.uniforms.uGMix ={value:GBLEND.mix};
+  sh.uniforms.uGDark={value:GBLEND.dark};
+  sh.uniforms.uGFlat={value:GBLEND.flat};
+  sh.fragmentShader='varying float vUpG;uniform float uGBand;uniform vec3 uGSoil;'
+    +'uniform float uGMix;uniform float uGDark;uniform float uGFlat;\nfloat gbG;\n'
+    +sh.fragmentShader
+      // albedo drifts to soil and darkens into the contact shadow
+      .replace('#include <color_fragment>',
+    `#include <color_fragment>
+     gbG = 1.0 - smoothstep(0.0, uGBand, max(vUpG,0.0));
+     diffuseColor.rgb = mix(diffuseColor.rgb, uGSoil, gbG*uGMix);
+     diffuseColor.rgb *= mix(1.0, uGDark, gbG);`)
+      // ...and the shading normal lies down to meet the floor
+      .replace('#include <normal_fragment_begin>',
+    `#include <normal_fragment_begin>
+     normal = normalize(mix(normal, vec3(0.0,1.0,0.0), gbG*uGFlat));`);
+}
+/* For a material that wants the blend and none of the wind. */
+function patchGroundBlend(mat,gb){
+  mat.onBeforeCompile=sh=>{ groundBlendVert(sh,gb); groundBlendFrag(sh); };
+  mat.customProgramCacheKey=()=>'gb'+gb.drop+'_'+gb.lift+'_'+gb.band;
+}
+
+function patchFoliage(mat,amp,trans,rimCut,far,gb){
   amp=amp||0; trans=trans||0;
   mat.onBeforeCompile=sh=>{
     sh.uniforms.uTime=windU;
@@ -1063,8 +1162,13 @@ function patchFoliage(mat,amp,trans,rimCut,far){
          }
          #endif`);
     }
+    if(gb){ groundBlendVert(sh,gb); groundBlendFrag(sh); }
   };
-  mat.customProgramCacheKey=()=>'fol'+amp+'_'+trans+'_'+(rimCut?1:0);
+  /* far and the ground blend belong in the key. Two materials differing only
+     in one of those would otherwise share a compiled program, and one of
+     them would silently run on the other's numbers. */
+  mat.customProgramCacheKey=()=>'fol'+amp+'_'+trans+'_'+(rimCut?1:0)+'_'+(far||0)
+    +'_'+(gb?gb.drop+':'+gb.lift+':'+gb.band:'n');
 }
 const applyWind=(m,a)=>patchFoliage(m,a,0);
 
@@ -2384,6 +2488,16 @@ const matBark=new THREE.MeshStandardMaterial({
   map:texBark.map,normalMap:texBark.nrm,roughnessMap:texBark.rough,roughness:1,metalness:0,
   normalScale:new THREE.Vector2(1.6,1.6)
 });
+/* A trunk's cylinder runs -1..+1 about its own middle and every trunk is
+   planted 0.30m down, so the ground is one instance-Y-scale below the origin
+   and 0.30 back up. A deeper band than the grass gets: a tree is the better
+   part of a metre thick at the foot, and the shadow it stands in is as wide
+   as it is. */
+const matTrunk=matBark.clone();
+patchGroundBlend(matTrunk,{drop:1,lift:0.30,band:0.34});
+/* The buttress flare is a cone standing on its own base, set 0.14m down. */
+const matFlare=matBark.clone();
+patchGroundBlend(matFlare,{drop:0,lift:0.14,band:0.30});
 const matLeafCard=new THREE.MeshStandardMaterial({
   map:leafTex,normalMap:texLeaf.nrm,normalScale:new THREE.Vector2(0.9,0.9),
   transparent:true,alphaTest:0.5,side:THREE.DoubleSide,roughness:0.72,metalness:0
@@ -2402,7 +2516,10 @@ const matRock=new THREE.MeshStandardMaterial({color:0x4b473f,roughness:1.0,metal
    The blobs that make a wall opaque never dissolve at all, or a corridor
    would open up at its far end. */
 const DISSOLVE=15;
-patchFoliage(matGrass,0.55,0.55,false,DISSOLVE);
+/* Grass stands on its instance origin and is planted 35mm under the
+   surface, so the ground is 35mm above that origin. A short band, because a
+   blade is only a couple of hand-widths tall and the eye is at 0.26m. */
+patchFoliage(matGrass,0.55,0.55,false,DISSOLVE,{drop:0,lift:0.035,band:0.11});
 patchFoliage(matFern,0.28,0.85,false,DISSOLVE);
 patchFoliage(matLeafCard,0,0.75,false,DISSOLVE);
 /* The grown bushes get their own pair. Wood and leaf sway by the SAME
@@ -2472,7 +2589,7 @@ function buildGroundDressing(){
   worldGroup.add(litter);
 
   const flareGeo=new THREE.ConeGeometry(1,1,20,2,true);flareGeo.translate(0,0.5,0);
-  const flare=flareIB.build(flareGeo,matBark,true,true);
+  const flare=flareIB.build(flareGeo,matFlare,true,true);
   worldGroup.add(flare);
 }
 const worldGroup=new THREE.Group();scene.add(worldGroup);
@@ -2887,7 +3004,7 @@ function buildHedges(){
   // walked into; the cheap blob is indistinguishable from the corridor floor
   // the crown is the hedge's outline against the sky: the smooth one
   worldGroup.add(crown.build(GEO_BLOB_SMOOTH,matFoliageCut,true,true));
-  worldGroup.add(trunk.build(new THREE.CylinderGeometry(0.72,1.18,2,20,4),matBark,true,true));
+  worldGroup.add(trunk.build(new THREE.CylinderGeometry(0.72,1.18,2,20,4),matTrunk,true,true));
   // tree canopies sit five metres up and are never approached; the cheaper
   // blob is indistinguishable from down here and there are 1500 of them
   worldGroup.add(canopy.build(GEO_BLOB_SMOOTH,matCanopy,true,true));
@@ -3088,7 +3205,7 @@ function buildOutside(){
   }
   worldGroup.add(bush.build(GEO_BLOB,matFoliage,true,true));
   worldGroup.add(card.build(leafGeo(0.50,0.62,3,4,0.85,0.35),matLeafCard,true,true));
-  worldGroup.add(trunk.build(new THREE.CylinderGeometry(0.72,1.18,2,20,4),matBark,true,true));
+  worldGroup.add(trunk.build(new THREE.CylinderGeometry(0.72,1.18,2,20,4),matTrunk,true,true));
   worldGroup.add(canopy.build(GEO_BLOB,matCanopy,true,true));
 }
 
@@ -3121,7 +3238,7 @@ function buildGloom(){
     }
   }
   worldGroup.add(canopy.build(GEO_BLOB,matCanopy,true,true));
-  worldGroup.add(trunk.build(new THREE.CylinderGeometry(0.72,1.18,2,20,4),matBark,true,true));
+  worldGroup.add(trunk.build(new THREE.CylinderGeometry(0.72,1.18,2,20,4),matTrunk,true,true));
 }
 
 /* the Sun Gate --------------------------------------------------- */
