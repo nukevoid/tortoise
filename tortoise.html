@@ -334,6 +334,63 @@ function leafStamp(ctx,px,py,L,W,ang,fill){
   leafPath(ctx,W,L);ctx.fill();ctx.restore();
 }
 
+/* The same leaf, drawn as a leaf rather than as a coloured hole in the shape
+   of one.
+
+   A flat fill with a single hairline down the middle is what a leaf looks
+   like at forty metres. Pressed against a hedge -- which is most of what you
+   see at a tortoise's eye height -- it reads as painted paper. Three things
+   give it form, and all three are cheap because this is drawn once into a
+   canvas at load and then tiled:
+
+     a gradient down the blade, dark at the stalk and pale at the tip, which
+     is the shading a curved surface has and the thing the eye actually reads
+     as "not flat";
+     veins, a midrib plus four pairs swept forward toward the tip, because
+     the vein pattern is most of what says leaf rather than petal;
+     a darker rim, so a leaf lying on another leaf has an edge instead of
+     merging into it.
+
+   `shade` is a 0..1 multiplier on the whole thing so a caller can push a
+   leaf into shadow, and `vein` turns the veining off for the layers small
+   enough that it would only be noise. */
+function leafDetail(ctx,px,py,L,W,ang,rgb,shade,vein){
+  const k=shade===undefined?1:shade;
+  const R=clamp(rgb[0]*k,0,255)|0, G=clamp(rgb[1]*k,0,255)|0, B=clamp(rgb[2]*k,0,255)|0;
+  ctx.save();ctx.translate(px,py);ctx.rotate(ang);
+  // base -> tip, the blade catching more light the further from the stalk
+  const gd=ctx.createLinearGradient(0,L*0.5,0,-L*0.5);
+  /* Gentle. The first version ran the tip to 1.28 on top of a layer shade
+     that already reached 1.34, so the bright leaves clipped and every one of
+     them grew a white rind where its tip lay over its neighbour. */
+  gd.addColorStop(0,   'rgb('+(R*0.70|0)+','+(G*0.70|0)+','+(B*0.74|0)+')');
+  gd.addColorStop(0.55,'rgb('+R+','+G+','+B+')');
+  gd.addColorStop(1,   'rgb('+(clamp(R*1.13,0,255)|0)+','+(clamp(G*1.12,0,255)|0)+','+(clamp(B*1.08,0,255)|0)+')');
+  ctx.fillStyle=gd;
+  leafPath(ctx,W,L);ctx.fill();
+  // a rim, so leaves stacked on leaves keep their edges
+  ctx.strokeStyle='rgba('+(R*0.50|0)+','+(G*0.50|0)+','+(B*0.55|0)+',0.55)';
+  ctx.lineWidth=Math.max(0.55,L*0.016);
+  leafPath(ctx,W,L);ctx.stroke();
+  if(vein!==false&&L>13){
+    ctx.strokeStyle='rgba('+(R*0.52|0)+','+(G*0.56|0)+','+(B*0.5|0)+',0.62)';
+    ctx.lineWidth=Math.max(0.5,L*0.016);
+    ctx.beginPath();ctx.moveTo(0,L*0.44);ctx.lineTo(0,-L*0.46);ctx.stroke();
+    ctx.lineWidth=Math.max(0.4,L*0.010);
+    for(let i=0;i<4;i++){
+      const t=0.30-i*0.17;                 // down the midrib from tip to base
+      const y=L*t, reach=W*(0.40-i*0.045);
+      for(const sgn of [-1,1]){
+        ctx.beginPath();ctx.moveTo(0,y);
+        // swept toward the tip, which is the way veins actually run
+        ctx.quadraticCurveTo(sgn*reach*0.6,y-L*0.06,sgn*reach,y-L*0.13);
+        ctx.stroke();
+      }
+    }
+  }
+  ctx.restore();
+}
+
 /* ---- ground: soil + moss + dry litter + pebbles + twigs --------------- */
 function makeGroundTextures(){
   const S=1024, HS=512;
@@ -464,7 +521,11 @@ function makeMacroTexture(){
 
 /* ---- foliage mass: a drift of small overlapping leaves ---------------- */
 function makeFoliageTextures(){
-  const S=512;
+  /* 1024 rather than 512. The sheet is tiled twice around a blob that the
+     player walks right up to, so at 512 a leaf was about eleven pixels of
+     texture across a hand's width of screen and every one of them was a flat
+     colour. The extra megabyte buys leaves that survive being looked at. */
+  const S=1024;
   const back=fbm(S,9,4,mulberry32(77));
   const col=cnv(S),c=col.getContext('2d'),img=c.createImageData(S,S);
   for(let i=0;i<S*S;i++){
@@ -481,23 +542,35 @@ function makeFoliageTextures(){
      straight-edged polygon it actually is. */
   const cov=cnv(S),cv=cov.getContext('2d');
   cv.fillStyle='#000000';cv.fillRect(0,0,S,S);
+  const rough=cnv(S),rg=rough.getContext('2d');
+  rg.fillStyle='#d8d8d8';rg.fillRect(0,0,S,S);      // matt where nothing grows
   const rnd=mulberry32(91);
-  for(let i=0;i<900;i++){
-    const x=rnd()*S,y=rnd()*S,L=14+rnd()*30,W=L*(0.42+rnd()*0.26),a=rnd()*6.283;
-    const t=rnd(), sh=0.55+rnd()*0.75;
-    const base = t<0.15?[128,126,52] : t<0.35?[64,104,38] : t<0.8?[48,86,30] : [34,62,24];
-    const R=clamp(base[0]*sh,0,255)|0, G=clamp(base[1]*sh,0,255)|0, B=clamp(base[2]*sh,0,255)|0;
-    // wrap around the edges so the texture tiles
-    for(const [ox,oy] of [[0,0],[S,0],[-S,0],[0,S],[0,-S]]){
-      // only stamp a wrapped copy when the leaf really straddles that edge
-      if(x+ox<-L||x+ox>S+L||y+oy<-L||y+oy>S+L)continue;
-      leafStamp(c,x+ox,y+oy,L,W,a,'rgb('+R+','+G+','+B+')');
-      leafStamp(h,x+ox,y+oy,L,W,a,'rgba('+(120+sh*110|0)+','+(120+sh*110|0)+','+(120+sh*110|0)+',0.75)');
-      // slightly shrunk so neighbouring leaves leave a hairline gap at the rim
-      leafStamp(cv,x+ox,y+oy,L*1.16,W*1.16,a,'#ffffff');
-      c.save();c.translate(x+ox,y+oy);c.rotate(a);
-      c.strokeStyle='rgba(16,26,8,0.45)';c.lineWidth=0.8;
-      c.beginPath();c.moveTo(0,-L*0.42);c.lineTo(0,L*0.44);c.stroke();c.restore();
+  /* Three passes, big to small. One pass of one size is a pattern; three
+     is a canopy, because the small ones land in the gaps the big ones leave
+     and the eye reads depth rather than repetition. The back layer is dark
+     and gets no veins -- it is only ever glimpsed between the others. */
+  const LAYERS=[
+    {n:620,  lo:46, hi:104, shade:[0.54,0.76], vein:false},
+    {n:1150, lo:24, hi:60,  shade:[0.78,1.02], vein:true },
+    {n:980,  lo:13, hi:32,  shade:[0.94,1.16], vein:true }
+  ];
+  for(const LY of LAYERS){
+    for(let i=0;i<LY.n;i++){
+      const x=rnd()*S,y=rnd()*S;
+      const L=LY.lo+rnd()*(LY.hi-LY.lo), W=L*(0.42+rnd()*0.26), a=rnd()*6.283;
+      const t=rnd(), sh=LY.shade[0]+rnd()*(LY.shade[1]-LY.shade[0]);
+      const base = t<0.15?[128,126,52] : t<0.35?[64,104,38] : t<0.8?[48,86,30] : [34,62,24];
+      // wrap around the edges so the texture tiles
+      for(const [ox,oy] of [[0,0],[S,0],[-S,0],[0,S],[0,-S]]){
+        // only stamp a wrapped copy when the leaf really straddles that edge
+        if(x+ox<-L||x+ox>S+L||y+oy<-L||y+oy>S+L)continue;
+        leafDetail(c,x+ox,y+oy,L,W,a,base,sh,LY.vein);
+        leafStamp(h,x+ox,y+oy,L,W,a,'rgba('+(120+sh*110|0)+','+(120+sh*110|0)+','+(120+sh*110|0)+',0.75)');
+        // slightly shrunk so neighbouring leaves leave a hairline gap at the rim
+        leafStamp(cv,x+ox,y+oy,L*1.16,W*1.16,a,'#ffffff');
+        // a leaf is waxier than the litter behind it, and the young ones most
+        leafStamp(rg,x+ox,y+oy,L,W,a,'rgba('+(150-sh*46|0)+','+(150-sh*46|0)+','+(150-sh*46|0)+',0.55)');
+      }
     }
   }
   const map=new THREE.CanvasTexture(col);
@@ -508,7 +581,10 @@ function makeFoliageTextures(){
   const alpha=new THREE.CanvasTexture(cov);
   alpha.wrapS=alpha.wrapT=THREE.RepeatWrapping;
   alpha.repeat.set(2,1.4);alpha.anisotropy=8;
-  return {map,nrm,alpha};
+  const rgh=new THREE.CanvasTexture(rough);
+  rgh.wrapS=rgh.wrapT=THREE.RepeatWrapping;
+  rgh.repeat.set(2,1.4);rgh.anisotropy=4;
+  return {map,nrm,alpha,rough:rgh};
 }
 
 /* ---- bark: deep vertical ridges, lichen, a healed scar or two --------- */
@@ -2763,7 +2839,8 @@ const GEO_GRASS=grassTuftGeo();
    the chewed outline; the body of the wall is always backed by more foliage,
    so it stays opaque and cheap. */
 const matFoliage=new THREE.MeshStandardMaterial({
-  map:texFol.map,normalMap:texFol.nrm,roughness:0.92,metalness:0,
+  map:texFol.map,normalMap:texFol.nrm,roughnessMap:texFol.rough,
+  roughness:1,metalness:0,
   normalScale:new THREE.Vector2(1.4,1.4)
 });
 const matFoliageCut=matFoliage.clone();
