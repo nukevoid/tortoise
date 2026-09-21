@@ -7117,15 +7117,27 @@ function blocked(x,z){
 const RAFT={ r:1.15, moorPull:0.55, deck:0.055, board:1.30, bobAmp:0.035 };
 const RAFTS=[];
 function addRaft(x,z){ RAFTS.push({hx:x,hz:z,x,z,mesh:null,t:RAFTS.length*1.7}); }
-/* Is this water the waterway's? The banks ramp outward for a metre and a
-   half past the channel proper, and that skirt is still deep enough to
-   count as water, so the test has to reach as far as the carve does.
+/* Where a leaf may go: anywhere there is water to float it.
 
-   Getting this wrong the first time was instructive: boarding used one
-   radius and riding a tighter one, so you could step onto a leaf at the
-   water's edge and then not move, because the rule that let you on did not
-   agree with the rule that let you travel. One test, used by both. */
-const inWaterway=(x,z)=>wayDist(x,z)<1.6;
+   This was a distance from the centre line, and a distance was wrong twice
+   over. Too tight and you could board at the water's edge and then not
+   move, because the rule that let you on did not agree with the rule that
+   let you travel. Too loose -- 1.6m out, while the deck stayed pinned to
+   the waterline -- and you could ride up onto the bank and end standing
+   inside it with the ground closed over your head, spinning on the spot
+   under the world. Nine places on the board did that, the worst 10cm deep.
+
+   A distance was never the right question. The right one is whether there
+   is water here, which is exactly the condition that puts the deck above
+   the ground: water means the ground is below the waterline, and the deck
+   rides on the waterline. Asked this way the failure cannot be expressed.
+
+   It has to be the WATERWAY's depth, not waterDepth(), which is the deepest
+   of every pool in the world. A marsh beside the channel is water, but the
+   deck sits on the waterway's line, not the marsh's -- taking the general
+   answer put the ground back over the player's head in twenty-four places,
+   three times as many as the bug it was meant to fix. */
+const inWaterway=(x,z)=>wayLevelAt(x,z)-groundH(x,z)>WADE_MAX;
 
 /* A leaf here that nobody is standing on. */
 function raftAt(x,z,r){

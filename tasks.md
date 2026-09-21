@@ -41,7 +41,7 @@ mark done tasks like - [X]
 - [ ] Do research for performance optimisation
 - [ ] implement performance optimisation 
 - [X] fix lake - now it is super deeep tranche without water, not big shalow lake 
-- [ ] fix leaf - now I can speen on it under the ground
+- [X] fix leaf - now I can speen on it under the ground
 - [ ] fix spherical bushes material - it is to reglective (has to be more difuse)
 - [ ] use wind power for amplitude of animation of grass, reas, leaft, rain etc. Change wind power with weather
 - [ ] fix: cat can drown in lake. Just don't 
