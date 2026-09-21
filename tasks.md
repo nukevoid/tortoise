@@ -38,5 +38,5 @@ mark done tasks like - [X]
 - [X] Move enemy Plant with spikes to dark fogy biom and increase quantity 
 - [X] Add lake with ability wo sweem on big leaf. Lets cenral lake connects 4 sides of our map
 - [X] change sky color slowwly when it rains
-- [ ] Do research for performance optimisation
+- [X] Do research for performance optimisation
 - [ ] implement performance optimisation 
