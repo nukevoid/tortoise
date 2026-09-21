@@ -1319,7 +1319,19 @@ scene.add(camera);
 const SUN_DIR=new THREE.Vector3(0.50,0.78,0.38).normalize();   // high enough to reach the corridor floor
 const sun=new THREE.DirectionalLight(0xfff0d4,3.8);
 sun.castShadow=true;
-sun.shadow.mapSize.set(1536,1536);   // 1.7 cm texels; edges are seen at grazing angles
+/* 1536 was 2.36 megapixels of shadow map to serve a 2.07 megapixel screen,
+   and the shadow pass is the second largest thing in the frame after the
+   hedges. 1024 over the same 26m box is 2.5cm texels, which at a tortoise's
+   eye height and with PCF softening is not a difference you can find.
+
+   Measured by isolating the pass -- (scene+shdw) minus scene -- with three
+   alternations, because the absolute numbers drift as the GPU warms:
+
+     1536   7.72 / 8.76 / 10.00 ms      median 8.76
+     1024   5.69 / 4.96 /  5.66         median 5.66
+
+   3.10ms off the frames it runs on, so 1.55ms off the average frame. */
+sun.shadow.mapSize.set(1024,1024);   // 2.5 cm texels; edges are seen at grazing angles
 sun.shadow.camera.near=1;sun.shadow.camera.far=120;
 sun.shadow.camera.left=-13;sun.shadow.camera.right=13;
 sun.shadow.camera.top=13;sun.shadow.camera.bottom=-13;

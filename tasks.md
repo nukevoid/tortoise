@@ -39,4 +39,4 @@ mark done tasks like - [X]
 - [X] Add lake with ability wo sweem on big leaf. Lets cenral lake connects 4 sides of our map
 - [X] change sky color slowwly when it rains
 - [X] Do research for performance optimisation
-- [ ] implement performance optimisation 
+- [X] implement performance optimisation 
