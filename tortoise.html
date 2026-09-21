@@ -3090,6 +3090,52 @@ const glowWarm=makeGlowSprite('rgba(255,214,120,1)');
 const glowGreen=makeGlowSprite('rgba(160,255,190,1)');
 
 /* --- ground --- */
+/* ---------------------------------------------------------------
+   Wet ground.
+
+   Soil that has water standing on it is not the same soil. It is darker --
+   the water fills the pores and stops light scattering back out of them --
+   and it is smoother, so it catches the sky instead of staying matte. The
+   lake bed here was the same dry litter as the path beside it, which made
+   the shoreline a place where a blue sheet had been laid over a field.
+
+   The shape of the wetness is known exactly, because every body of water in
+   the game is a disc with a level: the basins, and the waterway. So rather
+   than baking wetness into the terrain -- whose vertices are 1.67m apart,
+   which would make the waterline a visible polygon -- each disc goes to the
+   ground shader as a vec4 of centre, radius and surface height, and every
+   pixel asks how far below the nearest surface it sits.
+
+   That also gives the damp margin for free. The ramp starts 11cm ABOVE the
+   waterline, so the ground does not go from wet to dry at the water's edge:
+   there is a hand's width of dark soil around every pool, which is what a
+   shoreline looks like and what stops the water reading as a decal. */
+const WET_FADE_UP=0.11;     // how far above the waterline the damp reaches
+const WET_FADE_DOWN=0.05;   // and how far under it before it is fully wet
+const WET_DARK=0.44;        // what wet soil keeps of its dry brightness
+/* ...and what it keeps of its roughness -- but only in the band at the
+   water's edge, not under the water.
+
+   The sheen went on everywhere at first and it did the opposite of what was
+   asked for. Measured looking down into the shallows, 21% of the frame
+   changed and 85% of those pixels came out BRIGHTER: smooth ground catches
+   the sky, and the shine swamped the darkening. Wrong twice over, because
+   the specular of a body of water belongs to its surface and that surface
+   is already drawn, sitting right on top of this. So the shine is for the
+   film of water on the soil at the edge; what is under the water only gets
+   darker. */
+const WET_SMOOTH=0.52;
+const WET_DEEP=0.16;        // under this much water, no sheen of its own
+function wetPools(){
+  const out=[[WAY.ax,WAY.az,WAY.r+WAY.bank,WAY.level]];
+  for(const b of BASINS)out.push([b.x,b.z,b.r,b.level]);
+  /* Biggest first. Nothing depends on the order -- every slot is tested --
+     but if the list ever has to be cut short, the lake should not be the
+     one that falls off the end. */
+  out.sort((a,b)=>b[2]-a[2]);
+  return out.slice(0,48);
+}
+
 (function buildGround(){
   texGround.map.repeat.set(62,62);
   texGround.rough.repeat.set(62,62);
@@ -3133,26 +3179,69 @@ const glowGreen=makeGlowSprite('rgba(160,255,190,1)');
   gmat.userData.isGround=true;
   /* a second, very large-scale tint sampled in world space; without it the
      40x-repeated soil texture reads as wallpaper */
+  const pools=wetPools();
+  const NP=pools.length;
   gmat.onBeforeCompile=sh=>{
     sh.uniforms.uMacro={value:macroTex};
     sh.uniforms.uDetail={value:texDetail.map};
     sh.uniforms.uDetailN={value:texDetail.nrm};
-    sh.vertexShader='varying vec2 vMacroUv;varying vec2 vDetUv;\n'+sh.vertexShader.replace(
+    sh.uniforms.uWet={value:pools.map(q=>new THREE.Vector4(q[0],q[1],q[2],q[3]))};
+    /* How many of them to actually test. It is always all of them; it is a
+       uniform so that the cost of the loop can be measured against itself
+       in one run rather than between two page loads, which on a GPU that
+       clocks up as it warms is not a measurement at all. */
+    sh.uniforms.uWetN={value:NP};
+    sh.vertexShader='varying vec2 vMacroUv;varying vec2 vDetUv;varying vec3 vGW;\n'+
+      sh.vertexShader.replace(
       '#include <begin_vertex>',
       '#include <begin_vertex>\n'+
-      ' vec2 wxz=(modelMatrix*vec4(transformed,1.0)).xz;\n'+
+      ' vGW=(modelMatrix*vec4(transformed,1.0)).xyz;\n'+
+      ' vec2 wxz=vGW.xz;\n'+
       ' vMacroUv=wxz*0.0052;\n vDetUv=wxz*2.5;');
     sh.fragmentShader='uniform sampler2D uMacro;uniform sampler2D uDetail;'+
       'uniform sampler2D uDetailN;\nvarying vec2 vMacroUv;varying vec2 vDetUv;\n'+
+      'varying vec3 vGW;\nuniform vec4 uWet['+NP+'];uniform int uWetN;\n'+
+      'vec2 groundWet(){\n'+
+      '  float w=0.0, deep=0.0;\n'+
+      '  for(int i=0;i<'+NP+';i++){\n'+
+      '    if(i>=uWetN)break;\n'+
+      '    vec4 b=uWet[i];\n'+
+      /* The disc, with a soft rim so a puddle does not end on a hard circle.
+         Squared distance against squared radius, and linear ramps rather
+         than smoothsteps: this runs 33 times on every ground pixel, and the
+         sqrt and three smoothsteps it had first cost 3.0ms of the scene
+         pass on the GPU timer with the ground filling the frame. Through a
+         normal map and a soil texture the ramps look the same. */
+      '    vec2 dv=vGW.xz-b.xy; float rr=b.z*b.z;\n'+
+      '    float q=dot(dv,dv); if(q>rr)continue;'+
+      '    float inside=clamp((rr-q)/(rr*0.19),0.0,1.0);\n'+
+      /* and how far under that surface this pixel is */
+      '    float d=b.w-vGW.y;\n'+
+      '    w=max(w,inside*clamp((d+'+WET_FADE_UP.toFixed(3)+')*'+
+                 (1/(WET_FADE_UP+WET_FADE_DOWN)).toFixed(4)+',0.0,1.0));\n'+
+      /* and, separately, whether it is properly under rather than just damp */
+      '    deep=max(deep,inside*clamp((d-0.02)*'+
+                 (1/(WET_DEEP-0.02)).toFixed(4)+',0.0,1.0));\n'+
+      '  }\n  return vec2(w,deep);\n}\n'+
+      'float gWet; float gFilm;\n'+
       sh.fragmentShader
         .replace('#include <map_fragment>',
           '#include <map_fragment>\n'+
+          ' { vec2 gw=groundWet(); gWet=gw.x; gFilm=gw.x*(1.0-gw.y); }\n'+
           ' diffuseColor.rgb*=texture2D(uMacro,vMacroUv).rgb*1.15;\n'+
-          ' diffuseColor.rgb*=mix(vec3(1.0),texture2D(uDetail,vDetUv).rgb*1.0,0.8);')
+          ' diffuseColor.rgb*=mix(vec3(1.0),texture2D(uDetail,vDetUv).rgb*1.0,0.8);\n'+
+          /* wet soil is darker and a shade cooler, and it keeps more of its
+             own colour than a flat grey multiply would leave it */
+          ' diffuseColor.rgb*=mix(vec3(1.0),vec3('+WET_DARK.toFixed(3)+','+WET_DARK.toFixed(3)+'*1.02,'+WET_DARK.toFixed(3)+'*1.10),gWet);')
+        .replace('#include <roughnessmap_fragment>',
+          '#include <roughnessmap_fragment>\n'+
+          /* ...and smoother, which is what makes it catch the sky */
+          ' roughnessFactor*=mix(1.0,'+WET_SMOOTH.toFixed(3)+',gFilm);')
         .replace('#include <normal_fragment_maps>',
           '#include <normal_fragment_maps>\n'+
           ' { vec3 dn=texture2D(uDetailN,vDetUv).xyz*2.0-1.0;\n'+
-          '   normal=normalize(normal+vec3(dn.xy*0.42,0.0)); }');
+          /* the soil grain flattens out under water too */
+          '   normal=normalize(normal+vec3(dn.xy*0.42*(1.0-gWet*0.7),0.0)); }');
   };
   gmat.customProgramCacheKey=()=>'groundMacro';
   const m=new THREE.Mesh(g,gmat);

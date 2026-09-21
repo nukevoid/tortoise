@@ -56,8 +56,13 @@ mark done tasks like - [X]
 - [X] more lighter and faster steps, it is tortoise, not Cow
 - [X] add reflection to water (cubemap like minimum)
 - [X] add button to switch view from first to third person
-- [ ] ground under water has to look wet - darker with weetness
+- [X] ground under water has to look wet - darker with weetness
 - [ ] bug: in left top sector related to lake lake water is higher than banks and terain
-- [ ] sound of wind has to depend on wind power. And do wins lighter by defaul, and stronger time to time
+- [ ] sound of wind has to depend on wind power. And make wins lighter by defaul, and stronger time to time
 - [ ] bug: some ponds looks like without water, maybe camera beneth the water plane 
+- [ ] fix camera in 3rd mode ( has to look from the top bottom to forward), investigate how cameras in 3d view works
+- [ ] remove strafes, assign to A and D YAW rotation
 - [ ] fix legs and head animation and model of tortoise (looks bed in 3rd view mode)
+- [ ] bug - on leaft is camera jitter - camera m oves eventy frame w
+- [ ] add rain drops on water
+- [ ] add smooth water - bank intersection
