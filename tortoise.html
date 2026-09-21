@@ -963,11 +963,7 @@ function patchFoliage(mat,amp,trans,rimCut,far){
   mat.onBeforeCompile=sh=>{
     sh.uniforms.uTime=windU;
     sh.uniforms.uFar={value:far||0};      // 0 = never dissolve
-    /* The band is where the dither runs, and a dither means discard, which
-       costs early-Z for the whole draw. Past the band the vertex shader has
-       already collapsed the triangle and nothing is rasterised at all, so the
-       band wants to be as narrow as it can be without the fade being a line. */
-    sh.uniforms.uFarBand={value:2.0};
+    sh.uniforms.uFarBand={value:3.0};   // the metres it takes to shrink away
     sh.uniforms.uAmp={value:amp};
     sh.uniforms.uGust=gustU;
     sh.uniforms.uWindDir=windDirU;
@@ -999,9 +995,17 @@ function patchFoliage(mat,amp,trans,rimCut,far){
        // costs a fortune in overdraw; fold it away as the camera closes in.
        float camD = distance(wp, cameraPosition);
        transformed *= mix(0.05, 1.0, smoothstep(0.14, 0.68, camD));
-       // ...and past the far band it collapses to a point, which is the
-       // cheapest triangle there is
-       if(uFar > 0.0 && camD > uFar + uFarBand) transformed *= 0.0;
+       /* The far fade happens here rather than in the fragment shader.
+          Dithering it out looked better on paper and was slower in practice:
+          a dither means discard, discard costs early-Z for the whole draw,
+          and pulling the distance in from 25m to 15m made it worse rather
+          than better, because the band then covered far more of the screen.
+          Shrinking the plant to nothing across the band costs one multiply,
+          loses no early-Z, and at fifteen metres a blade of grass getting
+          smaller and a blade of grass fading out are the same picture. */
+       if(uFar > 0.0){
+         transformed *= 1.0 - smoothstep(uFar - uFarBand, uFar, camD);
+       }
        #ifdef USE_INSTANCING
          vec4 wv = modelMatrix * instanceMatrix * vec4(transformed,1.0);
        #else
@@ -1012,13 +1016,12 @@ function patchFoliage(mat,amp,trans,rimCut,far){
                    +sh.vertexShader;
     // screen-door fade for anything that gets within a few centimetres of
     // the lens — at tortoise height that happens constantly
-    sh.fragmentShader='varying float vNearD;\nuniform float uFar;uniform float uFarBand;\n'
+    sh.fragmentShader='varying float vNearD;\n'
                      +sh.fragmentShader.replace(
       '#include <clipping_planes_fragment>',
       `#include <clipping_planes_fragment>
        {
          float nf = smoothstep(0.15, 0.58, vNearD);
-         if(uFar > 0.0) nf = min(nf, 1.0 - smoothstep(uFar, uFar + uFarBand, vNearD));
          if(nf < 0.999){
            // ordered 4x4 dither: a stable, fine pattern rather than static
            vec2 bp = floor(mod(gl_FragCoord.xy, 4.0));
@@ -2380,20 +2383,24 @@ const matFern=new THREE.MeshStandardMaterial({
 });
 const matGrass=new THREE.MeshStandardMaterial({vertexColors:true,side:THREE.DoubleSide,roughness:0.95,metalness:0});
 const matRock=new THREE.MeshStandardMaterial({color:0x4b473f,roughness:1.0,metalness:0.0,flatShading:true});
-/* The distance is the size of the thing. A blade of grass is worth nothing
-   at twenty metres; a hedge's leaf mass still reads at thirty; the blobs
-   that make a wall opaque never dissolve at all, or a corridor would open up
-   at its far end. */
-patchFoliage(matGrass,0.55,0.55,false,20);
-patchFoliage(matFern,0.28,0.85,false,22);
-patchFoliage(matLeafCard,0,0.75,false,25);
+/* Fifteen metres for everything small. A corridor is 2.6m wide and you can
+   rarely see further than a couple of bends, so almost nothing a player is
+   looking at goes: what goes is the detail piled up in the parts of the
+   board they are not in.
+
+   The blobs that make a wall opaque never dissolve at all, or a corridor
+   would open up at its far end. */
+const DISSOLVE=15;
+patchFoliage(matGrass,0.55,0.55,false,DISSOLVE);
+patchFoliage(matFern,0.28,0.85,false,DISSOLVE);
+patchFoliage(matLeafCard,0,0.75,false,DISSOLVE);
 /* The grown bushes get their own pair. Wood and leaf sway by the SAME
    amplitude: they share one instance transform, so equal amplitude keeps
    every leaf attached to the twig it grew on. */
 const matBushWood=matBark.clone();
 const matBushLeaf=matLeafCard.clone();
-patchFoliage(matBushWood,0.10,0,false,25);      // branches
-patchFoliage(matBushLeaf,0.10,0.80,false,30);
+patchFoliage(matBushWood,0.10,0,false,DISSOLVE);      // branches
+patchFoliage(matBushLeaf,0.10,0.80,false,DISSOLVE);
 patchFoliage(matFoliage,0,0.30);
 patchFoliage(matFoliageCut,0,0.30,true);
 patchFoliage(matCanopy,0,0.40,true);
@@ -2917,7 +2924,7 @@ function buildHedges(){
 const matBigLeaf=new THREE.MeshStandardMaterial({
   map:leafTex,transparent:true,alphaTest:0.45,side:THREE.DoubleSide,roughness:0.66,metalness:0,
   normalMap:texLeaf.nrm,normalScale:new THREE.Vector2(1.0,1.0)});
-patchFoliage(matBigLeaf,0.20,0.95,false,26);
+patchFoliage(matBigLeaf,0.20,0.95,false,DISSOLVE);
 const matStalk=new THREE.MeshStandardMaterial({color:0x3f5220,roughness:0.9});
 
 function buildClutter(){
@@ -3819,7 +3826,7 @@ const matThornMaw =new THREE.MeshStandardMaterial({color:0x6d1f2c,roughness:0.62
                                                    emissive:0x2a0a10,emissiveIntensity:0.5});
 const matThornSpike=new THREE.MeshStandardMaterial({color:0xcfc8a8,roughness:0.5,metalness:0});
 const matThornBulb=new THREE.MeshStandardMaterial({color:0x3f4a20,roughness:0.9,metalness:0});
-patchFoliage(matThornStem,0.05,0.35,false,24);
+patchFoliage(matThornStem,0.05,0.35,false,DISSOLVE);
 
 const GEO_THORN_STEM=(()=>{ const g=new THREE.CylinderGeometry(0.035,0.085,1,6,1);
                             g.translate(0,0.5,0); return g; })();
