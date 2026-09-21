@@ -2734,13 +2734,26 @@ patchGroundBlend(matTrunk,{drop:1,lift:0.30,band:0.34});
 /* The buttress flare is a cone standing on its own base, set 0.14m down. */
 const matFlare=matBark.clone();
 patchGroundBlend(matFlare,{drop:0,lift:0.14,band:0.30});
+/* These are cutouts, not glass: each already has an alphaTest and already
+   writes depth, so `transparent` was buying nothing but a place in the
+   transparent queue -- drawn last, sorted back to front, blending on. The
+   leaves keep their exact shape either way, because the cutout is the alpha
+   test.
+
+   Worth about 1ms of a 22ms scene pass, measured by flipping the flag back
+   and forth within one session: false 22.32, 21.36 against true 22.61,
+   22.36. Small, and kept because the flag is simply wrong, not because it
+   is a win.
+
+   I first measured this as half the scene pass and it was not. See the note
+   on the profiler about measuring A against B by running A and then B. */
 const matLeafCard=new THREE.MeshStandardMaterial({
   map:leafTex,normalMap:texLeaf.nrm,normalScale:new THREE.Vector2(0.9,0.9),
-  transparent:true,alphaTest:0.5,side:THREE.DoubleSide,roughness:0.72,metalness:0
+  alphaTest:0.5,side:THREE.DoubleSide,roughness:0.72,metalness:0
 });
 const matFern=new THREE.MeshStandardMaterial({
   map:fernTex,normalMap:texFernT.nrm,normalScale:new THREE.Vector2(0.7,0.7),
-  transparent:true,alphaTest:0.4,side:THREE.DoubleSide,roughness:0.8,metalness:0
+  alphaTest:0.4,side:THREE.DoubleSide,roughness:0.8,metalness:0
 });
 const matGrass=new THREE.MeshStandardMaterial({vertexColors:true,side:THREE.DoubleSide,roughness:0.95,metalness:0});
 const matRock=new THREE.MeshStandardMaterial({color:0x4b473f,roughness:1.0,metalness:0.0,flatShading:true});
@@ -3248,8 +3261,10 @@ function buildHedges(){
   worldGroup.add(card.build(cardGeo,matLeafCard,true,true));
 }
 
+// a cutout like the leaf cards, and out of the transparent queue for the
+// same reason -- see the note by matLeafCard
 const matBigLeaf=new THREE.MeshStandardMaterial({
-  map:leafTex,transparent:true,alphaTest:0.45,side:THREE.DoubleSide,roughness:0.66,metalness:0,
+  map:leafTex,alphaTest:0.45,side:THREE.DoubleSide,roughness:0.66,metalness:0,
   normalMap:texLeaf.nrm,normalScale:new THREE.Vector2(1.0,1.0)});
 patchFoliage(matBigLeaf,0.20,0.95,false,DISSOLVE);
 const matStalk=new THREE.MeshStandardMaterial({color:0x3f5220,roughness:0.9});
@@ -3377,7 +3392,7 @@ function buildClutter(){
   worldGroup.add(fern.build(fernGeo,matFern,true,true));
   const flowerGeo=new THREE.PlaneGeometry(1,1,3,3);
   worldGroup.add(flower.build(flowerGeo,new THREE.MeshStandardMaterial({
-    map:flowerTex,transparent:true,alphaTest:0.4,side:THREE.DoubleSide,
+    map:flowerTex,alphaTest:0.4,side:THREE.DoubleSide,
     roughness:0.72,metalness:0}),false,true));
   worldGroup.add(fstem.build(new THREE.CylinderGeometry(1,1,2,5),
     new THREE.MeshStandardMaterial({color:0x4d6128,roughness:0.9}),false,true));
