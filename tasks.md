@@ -38,5 +38,11 @@ mark done tasks like - [X]
 - [X] Move enemy Plant with spikes to dark fogy biom and increase quantity 
 - [X] Add lake with ability wo sweem on big leaf. Lets cenral lake connects 4 sides of our map
 - [X] change sky color slowwly when it rains
-- [X] Do research for performance optimisation
-- [X] implement performance optimisation 
+- [ ] Do research for performance optimisation
+- [ ] implement performance optimisation 
+- [ ] fix lake - now it is super deeep tranche without water, not big shalow lake 
+- [ ] fix leaf - now I can speen on it under the ground
+- [ ] fix spherical bushes material - it is to reglective (has to be more difuse)
+- [ ] use wind power for amplitude of animation of grass, reas, leaft, rain etc. Change wind power with weather
+- [ ] fix: cat can drown in lake. Just don't 
+- [ ] lake - separate biom with own flora and fauna
