@@ -1177,7 +1177,30 @@ const applyWind=(m,a)=>patchFoliage(m,a,0);
    ═══════════════════════════════════════════════════════════════ */
 const canvas=$('app');
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});
-renderer.setPixelRatio(Math.min(devicePixelRatio,1.25));
+/* How many pixels the renderer is allowed to draw, whatever size the window
+   is. A device pixel ratio cap alone does not do this: the window itself can
+   be any size, and on a wide monitor this was drawing 3.3 megapixels a frame.
+
+   The renderer is fill-bound, so this is the largest single lever there is.
+   Measured with the profiler, one view, high and low alternated so a warming
+   GPU could not fake the trend:
+
+     3.34 MPix   43.1 ms   23 fps
+     2.41        31.1      32
+     1.56        24.7      41
+     0.97        19.7      51
+     0.68        16.1      62
+
+   Near enough a straight line: about 10.5ms of frame that is not pixels, and
+   9.6ms per megapixel on top. The budget below is 1080p's worth, so a normal
+   monitor at its native size is untouched and anything larger is scaled to
+   fit rather than rendered at full size and left to crawl. */
+const PIXEL_BUDGET=1920*1080;
+function fitPixelRatio(){
+  const css=Math.max(1,innerWidth*innerHeight);
+  return Math.min(devicePixelRatio, 1.25, Math.sqrt(PIXEL_BUDGET/css));
+}
+renderer.setPixelRatio(fitPixelRatio());
 renderer.setSize(innerWidth,innerHeight);
 renderer.outputColorSpace=THREE.SRGBColorSpace;
 renderer.toneMapping=THREE.NoToneMapping;   // the composite pass grades instead
@@ -1316,6 +1339,9 @@ function setEnvIntensity(v){
 
 addEventListener('resize',()=>{
   camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();
+  // the budget is on area, so a resize has to refit the ratio, not just the
+  // size -- otherwise dragging a window wider walks straight past it
+  renderer.setPixelRatio(fitPixelRatio()*quality);
   renderer.setSize(innerWidth,innerHeight);
   buildTargets();
 });
@@ -7494,7 +7520,10 @@ let fpsAcc=0,fpsCount=0,mapAcc=0,ripple=null;
 
 /* Adaptive resolution: hold a playable framerate on modest GPUs without
    asking the player to fiddle with settings. */
-const MAX_DPR=Math.min(devicePixelRatio,1.25);
+/* The adaptive scaler works off this, so it has to start from the budget
+   rather than from the raw device ratio, or switching it on would put the
+   pixels straight back. */
+const MAX_DPR=fitPixelRatio();
 let quality=1, qAcc=0, qFrames=0, qCooldown=2.5, shadowsTrimmed=false;
 /* Off by default. It kept the framerate up by quietly rendering fewer
    pixels and switching effects off, which reads as the picture going soft
