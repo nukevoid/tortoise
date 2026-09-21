@@ -2822,7 +2822,8 @@ const WAY={
   r:LAKE_R,                  // the water
   depth:0.50,                // 0.62 of this is standing depth: 0.31m
   bank:5.0,                  // and the banks have this far to come down
-  floor:0, level:0
+  shore:8.0,                 // ...and this far to let the lifted rim back down
+  floor:0, level:0, rim:0
 };
 /* Distance from a point to the waterway, negative-free, and 0 inside it.
    Two axis-aligned segments and a disc, so this is three cheap tests. */
@@ -2885,9 +2886,29 @@ function groundH(x,z){
      metres to get back to the land, which is what makes it a lake rather
      than a trench: the first version had 1.5m to climb 1.7m and read as a
      canyon with a puddle in it. */
+  /* ...and a bank on the downhill side, which it did not have.
+
+     The board leans about two metres across the lake, and the level is one
+     number, so on the low side -- the north-west quarter -- the land outside
+     the carve sat BELOW the waterline: 1.24m of water still at the surface
+     mesh's outer rim, and the terrain another 40cm lower again fifteen
+     metres further out. With nothing standing above the water to occlude it,
+     the sheet read exactly as reported: water higher than its own banks.
+
+     No choice of level fixes that, because the ground keeps falling away --
+     put the surface under the lowest rim and the uphill bank becomes a 2.4m
+     wall over 5m, which is the trench this lake was dug out of once already.
+     What was missing is the bank itself. So land inside the carve is lifted
+     to WAY.rim, a hand's width above the waterline, wherever it falls short
+     of it, and let back down to its natural height over WAY.shore metres
+     past the bank. Uphill, where the land already clears the rim, this
+     changes nothing: max() of a lift is the lift or the land. */
   {
     const d=wayDist(x,z);
-    if(d<WAY.bank)h=lerp(h,wayFloorAt(x,z),1-smoothstep(-0.4,WAY.bank,d));
+    if(d<WAY.bank+WAY.shore){
+      if(h<WAY.rim)h=lerp(WAY.rim,h,smoothstep(WAY.bank,WAY.bank+WAY.shore,d));
+      if(d<WAY.bank)h=lerp(h,wayFloorAt(x,z),1-smoothstep(-0.4,WAY.bank,d));
+    }
   }
   return h;
 }
@@ -2973,7 +2994,12 @@ const openCells=[];
 for(let cy=0;cy<N;cy++)for(let cx=0;cx<N;cx++){
   if(dist[cy*N+cx]<0)continue;
   const c=cellCenter(cx,cy);
-  if(wayDist(c.x,c.z)<1.0)continue;      // the lake: nothing stands in it
+  /* The lake: nothing stands in it. Out to a full tile rather than a metre,
+     because this runs before the water is settled and so cannot ask
+     waterDepth -- it has to cover the furthest the waterline can reach.
+     With the rim built, that is 15.0m; one tile past the water's own radius
+     is 15.1m. At 1.0m it left a ring of cells that came out under water. */
+  if(wayDist(c.x,c.z)<T)continue;
   openCells.push([cx,cy]);
 }
 
@@ -3009,6 +3035,11 @@ for(let cy=0;cy<N;cy++)for(let cx=0;cx<N;cx++){
   hs.sort((a,b)=>a-b);
   WAY.floor=hs[hs.length>>1]-WAY.depth;
   WAY.level=WAY.floor+WAY.depth*0.62;
+  /* The bank has to stand clear of the water, not level with it: at the
+     waterline exactly, the surface fades out against ground it is flush
+     with and the lake still has no visible shore on the low side. 25cm is
+     about a shell's height of dry bank. */
+  WAY.rim=WAY.level+0.25;
   SHORE_READY=true;                  // the shore biome can be asked about now
 })();
 const POND=addBasin(LAKE.x,LAKE.z,LAKE.r,1.15);
