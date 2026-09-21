@@ -5500,24 +5500,44 @@ defineMob('beetle',{
   },
   onReset(m){
     m.x=m.home.x; m.z=m.home.z;
-    m.data.dir=rr(0,6.283); m.data.turn=rr(1,3);   // data is wiped on reset
+    m.data.dir=rr(0,6.283); m.data.turn=rr(1,3); m.data.dodge=0;  // data is wiped on reset
     setMobState(m,'wander');
   },
   think(m,dt,d){
     const rig=m.parts.rig;
     if(state!=='play'){ rig.visible=false; return; }
     rig.visible=true;
-    // it ambles, and bolts if you loom over it
+    /* It ambles, and bolts if you loom over it.
+
+       Fleeing used to mean pointing straight away from the player and
+       recomputing that every frame, which threw away the turn the wall check
+       had just applied. A beetle with a hedge behind it therefore pressed
+       into the hedge forever: with the player stood so that "away" pointed at
+       a wall, six of six beetles moved for one to five frames out of ninety
+       and then stopped dead, still inside arm's reach.
+
+       So the swerve is remembered instead. Away-from-the-player is still the
+       heading it wants, but a running offset is added to it, the offset grows
+       each time it is refused and decays once it is moving again, so the
+       beetle feels its way along the hedge and comes off the end of it rather
+       than standing there being trodden on. */
     const spooked=d<BEETLE.shy;
     if(spooked){
-      m.data.dir=Math.atan2(m.x-P.pos.x,m.z-P.pos.z);
+      if(m.data.dodge===undefined)m.data.dodge=0;
+      m.data.dir=Math.atan2(m.x-P.pos.x,m.z-P.pos.z)+m.data.dodge;
     }else{
+      m.data.dodge=0;
       m.data.turn-=dt;
       if(m.data.turn<=0){ m.data.dir+=rr(-1.4,1.4); m.data.turn=rr(1.2,3.4); }
     }
     const sp=(spooked?BEETLE.scuttle:BEETLE.speed);
     const nx=m.x+Math.sin(m.data.dir)*sp*dt, nz=m.z+Math.cos(m.data.dir)*sp*dt;
-    if(!blocked(nx,nz)){ m.x=nx; m.z=nz; } else m.data.dir+=2.2;
+    if(!blocked(nx,nz)){
+      m.x=nx; m.z=nz;
+      if(spooked)m.data.dodge*=0.90;   // straighten up again once it is clear
+    }else if(spooked){
+      m.data.dodge+=0.55;              // refused: lean further off and try again
+    }else m.data.dir+=2.2;
     rig.position.set(m.x,groundH(m.x,m.z)+0.005,m.z);
     rig.rotation.y=m.data.dir;
     const gait=Math.sin(m.t*(spooked?26:9));
