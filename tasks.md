@@ -53,4 +53,7 @@ mark done tasks like - [X]
 - [X] do step sound faster and lighter
 - [X] fix anemy plant mode  - it don't hase stem from root to flower
 - [X] don't make that diagonal free cells not connected (visualy I can see next diagonal cell, but can't go to it now)
-- [ ] more lighter and faster steps, it is tortoise, not Cow
+- [X] more lighter and faster steps, it is tortoise, not Cow
+- [ ] add reflection to water (cubemap like minimum)
+- [ ] add button to switch view from first to third person
+- [ ] sound of wind has to depend on wind power. And do wins lighter by defaul, and stronger time to time
