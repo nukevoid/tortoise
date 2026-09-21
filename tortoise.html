@@ -1063,7 +1063,7 @@ const windU={value:0};
    all rise from the same number, so what you hear and what you see agree. */
 const WIND_DIR=new THREE.Vector2(0.82,0.57).normalize();
 const windDirU={value:new THREE.Vector2(WIND_DIR.x,WIND_DIR.y)};
-const gustU={value:0.35};              // 0 = still air, 1 = the peak of a gust
+const gustU={value:0.20};              // 0 = still air, 1 = the peak of a gust
 const WIND_BAND=0.055, WIND_SPEED=0.75;
 
 // The travelling band sampled at a world position -- the CPU twin of the
@@ -1073,10 +1073,20 @@ function gustAt(x,z){
   const band=Math.sin((x*WIND_DIR.x+z*WIND_DIR.y)*WIND_BAND - t*WIND_SPEED)*0.5+0.5;
   return band*band*gustU.value;
 }
-// The slow swell that decides whether the air is resting or working.
+/* The slow swell that decides whether the air is resting or working.
+
+   The air now rests light and works in bursts, instead of sitting at a
+   middling push the whole time. The gust term is a sine raised high, so it
+   is near nothing for most of its minute and arrives as a build and a drop;
+   the much slower spell term decides whether this stretch of the day is a
+   breezy one or a calm one, so two gusts running are rarely the same size.
+   Resting is 0.06 and a gust lands between 0.8 and 1.21, where the old
+   shape never left the 0.18-1.0 band it spent its whole time in the middle
+   of. */
 function gustEnvelope(t){
-  return 0.18 + 0.82*Math.pow(Math.sin(t*0.081)*0.5+0.5, 1.6)
-              * (0.72+0.28*(Math.sin(t*0.207+1.1)*0.5+0.5));
+  const gust =Math.pow(Math.sin(t*0.104)*0.5+0.5, 4.0);       // a gust a minute
+  const spell=Math.pow(Math.sin(t*0.0268+1.7)*0.5+0.5, 1.5);  // breezy or calm
+  return 0.06 + 1.15*gust*(0.30+0.70*spell);
 }
 /* `far` is the distance at which this plant stops being drawn.
 
@@ -7389,7 +7399,7 @@ function startAmbience(){
   const src=ctx.createBufferSource();
   src.buffer=noiseBuf(4);src.loop=true;
   const f=ctx.createBiquadFilter();f.type='lowpass';f.frequency.value=420;f.Q.value=0.6;
-  windGain=ctx.createGain();windGain.gain.value=0.10;
+  windGain=ctx.createGain();windGain.gain.value=0.035;
   src.connect(f);f.connect(windGain);windGain.connect(AUDIO.master);
   src.start();
   windFilt=f;
@@ -7459,12 +7469,15 @@ const SFX={
      same scuff run brighter and longer, because dead leaves rattle. Water is
      the opposite shape: a quick bright splash that falls away, with no thud
      at all, because the foot meets liquid rather than something solid. */
-  /* These gains are not guesses. The wind bed runs continuously at 0.045
-     rising past 0.20 in a gust, over noise whose own level is 0.18, so there
-     is roughly 0.008 of steady hiss to get over and four times that in a
-     gust. The old step peaked at 0.012 and its scuff was buried; these are
-     set so each footfall peaks near 0.05, which is a third of the pickup
-     chime and clearly over the weather.
+  /* These gains are not guesses. The wind bed rests at 0.026 and rises past
+     0.19 in a gust (0.32 in a storm gust), over noise whose own level is
+     0.18, so there is roughly 0.005 of steady hiss to get over and seven
+     times that at the top of a gust -- the resting bed went down and the
+     gusts went up when the wind was given its envelope, which leaves a
+     footfall clearer at rest and can bury one under a storm gust, which is
+     the right way round. The old step peaked at 0.012 and its scuff was
+     buried; these are set so each footfall peaks near 0.05, which is a third
+     of the pickup chime and clearly over the weather.
 
      Checked afterwards on the live master bus rather than only on paper:
      standing still in dry weather the bed peaks at 0.025, the pickup chime
@@ -8264,7 +8277,11 @@ function update(dt){
      runs up to 45% quicker in rain, so the hedges work harder rather than
      merely leaning further. */
   windU.value+=dt*(1+0.45*WEATHER.wet);
-  gustU.value=clamp(gustEnvelope(windU.value)*(1+0.85*WEATHER.wet),0,1.6);
+  /* Rain does not merely gust harder, it never rests: the wet lifts the floor
+     as well as scaling the peaks, so a storm is a continuous working roar
+     with gusts on top of it rather than the dry day's lulls played louder. */
+  gustU.value=clamp(gustEnvelope(windU.value)*(1+0.45*WEATHER.wet)
+                    +0.55*WEATHER.wet, 0, 1.6);
 
   /* ---- hide in shell ---- */
   /* There is no clock on it any more.
@@ -8669,14 +8686,18 @@ function update(dt){
   }
   if(windGain){
     const w=clamp(gustU.value,0,1.6), wet=WEATHER.wet;
+    /* Most of the level is the gust term now, and very little of it is the
+       bed underneath: resting air is quieter than it was and a gust is
+       louder, so the wind is something you hear change rather than a hiss
+       that happens to be on. */
     windGain.gain.value=lerp(windGain.gain.value,
-        0.045+gl*0.05+w*0.105+wet*0.045, dt*2);
+        0.026+gl*0.05+w*0.155+wet*0.045, dt*2);
     // a harder gust is a brighter one; rain takes the lid off it further
     if(windFilt)windFilt.frequency.value=lerp(windFilt.frequency.value,
-        360+w*540+wet*280, dt*1.6);
+        300+w*620+wet*280, dt*1.6);
     // and the thin edge only arrives once the air is really working
     if(windHiGain)windHiGain.gain.value=lerp(windHiGain.gain.value,
-        Math.max(0,w-0.52)*0.085*(1+1.1*wet), dt*2.2);
+        Math.max(0,w-0.46)*0.105*(1+1.1*wet), dt*2.2);
   }
 
   /* ---- hud ---- */

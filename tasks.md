@@ -58,7 +58,7 @@ mark done tasks like - [X]
 - [X] add button to switch view from first to third person
 - [X] ground under water has to look wet - darker with weetness
 - [X] bug: in left top sector related to lake lake water is higher than banks and terain
-- [ ] sound of wind has to depend on wind power. And make wins lighter by defaul, and stronger time to time
+- [X] sound of wind has to depend on wind power. And make wins lighter by defaul, and stronger time to time
 - [ ] bug: some ponds looks like without water, maybe camera beneth the water plane 
 - [ ] fix camera in 3rd mode ( has to look from the top bottom to forward), investigate how cameras in 3d view works
 - [ ] remove strafes, assign to A and D YAW rotation
@@ -67,3 +67,5 @@ mark done tasks like - [X]
 - [ ] add rain drops on water
 - [ ] add smooth water - bank intersection
 - [ ] add small rocks and debris that shows only in small range 
+- [ ] sunbeam visibility has to depend on weather 
+
