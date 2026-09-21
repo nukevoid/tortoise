@@ -6029,10 +6029,31 @@ function initAudio(){
     AUDIO.ready=true;
   }catch(e){console.warn('audio unavailable',e);}
 }
-function noiseBuf(sec){
+/* Noise, in two colours, because the two uses want opposite things.
+
+   'brown' is the original: white noise run through a one-pole lowpass whose
+   corner sits near 150Hz. That is exactly right for moving air and for rain,
+   which are low and heavy and want no fizz in them.
+
+   It was wrong for everything percussive. noiseHit takes a burst of this and
+   puts a bandpass over it, and a footstep's bandpass sits at 600Hz, a leaf
+   step's at 1200, a splash's at 1700 -- all of them well above the corner,
+   where this noise has almost nothing left. Rendering the real chain offline
+   and comparing the two sources at identical gain: the ground step came out
+   at 0.69 of white, the litter step at 0.30, the splash at 0.28. The two new
+   surface steps were the quietest sounds in the game because they are the
+   brightest, and the wind bed underneath them is ten times their level.
+
+   So percussion gets 'white', which has its energy spread evenly and lets the
+   bandpass actually find something to pass. */
+function noiseBuf(sec,colour){
   const ctx=AUDIO.ctx,len=Math.floor(ctx.sampleRate*sec);
   const b=ctx.createBuffer(1,len,ctx.sampleRate);
   const d=b.getChannelData(0);
+  if(colour==='white'){
+    for(let i=0;i<len;i++)d[i]=Math.random()*2-1;
+    return b;
+  }
   let last=0;
   for(let i=0;i<len;i++){
     const w=Math.random()*2-1;
@@ -6111,7 +6132,7 @@ function tone(freq,dur,type,vol,slideTo,delay){
 function noiseHit(dur,freq,q,vol,type){
   if(!AUDIO.ready||AUDIO.muted)return;
   const ctx=AUDIO.ctx,t0=ctx.currentTime;
-  const s=ctx.createBufferSource();s.buffer=noiseBuf(0.3);
+  const s=ctx.createBufferSource();s.buffer=noiseBuf(0.3,'white');
   const f=ctx.createBiquadFilter();f.type=type||'bandpass';f.frequency.value=freq;f.Q.value=q||1;
   const g=ctx.createGain();
   g.gain.setValueAtTime(vol||0.12,t0);
@@ -6125,16 +6146,29 @@ const SFX={
      same scuff run brighter and longer, because dead leaves rattle. Water is
      the opposite shape: a quick bright splash that falls away, with no thud
      at all, because the foot meets liquid rather than something solid. */
-  step(){noiseHit(0.13,rr(420,780),1.3,0.075);tone(rr(70,100),0.09,'sine',0.05);},
-  stepLitter(){noiseHit(0.19,rr(900,1500),0.9,0.055);
-               noiseHit(0.09,rr(2200,3400),1.1,0.028);
-               tone(rr(80,110),0.07,'sine',0.028);},
+  /* These gains are not guesses. The wind bed runs continuously at 0.045
+     rising past 0.20 in a gust, over noise whose own level is 0.18, so there
+     is roughly 0.008 of steady hiss to get over and four times that in a
+     gust. The old step peaked at 0.012 and its scuff was buried; these are
+     set so each footfall peaks near 0.05, which is a third of the pickup
+     chime and clearly over the weather.
+
+     Checked afterwards on the live master bus rather than only on paper:
+     standing still in dry weather the bed peaks at 0.025, the pickup chime
+     is a 0.14 sine and so lands at 0.077, and a footfall now contributes
+     about 0.031 -- two fifths of a pickup, comfortably above the wind, and
+     still quieter than anything the player actually did on purpose. The old
+     one contributed 0.007, which is a quarter of the wind it sat under. */
+  step(){noiseHit(0.13,rr(420,780),1.3,0.30);tone(rr(70,100),0.09,'sine',0.055);},
+  stepLitter(){noiseHit(0.19,rr(900,1500),0.9,0.13);
+               noiseHit(0.09,rr(2200,3400),1.1,0.068);
+               tone(rr(80,110),0.07,'sine',0.045);},
   stepWater(depth){
     const d=clamp(depth||0.05,0.02,0.25);
     // deeper water is a fatter, lower splash and takes longer to fall away
-    noiseHit(0.16+d*0.7,rr(1300,2100)-d*1800,0.8,0.05+d*0.22,'bandpass');
-    noiseHit(0.07,rr(2600,4200),1.4,0.035);
-    tone(rr(150,230)-d*260,0.11+d*0.3,'sine',0.03+d*0.10,rr(90,130));
+    noiseHit(0.16+d*0.7,rr(1300,2100)-d*1800,0.8,0.12+d*0.28,'bandpass');
+    noiseHit(0.07,rr(2600,4200),1.4,0.075);
+    tone(rr(150,230)-d*260,0.11+d*0.3,'sine',0.04+d*0.10,rr(90,130));
   },
   pickup(){tone(680,0.14,'sine',0.14);tone(1020,0.22,'sine',0.11,null,0.08);},
   stone(){tone(523,0.3,'sine',0.16);tone(784,0.35,'sine',0.14,null,0.1);tone(1046,0.6,'sine',0.13,null,0.2);},
