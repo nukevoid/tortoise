@@ -4034,9 +4034,12 @@ function buildGate(){
    --------------------------------------------------------------- */
 let waterMat=null, waterRipple=null;
 const waterU={value:0};
+/* One of these per reflection probe now, so the ripple texture and the
+   clock are made once and shared: the shader is identical between them and
+   only the envMap differs. */
 function makeWaterMaterial(){
-  const rip=makeRippleNormal();
-  rip.repeat.set(7,7);
+  let rip=waterRipple;
+  if(!rip){ rip=makeRippleNormal(); rip.repeat.set(7,7); waterRipple=rip; }
   // Water barely diffuses: almost everything you see is reflected sky plus
   // what shows through. A mid-blue diffuse term is what made it look milky.
   const m=new THREE.MeshStandardMaterial({
@@ -4096,8 +4099,108 @@ function makeWaterMaterial(){
          }
          #include <dithering_fragment>`);
   };
-  waterMat=m; waterRipple=rip;
+  if(!waterMat)waterMat=m;
   return m;
+}
+
+
+/* ---------------------------------------------------------------
+   Reflections in the water.
+
+   The only thing water had to reflect until now was the sky: one PMREM
+   baked at boot from the procedural dome and handed to every material in
+   the scene as scene.environment. On a wet stone that is all you want. On
+   a lake it is half the picture -- a pool ringed by trees that reflects
+   none of them reads as a hole full of blue paint, and the giveaway is the
+   shoreline, where the bank ought to be folded back at you and instead the
+   water goes on being sky right up to the edge.
+
+   So the two real bodies of water get a cubemap of their own. A CubeCamera
+   sits a few centimetres above the middle of each and captures the banks,
+   the trees behind them and the dome above; PMREM prefilters it, so the
+   roughness the material already has picks a blurred mip rather than a
+   mirror, and the ripple normals break it up on top of that.
+
+   It is baked once, at the end of the boot, and never again. That was not
+   the plan -- the plan was one face a frame whenever the weather turned the
+   sky over -- and the measurement is what changed it. Six faces of one
+   probe cost 39ms, and the same six with the camera on an empty layer cost
+   4ms, so it is not the render targets and it is not the scene walk: it is
+   2.3M triangles being transformed six more times. Dropping the cube to
+   64 a side would not touch that, because none of it is fill. It is 6.5ms
+   a face whenever it happens, which is half a frame again, and a stutter
+   every fourth frame for as long as the weather is turning is a worse
+   thing to look at than a reflection that does not follow the sky.
+
+   And it barely needs to. What a storm does to a reflection is take the
+   shine off it, and that already happens: envWant in update() pulls
+   envMapIntensity down by 45% in the wet, these materials are in allMats
+   like everything else, and the Gloom Grove dims them by the same route.
+   So the geometry in the cube is fixed -- it is trees and banks, and they
+   do not move -- and the weather rides on the intensity.
+
+   It is a probe and not a mirror: one point stands in for a whole surface,
+   so the reflection is honest in the middle of a lake and approximate at
+   its edges, and a puddle on the far side of the map would get somebody
+   else's trees. Which is why the puddles, the creek and the meadow pond
+   keep the plain sky environment -- small, shallow, mostly seen at a
+   grazing angle, and nothing about them to reflect but sky anyway.
+   --------------------------------------------------------------- */
+/* 128 a face: the surface is rough and it is moving, and a sharper probe
+   buys detail the ripples destroy. */
+const WATER_PROBE={ size:128, near:0.4, far:400, lift:0.06 };
+const waterProbes=[];
+let waterPmrem=null, waterGroup=null;
+function addWaterProbe(x,y,z){
+  const rt=new THREE.WebGLCubeRenderTarget(WATER_PROBE.size,{
+    type:THREE.HalfFloatType, generateMipmaps:false,
+    minFilter:THREE.LinearFilter, magFilter:THREE.LinearFilter});
+  const cam=new THREE.CubeCamera(WATER_PROBE.near,WATER_PROBE.far,rt);
+  cam.position.set(x,y+WATER_PROBE.lift,z);
+  cam.updateMatrixWorld(true);
+  scene.add(cam);
+  const pr={cam,rt,pmrem:null,mat:makeWaterMaterial()};
+  waterProbes.push(pr);
+  return pr;
+}
+/* One face into the cube. The water is hidden while it happens -- it is
+   transparent and depth-writes off, and a surface that reflects itself puts
+   a band of doubled water across the horizon of every face. The sky sphere
+   is carried to the probe as well, since it is normally pinned to the
+   player's head and would otherwise be off to one side. */
+function bakeWaterFace(pr,face){
+  const wasWater=waterGroup?waterGroup.visible:false;
+  const skyAt=sky.position.clone();
+  const shadowWas=renderer.shadowMap.needsUpdate;
+  if(waterGroup)waterGroup.visible=false;
+  sky.position.copy(pr.cam.position);
+  renderer.shadowMap.needsUpdate=false;
+  renderer.setRenderTarget(pr.rt,face);
+  renderer.render(scene,pr.cam.children[face]);
+  renderer.setRenderTarget(null);
+  renderer.shadowMap.needsUpdate=shadowWas;
+  sky.position.copy(skyAt);
+  if(waterGroup)waterGroup.visible=wasWater;
+}
+function prefilterWaterProbe(pr){
+  if(!waterPmrem){
+    waterPmrem=new THREE.PMREMGenerator(renderer);
+    waterPmrem.compileCubemapShader();
+  }
+  pr.pmrem=waterPmrem.fromCubemap(pr.rt.texture,pr.pmrem);
+  if(pr.mat.envMap!==pr.pmrem.texture){
+    pr.mat.envMap=pr.pmrem.texture;
+    pr.mat.needsUpdate=true;      // ENVMAP is a define; the program changes
+  }
+}
+/* All of it at once, at boot, where 91ms disappears into a ten-second load.
+   Exported as well, so a probe can be re-baked by hand if the world ever
+   gains something that moves and belongs in the reflection. */
+function bakeWaterProbes(){
+  for(const pr of waterProbes){
+    for(let f=0;f<6;f++)bakeWaterFace(pr,f);
+    prefilterWaterProbe(pr);
+  }
 }
 
 
@@ -4236,12 +4339,18 @@ function waywaySurface(){
 
 function buildWater(){
   const mat=makeWaterMaterial();
-  const group=new THREE.Group();
+  waterGroup=new THREE.Group();
+  const group=waterGroup;
   group.renderOrder=2;
+  /* The two that are worth a probe: the meadow pond by the gate, which the
+     player walks the whole length of on the way out, and the lake in the
+     middle of the maze, which is the one they cross on a leaf. */
+  const probePond=addWaterProbe(POND.x,POND.level,POND.z);
+  const probeWay=addWaterProbe(WAY.ax,WAY.level,WAY.az);
 
   // --- the lake ---
   const lakeGeo=tagWaterDepth(shorelineGeometry(POND,72),POND.level,POND.x,POND.z);
-  const lake=new THREE.Mesh(lakeGeo,mat);
+  const lake=new THREE.Mesh(lakeGeo,probePond.mat);
   lake.rotation.x=-Math.PI/2;
   lake.position.set(POND.x,POND.level,POND.z);
   lake.receiveShadow=true;
@@ -4258,7 +4367,7 @@ function buildWater(){
 
   // --- the waterway through the maze ---
   {
-    const w=new THREE.Mesh(waywaySurface(),mat);
+    const w=new THREE.Mesh(waywaySurface(),probeWay.mat);
     w.receiveShadow=true;
     group.add(w);
   }
@@ -8559,6 +8668,9 @@ async function boot(){
   buildTargets();
   renderer.compile(scene,camera);
   renderFrame();
+  /* after the first frame, so the shadow map exists: baking the cubes with
+     an empty one would fold a lake full of shadow back at the player */
+  bakeWaterProbes();
   /* ?export turns this run into a build step: it prints the level it just
      made so it can be pasted into LEVEL_BAKED. */
   if(location.search.indexOf('export')>=0){
@@ -8733,7 +8845,7 @@ window.__game={
   groundH,terrainBase,waterDepth,blocked,BASINS,CREEK,surfaceAt,biomeDensity,
   flipPlayer,unflipPlayer,
   mobs,MOB_TYPES,defineMob,spawnMob,despawnMob,setMobState,mobDist,
-  RAFTS,WAY,wayDist,wayLevelAt,blockedWorld,
+  RAFTS,WAY,wayDist,wayLevelAt,blockedWorld,waterProbes,bakeWaterProbes,
   mobStrike,attackTick,playerSheltered,makeThreatShadow,placeThreatShadow,
   STAGE,stageFree,stageBusy,shadowReadable,groundFavour,MOB_GROUND,GLOOM,
   get shafts(){return shaftMesh;},get motes(){return moteMesh;},
