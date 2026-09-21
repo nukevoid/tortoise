@@ -5042,6 +5042,21 @@ function flipRoll(){
   const e=k*k*(3-2*k);
   return Math.PI+P.flipDir*lerp(FLIP.tipAngle,Math.PI,e);
 }
+/* Where the middle of the carapace sits in the rig's own space: the shell
+   mesh is scaled (0.30,0.205,0.37) and sits at (0,0.165,0.30), so this is
+   its centre before the rig's own scale is applied. This is the point the
+   shell rolls around. */
+const DOME_LOCAL=new THREE.Vector3(0,0.165,0.30);
+const _wheelC=new THREE.Vector3(), _domeV=new THREE.Vector3();
+
+/* The little lift as it pivots over its own edge and lands on its feet.
+   Separate from the roll now that the roll keeps its own height. */
+function flipHop(){
+  if(P.flipPhase!=='right')return 0;
+  const k=clamp(P.flipRightT/FLIP.rightTime,0,1);
+  return Math.sin(k*Math.PI)*FLIP.hop;
+}
+
 /* How far along the ground the roll has carried the shell from where the
    player is standing. It has to come back to nothing by the time the body is
    on its feet, or the shell jumps a quarter of a metre at the end. */
@@ -6699,21 +6714,6 @@ function update(dt){
   });
 
   /* body rig: rides the ground, leans with the slope, never follows the pitch */
-  /* Upturned, the rig has to ride ABOVE the ground: rotating it about its
-     own base would otherwise bury the shell and push the legs through the
-     floor. */
-  /* On its back the shell rocks on its dome, so the point touching the
-     ground travels: rolling without slipping carries the body sideways by
-     the dome's radius times the angle. Spinning it about a fixed centre
-     instead made it read as a dial being turned rather than a weight being
-     rolled, and the contact point slid. */
-  let rigX=P.pos.x, rigZ=P.pos.z;
-  if(P.flipped){
-    const off=flipRollOffset();
-    rigX+= Math.cos(P.yaw)*off;
-    rigZ+=-Math.sin(P.yaw)*off;
-  }
-  bodyRig.position.set(rigX,gH+(P.flipped?flipLift():bobY*0.45),rigZ);
   groundNormal(P.pos.x,P.pos.z,_bodyN);
   _tiltQ.setFromUnitVectors(_upAxis,_bodyN);
   _yawQ.setFromAxisAngle(_upAxis,P.yaw);
@@ -6721,6 +6721,28 @@ function update(dt){
     P.flipped ? flipRoll()
               : Math.sin(P.bob*0.5)*0.035*clamp(spd/(WALK_SPEED*0.98),0,1));
   bodyRig.quaternion.copy(_tiltQ).multiply(_yawQ).multiply(_rollQ);
+
+  /* Upturned, the shell rolls like a wheel, and a wheel turns about its own
+     centre. The rig's origin is at the animal's feet, a hand's width below
+     and behind the dome, so rotating the rig about that origin swung the
+     shell like a weight on a string: the top swept a long arc and the part
+     touching the ground skidded sideways.
+
+     So the dome's centre is placed first -- it rides at a constant height,
+     one radius up, and travels along the ground by radius times angle, which
+     is what rolling without slipping means -- and then the rig is put
+     wherever it has to be for its own dome to end up there. The rotation is
+     unchanged; only what it turns around has moved. */
+  if(P.flipped){
+    const off=flipRollOffset();
+    _wheelC.set(P.pos.x+Math.cos(P.yaw)*off,
+                gH+FLIP.shellR+flipHop(),
+                P.pos.z-Math.sin(P.yaw)*off);
+    _domeV.copy(DOME_LOCAL).multiplyScalar(TORTOISE).applyQuaternion(bodyRig.quaternion);
+    bodyRig.position.copy(_wheelC).sub(_domeV);
+  }else{
+    bodyRig.position.set(P.pos.x,gH+bobY*0.45,P.pos.z);
+  }
   const walk=clamp(spd/(WALK_SPEED*1.07),0,1);
   for(let i=0;i<legs.length;i++){
     const g=legs[i];
