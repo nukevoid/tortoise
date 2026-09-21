@@ -87,7 +87,9 @@
      you are deciding whether to stay in, and it is hidden whenever it is
      full and you are out -- a meter that is always on screen stops being
      read. */
-  #breath{position:absolute;left:50%;top:50%;width:104px;height:5px;
+  /* the shell has no clock any more; kept only so the rule is visible in
+     one place if it is ever wanted back */
+  #breath{display:none;position:absolute;left:50%;top:50%;width:104px;height:5px;
     margin:18px 0 0 -52px;border-radius:3px;background:rgba(255,255,255,.16);
     border:1px solid rgba(0,0,0,.45);box-sizing:border-box;
     box-shadow:0 0 6px rgba(0,0,0,.55);opacity:0;transition:opacity .22s ease}
@@ -146,7 +148,6 @@
 
   <div id="hud">
     <div id="crosshair"></div>
-    <div id="breath"><i></i></div>
 
     <div id="objective" class="panel">
       <div class="t">Objective</div>
@@ -5547,7 +5548,6 @@ let glassHintShown=false;
    one, is the whole fix -- the mechanic was already right. */
 let thornHintShown=false;
 let restHintShown=false;
-let breathHintShown=false;
 let wetShellHintShown=false;
 
 
@@ -5892,12 +5892,6 @@ const SHELL={
                       Chosen against the heron: from the middle of the worst
                       marsh in the maze, dry ground is close enough to reach
                       inside its 2.7s shadow. */
-  hold:10.5,       // longer than anything that demands the shell asks for:
-                   // a glass cup shadow to its shatter is 8.67s, the longest
-                   // stretch the game ever needs you pulled in
-  refill:0.85,     // ...and slower to come back than it is to spend
-  lockout:1.1,     // pushed into the open when it runs out
-  rearm:0.34       // and held there until a third of it is back
 };
 
 /* The swing is a forced oscillator on a fixed clock, not a free pendulum.
@@ -7273,7 +7267,7 @@ const P={
      the right way up again. */
   flipped:false, flipT:0,
   winded:false,                    // out of breath, and not running again yet
-  breath:SHELL.hold, shellLock:0, shellSpent:false,   // how long you can stay in
+  /* breath/shellLock/shellSpent are gone: the shell has no clock */
   flipAngle:0, flipVel:0,          // where the shell leans, and how fast
   flipTheta:0, flipAmp:0,          // the swing's own clock, and how far it goes
   flipPhase:'rock', flipRightT:0, flipDir:1,
@@ -7298,7 +7292,7 @@ function resetPlayer(){
   else P.yaw=0;                                    // north
   P.pitch=-0.05;
   P.hp=100;P.sp=100;P.hidden=false;P.hideAmt=0;P.boost=0;P.lastHurt=99;
-  P.breath=SHELL.hold;P.shellLock=0;P.shellSpent=false;P.winded=false;
+  P.winded=false;
   P.stones=0;P.berries=0;P.shrooms=0;P.hasLantern=false;P.lanternOn=false;
   P.berriesEaten=0;P.slot=0;P.time=0;
   huntedHintShown=false;gloomHintShown=false;heronHintShown=false;glassHintShown=false;
@@ -7536,7 +7530,6 @@ const el={
   hp:$('hp').firstElementChild,sp:$('sp').firstElementChild,
   prompt:$('prompt'),toast:$('toast'),fps:$('fps'),
   dmg:$('damage'),hunted:$('hunted'),shellview:$('shellview'),
-  breath:$('breath'),breathFill:$('breath').firstElementChild,
   slots:document.querySelectorAll('.slot'),
   map:$('minimap').getContext('2d')
 };
@@ -7879,22 +7872,17 @@ function update(dt){
   gustU.value=clamp(gustEnvelope(windU.value)*(1+0.85*WEATHER.wet),0,1.6);
 
   /* ---- hide in shell ---- */
-  /* Breath: it runs down while you are pulled in and comes back while you
-     are not. Run it out and you are pushed back into the open for a second,
-     which is the whole point of the clock. */
-  if(P.shellLock>0)P.shellLock=Math.max(0,P.shellLock-dt);
-  if(P.breath<=0){
-    P.shellSpent=true;
-    if(P.shellLock<=0)P.shellLock=SHELL.lockout;
-    if(!breathHintShown){
-      breathHintShown=true;
-      toast('You cannot hold it in there forever — <b>out</b>, and breathe.',3.6);
-    }
-  }
-  /* Spent stays spent until a third of it is back. Without that the player
-     pops in and straight back out again on a sliver, once a frame, which is
-     a meter flickering rather than a decision. */
-  if(P.shellSpent&&P.breath>=SHELL.hold*SHELL.rearm)P.shellSpent=false;
+  /* There is no clock on it any more.
+
+     There was: breath ran down while you were pulled in, and running it out
+     pushed you into the open for a second. It did what it was built to do --
+     it stopped the shell being a place to sit out every threat in the game
+     -- but being thrown out of your own shell on somebody else's schedule is
+     not a decision, it is an interruption, and the water rule below already
+     takes away the easy answer by making you read the ground first.
+
+     So you can stay in as long as you like. What it costs is everything you
+     are not doing while you are in there. */
   /* Not in water. A tortoise that pulls in has its head below the rim of
      its own shell, which is fine on dry ground and not fine in a puddle --
      and it gave the player somewhere to sit out every threat in the game
@@ -7906,22 +7894,13 @@ function update(dt){
     wetShellHintShown=true;
     toast('You cannot pull in with your head under water — <b>get out of it first</b>.',3.8);
   }
-  const wantHide=!!keys['Space']&&!P.flipped&&P.shellLock<=0&&!P.shellSpent&&!tooWet;
-  if(wantHide)P.breath=Math.max(0,P.breath-dt);
-  else P.breath=Math.min(SHELL.hold,P.breath+SHELL.refill*dt);
+  const wantHide=!!keys['Space']&&!P.flipped&&!tooWet;
   if(wantHide!==P.hidden){
     P.hidden=wantHide;
     SFX.shell();
   }
   P.hideAmt=lerp(P.hideAmt,P.hidden?1:0,1-Math.pow(0.0005,dt));
   el.shellview.style.opacity=String(P.hideAmt*0.95);
-  {
-    const f=clamp(P.breath/SHELL.hold,0,1);
-    el.breathFill.style.width=(f*100)+'%';
-    el.breath.classList.toggle('low',f<0.34);
-    // only on screen while it is being spent, or is not yet back
-    el.breath.style.opacity=(P.hideAmt>0.02||f<0.999)?'0.92':'0';
-  }
 
   /* ---- movement ---- */
   fwd.set(-Math.sin(P.yaw),0,-Math.cos(P.yaw));
