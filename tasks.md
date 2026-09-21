@@ -35,7 +35,7 @@ mark done tasks like - [X]
 - [X] assigne some enemies to some bioiemes. Heron can't be in foggy biom becouse we don't se shadow
 - [X] Add sound of steps, for water and ground different
 - [X] Make texture on sphere bushes more detailed
-- [ ] Move enemy Plant with spikes to dark fogy biom and increase quantity 
+- [X] Move enemy Plant with spikes to dark fogy biom and increase quantity 
 - [ ] Add lake with ability wo sweem on big leaf. Lets cenral lake connects 4 sides of our map
 - [ ] change sky color slowwly when it rains
 - [ ] Do research for performance optimisation
