@@ -2497,6 +2497,26 @@ const BIOMES=[
     grass:1.05, fern:0.70, tree:1.55, bigLeaf:0.80 }
 ];
 
+/* The shore is the fifth biome, and it does not get a seed.
+
+   The other four are a Voronoi scatter: you are in whichever patch is
+   nearest. A lake margin is not like that -- it is wherever the water is,
+   and it moves if the lake is ever reshaped. So this one is an overlay,
+   keyed off distance to the waterway, blended over whatever land biome it
+   happens to cross.
+
+   Nothing tall grows in a wet margin and everything soft does: reeds and
+   rushes thick, ferns thin, trees almost never, broad leaves loving it. */
+const BIOME_SHORE={ name:'shore',
+  leaf:[0.86,1.06,0.94], ground:[0.90,1.00,0.97],
+  grass:1.90, fern:0.45, tree:0.15, bigLeaf:1.55 };
+let SHORE_READY=false;                   // true once the waterway is settled
+/* 1 at the waterline, nothing by nine metres out. */
+function shoreFactor(x,z){
+  if(!SHORE_READY)return 0;
+  return 1-smoothstep(1.2,9.0,wayDist(x,z));
+}
+
 let BIOME_SEEDS=[];                      // [x, z, biomeIndex]
 
 function seedBiomes(){
@@ -2530,11 +2550,15 @@ function biomeLeaf(x,z){
   const {b,edge}=biomeAt(x,z);
   const k=0.35+0.65*edge;
   _bioC[0]=1+(b.leaf[0]-1)*k; _bioC[1]=1+(b.leaf[1]-1)*k; _bioC[2]=1+(b.leaf[2]-1)*k;
+  const sf=shoreFactor(x,z);
+  if(sf>0)for(let i=0;i<3;i++)_bioC[i]=lerp(_bioC[i],BIOME_SHORE.leaf[i],sf);
   return _bioC;
 }
 function biomeDensity(x,z,key){
   const {b,edge}=biomeAt(x,z);
-  return 1+(b[key]-1)*(0.35+0.65*edge);
+  const base=1+(b[key]-1)*(0.35+0.65*edge);
+  const sf=shoreFactor(x,z);
+  return sf>0 ? lerp(base,BIOME_SHORE[key],sf) : base;
 }
 
 function generateMaze(){
@@ -2893,6 +2917,7 @@ for(let cy=0;cy<N;cy++)for(let cx=0;cx<N;cx++){
     return b;
   };
   WAY_PROF.z=smooth(rawZ); WAY_PROF.x=smooth(rawX);
+  SHORE_READY=true;    // the shore biome can be asked about now
   // a nominal level, for the few places that want one number
   WAY.level=(WAY_PROF.z[n>>1]+WAY_PROF.x[n>>1])*0.5-WAY.depth*0.38;
   WAY.floor=WAY.level-WAY.depth*0.62;
@@ -3630,6 +3655,11 @@ const matBigLeaf=new THREE.MeshStandardMaterial({
   normalMap:texLeaf.nrm,normalScale:new THREE.Vector2(1.0,1.0)});
 patchFoliage(matBigLeaf,0.20,0.95,false,DISSOLVE);
 const matStalk=new THREE.MeshStandardMaterial({color:0x3f5220,roughness:0.9});
+/* Lily pads: flat on the water, matt, and lit from both sides because you
+   see them from a tortoise's height as often as from above. */
+const matLily=new THREE.MeshStandardMaterial({
+  map:leafTex,alphaTest:0.4,side:THREE.DoubleSide,roughness:0.78,metalness:0});
+patchFoliage(matLily,0.04,0.85,false,DISSOLVE);
 
 function buildClutter(){
   const grass=new IB(),rock=new IB(),fern=new IB(),flower=new IB(),shroom=new IB(),stem=new IB(),fstem=new IB();
@@ -4225,7 +4255,55 @@ function buildWater(){
     const off=CREEK.halfWidth*(0.85+t*0.8)*(RNG()<0.5?-1:1)*rr(0.9,1.4);
     plantReed(c[0]-dz*off, c[1]+dx*off, rr(1.8,3.0));
   }
+  /* The waterway's own margin. The reeds above only know about the meadow
+     pond and the creek, which is everything that existed when they were
+     written; the lake through the maze had bare banks. */
+  {
+    const W=WAY;
+    const edge=(x,z)=>{ // step outward until the water runs out, and plant there
+      for(let r=0;r<W.bank+2;r+=0.35){
+        const d=waterDepth(x,z);
+        if(d>0.04&&d<0.30)return true;
+        return false;
+      }
+      return false;
+    };
+    // walk both arms and the pool rim, planting where it is ankle deep
+    const tryReed=(x,z)=>{
+      const d=waterDepth(x,z);
+      if(d<=0.04||d>0.30)return;
+      if(RNG()<0.45)plantReed(x+rr(-0.3,0.3),z+rr(-0.3,0.3),rr(1.6,3.1));
+    };
+    for(let t=-W.reach;t<=W.reach;t+=0.7){
+      for(let o=-(W.half+W.bank);o<=W.half+W.bank;o+=0.35){
+        tryReed(W.ax+o, W.az+t);
+        tryReed(W.ax+t, W.az+o);
+      }
+    }
+  }
   worldGroup.add(reed.build(GEO_GRASS,matGrass,false,true));
+
+  /* Lily pads. A pad is a disc with a notch cut out of it, which is what
+     CircleGeometry gives you for free if you stop short of a full turn. */
+  {
+    const lily=new IB();
+    const tint=new THREE.Color();
+    const W=WAY;
+    for(let i=0;i<900;i++){
+      const onArm=RNG()<0.5;
+      const t=rr(-W.reach,W.reach), o=rr(-W.half,W.half);
+      const x=onArm?W.ax+o:W.ax+t, z=onArm?W.az+t:W.az+o;
+      if(waterDepth(x,z)<0.18)continue;          // pads want water under them
+      const lv=wayLevelAt(x,z);
+      const sc=rr(0.16,0.34);
+      tint.setRGB(rr(0.62,0.92),rr(0.80,1.02),rr(0.52,0.80));
+      lily.addQ(x,lv+0.012,z,
+        new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI/2,0,rr(0,6.283))),
+        sc,sc,sc,tint.clone());
+    }
+    const lilyGeo=new THREE.CircleGeometry(1,16,0.38,6.283-0.76);
+    worldGroup.add(lily.build(lilyGeo,matLily,false,true));
+  }
   worldGroup.add(stone.build(GEO_ROCK,matRock,true,true));
   return waterRipple;
 }
@@ -6306,6 +6384,80 @@ defineMob('wasp',{
   }
 });
 
+/* ── Pond skaters ──────────────────────────────────────────────────
+   The lake's own animal, and the reason to look at it rather than only
+   cross it.
+
+   A skater does not swim, it stands on the surface, so it is drawn flat at
+   the waterline and it moves in darts: still for a second or two, then a
+   quick shove and a long glide that runs down. It stays on the water by
+   construction -- every step is refused unless the waterway is deep enough
+   there to hold one up -- so it cannot end up on the bank the way the cat
+   could, and it needs no rule about drowning because it is never in the
+   water, only on it.
+
+   Harmless, like the beetles. It is scenery that notices you: come close
+   and it skitters off, which is most of what a pond does when you lean
+   over it. */
+const SKATER={ count:26, glide:1.35, drag:2.6, shy:1.5, rest:[0.6,2.4] };
+const matSkater=new THREE.MeshStandardMaterial({color:0x241f18,roughness:0.5,metalness:0.1});
+defineMob('skater',{
+  activeRange:16,
+  worldSpace:true,
+  build(m){
+    const g2=new THREE.Group();
+    const body=new THREE.Mesh(new THREE.SphereGeometry(0.030,8,6),matSkater);
+    body.scale.set(1,0.55,2.1); g2.add(body);
+    // three pairs, the middle one long: that is the shape you see on a pond
+    for(let i=0;i<6;i++){
+      const sx=i<3?-1:1, k=i%3;
+      const len=k===1?0.16:0.10;
+      const leg=new THREE.Mesh(new THREE.CylinderGeometry(0.0035,0.002,len,4),matSkater);
+      leg.position.set(sx*len*0.45,0.004,0.030-k*0.040);
+      leg.rotation.z=sx*1.42;               // splayed almost flat to the water
+      leg.rotation.x=(k-1)*0.42;
+      g2.add(leg);
+    }
+    m.parts.rig=g2;
+    g2.visible=false; m.group.position.set(0,0,0); m.group.add(g2);
+    m.data.dir=rr(0,6.283); m.data.v=0; m.data.wait=rr(0.2,2.0);
+  },
+  onReset(m){
+    m.x=m.home.x; m.z=m.home.z;
+    m.data.dir=rr(0,6.283); m.data.v=0; m.data.wait=rr(0.2,2.0);
+    setMobState(m,'skate');
+  },
+  think(m,dt,d){
+    const rig=m.parts.rig;
+    if(state!=='play'){ rig.visible=false; return; }
+    rig.visible=true;
+    const floats=(x,z)=>wayLevelAt(x,z)-groundH(x,z)>WADE_MAX;
+    // a shove, then a glide that runs out
+    if(d<SKATER.shy&&m.data.v<SKATER.glide*0.9){
+      m.data.dir=Math.atan2(m.x-P.pos.x,m.z-P.pos.z)+rr(-0.5,0.5);
+      m.data.v=SKATER.glide*rr(1.1,1.5);
+      m.data.wait=rr(0.15,0.4);
+    }else{
+      m.data.wait-=dt;
+      if(m.data.wait<=0){
+        m.data.dir+=rr(-1.9,1.9);
+        m.data.v=SKATER.glide*rr(0.6,1.0);
+        m.data.wait=rr(SKATER.rest[0],SKATER.rest[1]);
+      }
+    }
+    m.data.v=Math.max(0,m.data.v-SKATER.drag*dt*0.35);
+    const nx=m.x+Math.sin(m.data.dir)*m.data.v*dt;
+    const nz=m.z+Math.cos(m.data.dir)*m.data.v*dt;
+    // it only goes where the water would hold it up
+    if(floats(nx,nz)){ m.x=nx; m.z=nz; }
+    else { m.data.dir+=2.4; m.data.v*=0.4; }
+    rig.position.set(m.x,wayLevelAt(m.x,m.z)+0.006,m.z);
+    rig.rotation.y=m.data.dir;
+    // the dimples its feet make, as a little roll while it is moving
+    rig.rotation.z=Math.sin(m.t*11)*0.05*clamp(m.data.v,0,1);
+  }
+});
+
 defineMob('beetle',{
   activeRange:18,
   worldSpace:true,
@@ -6397,6 +6549,27 @@ function spawnWasps(n){
   }
   return placed;
 }
+/* Scattered over the whole waterway, wherever it is deep enough to stand
+   on. Literal stepping, so the random stream is not disturbed. */
+function spawnSkaters(n){
+  const spots=[];
+  for(let t=-WAY.reach;t<=WAY.reach;t+=1.5){
+    for(let o=-WAY.half;o<=WAY.half;o+=1.1){
+      for(const p of [[WAY.ax+o,WAY.az+t],[WAY.ax+t,WAY.az+o]]){
+        if(wayLevelAt(p[0],p[1])-groundH(p[0],p[1])>WADE_MAX)spots.push(p);
+      }
+    }
+  }
+  let placed=0;
+  for(let i=0;i<n&&spots.length;i++){
+    const k=Math.floor(RNG()*spots.length);
+    const p=spots.splice(k,1)[0];
+    spawnMob('skater',p[0]+rr(-0.4,0.4),p[1]+rr(-0.4,0.4));
+    placed++;
+  }
+  return placed;
+}
+
 function spawnBeetles(n){
   const pool=openCells.filter(c=>dist[c[1]*N+c[0]]>2);
   for(let i=0;i<n&&pool.length;i++){
@@ -8259,6 +8432,7 @@ async function boot(){
   stage(10); spawnThornmaws(11);
   stage(13); spawnWasps(WASP.nests);
   stage(14); spawnBeetles(BEETLE.count);
+  stage(17); spawnSkaters(SKATER.count);
   stage(15); placeRestPockets(5);
   stage(16); placeRiskCaches();
   stage(11);

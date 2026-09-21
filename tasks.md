@@ -45,5 +45,6 @@ mark done tasks like - [X]
 - [X] fix spherical bushes material - it is to reglective (has to be more difuse)
 - [X] use wind power for amplitude of animation of grass, reas, leaft, rain etc. Change wind power with weather
 - [X] fix: cat can drown in lake. Just don't 
-- [ ] lake - separate biom with own flora and fauna
+- [X] lake - separate biom with own flora and fauna
 - [ ] lake has to be in center of map. Dont extend it to borders. Separate each part of map using regular wals and connect them at center at lake
+- [ ] sky can't be blue at the top what it's heavyrain
