@@ -543,7 +543,7 @@ function makeFoliageTextures(){
   const cov=cnv(S),cv=cov.getContext('2d');
   cv.fillStyle='#000000';cv.fillRect(0,0,S,S);
   const rough=cnv(S),rg=rough.getContext('2d');
-  rg.fillStyle='#d8d8d8';rg.fillRect(0,0,S,S);      // matt where nothing grows
+  rg.fillStyle='#e6e6e6';rg.fillRect(0,0,S,S);      // matt where nothing grows
   const rnd=mulberry32(91);
   /* Three passes, big to small. One pass of one size is a pattern; three
      is a canopy, because the small ones land in the gaps the big ones leave
@@ -568,8 +568,15 @@ function makeFoliageTextures(){
         leafStamp(h,x+ox,y+oy,L,W,a,'rgba('+(120+sh*110|0)+','+(120+sh*110|0)+','+(120+sh*110|0)+',0.75)');
         // slightly shrunk so neighbouring leaves leave a hairline gap at the rim
         leafStamp(cv,x+ox,y+oy,L*1.16,W*1.16,a,'#ffffff');
-        // a leaf is waxier than the litter behind it, and the young ones most
-        leafStamp(rg,x+ox,y+oy,L,W,a,'rgba('+(150-sh*46|0)+','+(150-sh*46|0)+','+(150-sh*46|0)+',0.55)');
+        /* A leaf is a shade waxier than the litter behind it, and the
+           young ones most -- a shade, not a sheen.
+
+           The first version of this sheet ran 0.39 to 0.85 rough, mean
+           0.57, where the material it replaced had been a flat 0.92. That
+           turned the hedges plastic: a hard specular band across every
+           crown in sunlight. The range is 0.83 to 0.87 now against a 0.90
+           litter bed, so the variation survives and the shine does not. */
+        leafStamp(rg,x+ox,y+oy,L,W,a,'rgba('+(232-sh*18|0)+','+(232-sh*18|0)+','+(232-sh*18|0)+',0.55)');
       }
     }
   }
