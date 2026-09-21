@@ -1410,8 +1410,12 @@ sky.frustumCulled=false;scene.add(sky);
    still clearing long after the last drop, which is what weather does. */
 const SKY_DRY={ top:new THREE.Color(0x2f6ab4), mid:new THREE.Color(0x9dc2e6),
                 bot:new THREE.Color(0xa7bba6), sun:new THREE.Color(0xffe6b0) };
-const SKY_WET={ top:new THREE.Color(0x36414f), mid:new THREE.Color(0x67707b),
-                bot:new THREE.Color(0x8a8d88), sun:new THREE.Color(0xbfc4c9) };
+/* A storm sky overhead is flat neutral grey. The first version of these was
+   still blue-dominant -- the zenith came out #364356, which is 54 red
+   against 86 blue, and read as a blue sky behind the rain. Cloud has no
+   hue to speak of. */
+const SKY_WET={ top:new THREE.Color(0x4b4f53), mid:new THREE.Color(0x6e7175),
+                bot:new THREE.Color(0x8a8b88), sun:new THREE.Color(0xc3c5c6) };
 let skyWet=0;
 function updateSkyColour(dt,want){
   // ~25s end to end: exp(-1/25) is 0.9608
@@ -8140,7 +8144,12 @@ function update(dt){
     const fk=clamp((scene.fog.density-FOG_BASE)/(0.115-FOG_BASE),0,1);
     skyMat.uniforms.uFogCol.value.copy(scene.fog.color);
     skyMat.uniforms.uFogAmt.value=lerp(0.55,1.0,Math.max(fk,wet));
-    skyMat.uniforms.uFogSpan.value=lerp(0.30,0.95,Math.max(fk,wet*0.9));
+    /* Past 1.0 the band still has some strength at the zenith: the haze is
+       1-smoothstep(0,span,d.y), and d.y is 1 looking straight up, so a span
+       of 0.95 left the very top of the dome completely clear however hard
+       it was raining. At 1.7 there is about a third of the haze overhead,
+       which is what an overcast is. */
+    skyMat.uniforms.uFogSpan.value=lerp(0.30,1.70,Math.max(fk,wet*0.9));
   }
   updateSkyColour(dt,WEATHER.want);
   hemi.intensity=lerp(0.20,0.03,gl)*(1+0.8*wet);

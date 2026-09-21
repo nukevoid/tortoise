@@ -47,7 +47,8 @@ mark done tasks like - [X]
 - [X] fix: cat can drown in lake. Just don't 
 - [X] lake - separate biom with own flora and fauna
 - [X] lake has to be in center of map. Dont extend it to borders. Separate each part of map using regular wals and connect them at center at lake
-- [ ] sky can't be blue at the top what it's heavyrain
+- [X] sky can't be blue at the top what it's heavyrain
 - [ ] fix masshroms heads - thay inverted
 - [ ] remove timer for the shell
 - [ ] do step sound faster and lighter
+- [ ] fix anemy plant mode  - it don't hase stem from root to flower
