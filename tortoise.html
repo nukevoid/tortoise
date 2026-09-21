@@ -8923,7 +8923,20 @@ function update(dt){
   if(head)head.visible=!tuckedIn;
   if(neck)neck.visible=!tuckedIn;
   if(snout)snout.visible=!tuckedIn;
-  if(shellRoof){shellRoof.visible=P.hideAmt>0.05;shellFloor.visible=P.hideAmt>0.05;}
+  /* These two are the *inside* of the shell: built to give the first-person
+     view something to be under, and so cut wider and taller than the
+     carapace they line -- 0.44 against 0.30 across, with a crown 23 cm
+     above it. Seen from outside they are therefore not a lining but a
+     second dome swallowing the whole animal, legs and all, which is what
+     the third-person view turned them into. They belong to the lens and
+     not to the body, so they are drawn only while the lens is actually in
+     there. tpBody is exactly that question already answered: it is false
+     in first person, and false again when a hedge crushes the boom close
+     enough that VIEW.hideUnder calls the camera inside the shell. Flipped,
+     the camera watches from outside while hideAmt is still draining, so
+     that case has to be named too. */
+  const insideShell=P.hideAmt>0.05&&!P.tpBody&&!P.flipped;
+  if(shellRoof){shellRoof.visible=insideShell;shellFloor.visible=insideShell;}
   if(lanternHeld)lanternHeld.traverse(o=>{
     if(o.isSprite||o.isMesh)o.visible=!tuckedIn;
   });
