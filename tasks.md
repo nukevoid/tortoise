@@ -83,4 +83,4 @@ mark done tasks like - [X]
 - [X] do body of tortoise smaller
 - [X] fix rolling animation - it has to roll like wheel from side to side
 - [X] assigne some enemies to some bioiemes. Heron can't be in foggy biom becouse we don't se shadow
-- [ ] Add sound of steps, for water and ground different
+- [X] Add sound of steps, for water and ground different

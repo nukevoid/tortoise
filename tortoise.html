@@ -2165,6 +2165,17 @@ function waterDepth(x,z){
   return best;
 }
 
+/* What a foot lands on here. Standing water wins over everything; failing
+   that, the fen and the ordinary wood are deep in leaf litter and the
+   brambles and birches are thin underfoot, so this is keyed to the same
+   number that decides how much litter gets drawn. One function decides, and
+   the footstep sound and the dev hook both read it, so what is tested is
+   what is heard. */
+function surfaceAt(x,z){
+  if(waterDepth(x,z)>0.015)return 'water';
+  return biomeDensity(x,z,'fern')>1.05?'litter':'ground';
+}
+
 /* true where a plant would be standing in water */
 function inWater(x,z){
   for(let i=0;i<BASINS.length;i++){
@@ -6088,7 +6099,23 @@ function noiseHit(dur,freq,q,vol,type){
   s.connect(f);f.connect(g);g.connect(AUDIO.master);s.start(t0);s.stop(t0+dur+0.05);
 }
 const SFX={
+  /* A footfall is mostly the surface it lands on, so there are three.
+
+     Dry ground is a short scuff with a low thud under it. Leaf litter is the
+     same scuff run brighter and longer, because dead leaves rattle. Water is
+     the opposite shape: a quick bright splash that falls away, with no thud
+     at all, because the foot meets liquid rather than something solid. */
   step(){noiseHit(0.13,rr(420,780),1.3,0.075);tone(rr(70,100),0.09,'sine',0.05);},
+  stepLitter(){noiseHit(0.19,rr(900,1500),0.9,0.055);
+               noiseHit(0.09,rr(2200,3400),1.1,0.028);
+               tone(rr(80,110),0.07,'sine',0.028);},
+  stepWater(depth){
+    const d=clamp(depth||0.05,0.02,0.25);
+    // deeper water is a fatter, lower splash and takes longer to fall away
+    noiseHit(0.16+d*0.7,rr(1300,2100)-d*1800,0.8,0.05+d*0.22,'bandpass');
+    noiseHit(0.07,rr(2600,4200),1.4,0.035);
+    tone(rr(150,230)-d*260,0.11+d*0.3,'sine',0.03+d*0.10,rr(90,130));
+  },
   pickup(){tone(680,0.14,'sine',0.14);tone(1020,0.22,'sine',0.11,null,0.08);},
   stone(){tone(523,0.3,'sine',0.16);tone(784,0.35,'sine',0.14,null,0.1);tone(1046,0.6,'sine',0.13,null,0.2);},
   /* The Hollow tightening, heard rather than read: one drone per stone taken,
@@ -6729,7 +6756,12 @@ function update(dt){
   /* ---- head bob + footsteps ---- */
   const prevBob=P.bob;
   P.bob+=spd*dt*3.4;
-  if(spd>0.25&&Math.floor(P.bob/Math.PI)!==Math.floor(prevBob/Math.PI))SFX.step();
+  if(spd>0.25&&Math.floor(P.bob/Math.PI)!==Math.floor(prevBob/Math.PI)){
+    const sf=surfaceAt(P.pos.x,P.pos.z);
+    if(sf==='water')SFX.stepWater(waterDepth(P.pos.x,P.pos.z));
+    else if(sf==='litter')SFX.stepLitter();
+    else SFX.step();
+  }
   const gait=clamp(spd/(WALK_SPEED*0.98),0,1.3);   // 1.0 at a full walk
   const bobY=Math.sin(P.bob)*0.028*gait;
   const bobX=Math.cos(P.bob*0.5)*0.022*gait;
@@ -7339,7 +7371,7 @@ window.__game={
   get rooms(){return LEVEL_ROOMS;},
   analyseGrid,benchGenerators,GEN,
   BIOMES,biomeAt,get biomeSeeds(){return BIOME_SEEDS;},
-  groundH,terrainBase,waterDepth,blocked,BASINS,CREEK,
+  groundH,terrainBase,waterDepth,blocked,BASINS,CREEK,surfaceAt,biomeDensity,
   flipPlayer,unflipPlayer,
   mobs,MOB_TYPES,defineMob,spawnMob,despawnMob,setMobState,mobDist,
   mobStrike,attackTick,playerSheltered,makeThreatShadow,placeThreatShadow,
