@@ -50,6 +50,6 @@ mark done tasks like - [X]
 - [X] sky can't be blue at the top what it's heavyrain
 - [X] fix masshroms heads - thay inverted
 - [X] remove timer for the shell
-- [ ] do step sound faster and lighter
+- [X] do step sound faster and lighter
 - [ ] fix anemy plant mode  - it don't hase stem from root to flower
 - [ ] don't make that diagonal free cells not connected (visualy I can see next diagonal cell, but can't go to it now)
