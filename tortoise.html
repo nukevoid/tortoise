@@ -1373,6 +1373,37 @@ const skyMat=new THREE.ShaderMaterial({
 const sky=new THREE.Mesh(new THREE.SphereGeometry(300,32,20),skyMat);
 sky.frustumCulled=false;scene.add(sky);
 
+/* The sky in two weathers.
+
+   Rain already reached the dome, but only through the haze band at the
+   horizon: the gradient above it stayed the same summer blue whatever was
+   falling, so a downpour was a grey forest under a fine day. These are the
+   colours it actually goes to -- the blue drains out of the top, the middle
+   turns to slate and the horizon to wet stone, and the sun loses its warmth.
+
+   What matters as much as the colours is the speed. WEATHER.wet chases its
+   target with a time constant of under two seconds, which is right for rain
+   arriving and far too quick for a sky; a sky that snapped from blue to
+   slate in a couple of seconds would read as a light switch. So the dome
+   follows on its own clock, about twenty-five seconds from end to end, and
+   it follows `want` rather than `wet` -- the moment the weather decides to
+   turn, the sky starts going over, and the rain catches up with it. It is
+   still clearing long after the last drop, which is what weather does. */
+const SKY_DRY={ top:new THREE.Color(0x2f6ab4), mid:new THREE.Color(0x9dc2e6),
+                bot:new THREE.Color(0xa7bba6), sun:new THREE.Color(0xffe6b0) };
+const SKY_WET={ top:new THREE.Color(0x36414f), mid:new THREE.Color(0x67707b),
+                bot:new THREE.Color(0x8a8d88), sun:new THREE.Color(0xbfc4c9) };
+let skyWet=0;
+function updateSkyColour(dt,want){
+  // ~25s end to end: exp(-1/25) is 0.9608
+  skyWet=lerp(skyWet,want,1-Math.pow(0.9608,dt));
+  const u=skyMat.uniforms;
+  u.uTop.value.copy(SKY_DRY.top).lerp(SKY_WET.top,skyWet);
+  u.uMid.value.copy(SKY_DRY.mid).lerp(SKY_WET.mid,skyWet);
+  u.uBot.value.copy(SKY_DRY.bot).lerp(SKY_WET.bot,skyWet);
+  u.uSunCol.value.copy(SKY_DRY.sun).lerp(SKY_WET.sun,skyWet);
+}
+
 /* ---------------------------------------------------------------
    Image-based lighting. The same sky, prefiltered into a mip chain,
    becomes the ambient term: soft sky light from above, warm bounce
@@ -6931,7 +6962,7 @@ function resetPlayer(){
   huntedHintShown=false;gloomHintShown=false;heronHintShown=false;glassHintShown=false;
   wetShellHintShown=false;
   P.trap=null; P.caught=false; P.tumble=0;
-  WEATHER.wet=0; WEATHER.want=0; WEATHER.hold=26; rainHintShown=false;
+  WEATHER.wet=0; WEATHER.want=0; WEATHER.hold=26; rainHintShown=false; skyWet=0;
   P.flipped=false; P.flipAngle=0; P.flipVel=0;
   P.flipTheta=0; P.flipAmp=0;
   P.flipPhase='rock'; P.flipRightT=0; P.camLift=0;
@@ -7756,6 +7787,7 @@ function update(dt){
     skyMat.uniforms.uFogAmt.value=lerp(0.55,1.0,Math.max(fk,wet));
     skyMat.uniforms.uFogSpan.value=lerp(0.30,0.95,Math.max(fk,wet*0.9));
   }
+  updateSkyColour(dt,WEATHER.want);
   hemi.intensity=lerp(0.20,0.03,gl)*(1+0.8*wet);
   amb.intensity=lerp(0.06,0.01,gl)*(1+0.9*wet);
   sun.intensity=lerp(3.8,0.34,gl)*(1-0.72*wet);
