@@ -1578,6 +1578,230 @@ function fsPass(mat,target){
   renderer.setRenderTarget(target||null);
   renderer.render(quadScene,quadCam);
 }
+
+/* ===============================================================
+   Profiling.
+
+   The fps counter in the corner is a single number, and a single number
+   cannot tell you which of six passes spent it. Worse, it is measured off
+   requestAnimationFrame, which the browser throttles to nothing when the
+   tab is not in front -- so every reading taken from a script is the
+   throttle rather than the game, which is why the frame rate in this repo
+   has gone unmeasured for so long.
+
+   This measures the passes instead, and does not need rAF to do it.
+
+   GPU time is the real quantity and it cannot be had from a clock on the
+   CPU: drawing is queued, so performance.now() around a draw call measures
+   how long it took to *ask*, not how long it took to happen. Two ways out,
+   in order of preference:
+
+     EXT_disjoint_timer_query_webgl2, which asks the GPU to timestamp its
+     own work. Accurate and free, but the answers come back several frames
+     late, so queries go on a pending list and are drained when ready. Only
+     one TIME_ELAPSED query may be open at a time, so the spans are
+     sequential and the frame total is their sum, never its own query.
+
+     Failing that, sync mode: gl.finish() at the end of each span, which
+     drains the pipe so the CPU clock sees the GPU's work. It serialises
+     what would otherwise overlap, so the total comes out pessimistic -- but
+     the *proportions* are right, which is what a breakdown is for.
+
+   Draw calls and triangles per pass come from renderer.info with autoReset
+   off, differenced across each span.
+
+   F2 toggles a live overlay. From a console:
+     __game.profile(120)            frame breakdown, median and p95
+     __game.profile(120,{sync:1})   ...without the timer extension
+     __game.profileLayers(60)       what each material costs, by removing it
+   =============================================================== */
+const PROF={ on:false, overlay:false, sync:false, ext:null, gl:null,
+             pool:[], pending:[], hist:new Map(), frames:0, wall:[] };
+function profInit(){
+  if(PROF.gl)return;
+  PROF.gl=renderer.getContext();
+  try{ PROF.ext=PROF.gl.getExtension('EXT_disjoint_timer_query_webgl2')||null; }
+  catch(e){ PROF.ext=null; }
+}
+function profSample(name,cpu,gpu,calls,tris){
+  let h=PROF.hist.get(name);
+  if(!h){ h={cpu:[],gpu:[],calls:0,tris:0}; PROF.hist.set(name,h); }
+  h.cpu.push(cpu); if(gpu!=null)h.gpu.push(gpu);
+  h.calls=calls; h.tris=tris;
+}
+function profBegin(name){
+  if(!PROF.on)return null;
+  const s={name,t0:performance.now(),q:null,
+           c0:renderer.info.render.calls, r0:renderer.info.render.triangles};
+  if(PROF.ext){
+    const q=PROF.pool.pop()||PROF.gl.createQuery();
+    PROF.gl.beginQuery(PROF.ext.TIME_ELAPSED_EXT,q);
+    s.q=q;
+  }
+  return s;
+}
+function profEnd(s){
+  if(!s)return;
+  if(s.q)PROF.gl.endQuery(PROF.ext.TIME_ELAPSED_EXT);
+  else if(PROF.sync)PROF.gl.finish();
+  s.cpu=performance.now()-s.t0;
+  s.calls=renderer.info.render.calls-s.c0;
+  s.tris =renderer.info.render.triangles-s.r0;
+  if(s.q)PROF.pending.push(s);
+  else profSample(s.name,s.cpu,null,s.calls,s.tris);
+}
+/* Queries land a few frames after the work; collect whatever is ready. */
+function profDrain(){
+  const gl=PROF.gl, ext=PROF.ext;
+  if(!ext||!PROF.pending.length)return;
+  // a disjoint event means the GPU was interrupted and every open timing is
+  // rubbish, so throw the lot away rather than report a wrong number
+  const bad=gl.getParameter(ext.GPU_DISJOINT_EXT);
+  for(let i=PROF.pending.length-1;i>=0;i--){
+    const s=PROF.pending[i];
+    if(bad||gl.getQueryParameter(s.q,gl.QUERY_RESULT_AVAILABLE)){
+      if(!bad)profSample(s.name,s.cpu,gl.getQueryParameter(s.q,gl.QUERY_RESULT)/1e6,
+                         s.calls,s.tris);
+      PROF.pending.splice(i,1); PROF.pool.push(s.q);
+    }
+  }
+}
+const _pq=(a,f)=>{ if(!a.length)return null;
+  const b=a.slice().sort((x,y)=>x-y);
+  return +b[Math.min(b.length-1,Math.floor(b.length*f))].toFixed(3); };
+function profReport(){
+  const rows=[];
+  for(const [name,h] of PROF.hist){
+    rows.push({pass:name, calls:h.calls, tris:h.tris,
+      cpuMed:_pq(h.cpu,0.5), cpuP95:_pq(h.cpu,0.95),
+      gpuMed:_pq(h.gpu,0.5), gpuP95:_pq(h.gpu,0.95), n:h.gpu.length||h.cpu.length});
+  }
+  /* 'scene' and 'scene+shdw' are the same pass on alternate frames, never
+     both in one frame, so a straight sum of the rows would invent a frame
+     that never happens. The average frame carries half of each. */
+  const half=n=>n==='scene'||n==='scene+shdw'?0.5:1;
+  const gpuTotal=rows.reduce((t,r)=>t+half(r.pass)*(r.gpuMed||0),0);
+  const cpuTotal=rows.reduce((t,r)=>t+half(r.pass)*(r.cpuMed||0),0);
+  // share is of the average frame, so the two scene rows are halved here too
+  // or they would add up to more than the whole
+  for(const r of rows) r.share=gpuTotal>0
+    ? +(100*half(r.pass)*(r.gpuMed||0)/gpuTotal).toFixed(1)
+    : +(100*half(r.pass)*(r.cpuMed||0)/cpuTotal).toFixed(1);
+  rows.sort((a,b)=>(b.gpuMed||b.cpuMed||0)-(a.gpuMed||a.cpuMed||0));
+  return {
+    source: PROF.ext?'gpu timer query':(PROF.sync?'gl.finish (serialised, pessimistic)':'cpu submit only'),
+    frames: PROF.frames,
+    wallMedMs: _pq(PROF.wall,0.5), wallP95Ms: _pq(PROF.wall,0.95),
+    gpuTotalMs:+gpuTotal.toFixed(3), cpuTotalMs:+cpuTotal.toFixed(3),
+    passes: rows
+  };
+}
+/* Render n frames off the rAF clock and report. Async because the timer
+   queries need a few more frames to come home. */
+async function profile(n,opt){
+  profInit(); opt=opt||{};
+  PROF.sync=!!opt.sync; PROF.hist.clear(); PROF.pending.length=0;
+  PROF.wall.length=0; PROF.frames=0;
+  const auto=renderer.info.autoReset; renderer.info.autoReset=false;
+  PROF.on=true;
+  for(let i=0;i<(n||60);i++){
+    renderer.info.reset();
+    const t0=performance.now();
+    renderFrame();
+    if(PROF.sync||!PROF.ext)PROF.gl.finish();
+    PROF.wall.push(performance.now()-t0);
+    PROF.frames++;
+    profDrain();
+    if((i&15)===15)await new Promise(r=>setTimeout(r,0));
+  }
+  /* Stop measuring first. The drain still has to push frames -- a query
+     only resolves once the work behind it has gone through -- and while
+     PROF.on is true every one of those frames enqueues three more queries,
+     so the pending list refills as fast as it empties and the loop runs its
+     full length every time. That is what made a 20-frame profile take the
+     better part of a minute. */
+  PROF.on=false;
+  for(let k=0;k<40&&PROF.pending.length;k++){
+    await new Promise(r=>setTimeout(r,4)); renderFrame(); profDrain();
+  }
+  renderer.info.autoReset=auto;
+  return profReport();
+}
+/* What is each material actually costing? Not by drawing it alone -- that
+   answers a question nobody asked -- but by taking it away and seeing what
+   the frame gives back, which is the number you get if you cut it. */
+async function profileLayers(n,opt){
+  profInit();
+  const groups=new Map();
+  scene.traverse(o=>{
+    if(!o.isInstancedMesh||!o.count||!o.visible)return;
+    const m=o.material;
+    const key=(m.customProgramCacheKey?m.customProgramCacheKey():m.uuid)
+            +'|'+(o.geometry.index?o.geometry.index.count/3:o.geometry.attributes.position.count/3);
+    let g=groups.get(key);
+    if(!g){g={key,meshes:[],inst:0,tris:0};groups.set(key,g);}
+    g.meshes.push(o); g.inst+=o.count;
+    g.tris+=o.count*(o.geometry.index?o.geometry.index.count/3:o.geometry.attributes.position.count/3);
+  });
+  const all=[...groups.values()];
+  /* from/count so a long sweep can be taken a few layers at a time: 25
+     materials at 40 frames each is a minute of rendering, and a driving
+     harness will time out long before that and leave the scene full of
+     holes. Whatever happens, the finally puts the world back. */
+  const i0=(opt&&opt.from)|0, i1=Math.min(all.length,i0+((opt&&opt.count)||all.length));
+  const base=await profile(n||40);
+  const out=[];
+  try{
+    for(let i=i0;i<i1;i++){
+      const g=all[i];
+      for(const m of g.meshes)m.visible=false;
+      const off=await profile(n||40);
+      for(const m of g.meshes)m.visible=true;
+      const b=base.gpuTotalMs||base.wallMedMs, a=off.gpuTotalMs||off.wallMedMs;
+      out.push({layer:g.key, meshes:g.meshes.length, instances:g.inst,
+                triangles:g.tris, savedMs:+(b-a).toFixed(3),
+                savedPct:+(100*(b-a)/b).toFixed(1)});
+    }
+  } finally {
+    for(const g of all) for(const m of g.meshes) m.visible=true;
+    PROF.on=false; renderer.info.autoReset=true;
+  }
+  out.sort((x,y)=>y.savedMs-x.savedMs);
+  return {baseline:base.gpuTotalMs||base.wallMedMs, source:base.source,
+          layers:out, total:all.length, range:[i0,i1]};
+}
+/* The live overlay, for reading while actually playing -- the one case
+   where rAF is running properly and the numbers mean what they say. */
+let profEl=null, profAcc=0;
+function profOverlay(dt){
+  if(!PROF.overlay)return;
+  profAcc+=dt; if(profAcc<0.5)return; profAcc=0;
+  const r=profReport();
+  const line=p=>p.pass.padEnd(9)+' '
+    +String(p.gpuMed!=null?p.gpuMed.toFixed(2):p.cpuMed.toFixed(2)).padStart(6)+'ms '
+    +String(p.share).padStart(5)+'%  '+String(p.calls).padStart(4)+' calls';
+  profEl.textContent='GPU '+r.gpuTotalMs.toFixed(2)+'ms  ('+r.source+')\n'
+    +r.passes.map(line).join('\n');
+  PROF.hist.clear();
+}
+function profToggle(){
+  profInit();
+  PROF.overlay=!PROF.overlay;
+  if(!profEl){
+    profEl=document.createElement('pre');
+    profEl.style.cssText='position:absolute;left:18px;top:120px;margin:0;'
+      +'font:11px/1.45 ui-monospace,Consolas,monospace;color:#cfe8b0;'
+      +'background:rgba(8,12,6,.72);padding:8px 10px;border-radius:6px;'
+      +'white-space:pre;pointer-events:none;z-index:40';
+    document.body.appendChild(profEl);
+  }
+  profEl.style.display=PROF.overlay?'block':'none';
+  if(PROF.overlay){ PROF.hist.clear(); renderer.info.autoReset=false; }
+  else { renderer.info.autoReset=true; }
+  PROF.on=PROF.overlay;
+  toast(PROF.overlay?'Profiler on (F2)':'Profiler off',1.2);
+}
+
 let shadowTick=0;
 const SHADOW_EVERY=2;
 function renderFrame(){
@@ -1585,9 +1809,14 @@ function renderFrame(){
   shadowTick++;
   renderer.shadowMap.needsUpdate=(shadowTick%SHADOW_EVERY)===0;
   if(!POST.on||!rtScene){renderer.setRenderTarget(null);renderer.render(scene,camera);return;}
+  /* The shadow map is redrawn on alternate frames, so it is timed as its
+     own pass -- averaged into the scene it would read as a cost that comes
+     and goes for no reason. */
+  const _sp=profBegin(renderer.shadowMap.needsUpdate?'scene+shdw':'scene');
   renderer.setRenderTarget(rtScene);
   renderer.clear();
   renderer.render(scene,camera);
+  profEnd(_sp);
   const canAO=POST.ao&&rtScene.depthTexture;
   if(canAO){
     const th=Math.tan(camera.fov*0.5*Math.PI/180);
@@ -1600,14 +1829,17 @@ function renderFrame(){
     matAO.uniforms.uStrength.value=POST.aoStrength;
     matAO.uniforms.uBounce.value=POST.bounce;
     matAO.uniforms.uTexel.value.set(1/aoRT.width,1/aoRT.height);
+    const _ap=profBegin('ao');
     fsPass(matAO,aoRT);
     matAOBlur.uniforms.tSrc.value=aoRT.texture;
     matAOBlur.uniforms.uTexel.value.set(1/aoRT.width,1/aoRT.height);
     fsPass(matAOBlur,aoBlurRT);
+    profEnd(_ap);
     matComposite.uniforms.tAO.value=aoBlurRT.texture;
   }
   matComposite.uniforms.uUseAO.value=canAO?1:0;
   if(POST.bloom){
+    const _bp=profBegin('bloom');
     // bright pass into the first mip, then a separable blur per level
     matBright.uniforms.tSrc.value=rtScene.texture;
     matBright.uniforms.uTexel.value.set(1/rtScene.width,1/rtScene.height);
@@ -1628,6 +1860,7 @@ function renderFrame(){
       matBlur.uniforms.uDir.value.set(0,1.4/a.height);
       fsPass(matBlur,a);
     }
+    profEnd(_bp);
     matComposite.uniforms.tB0.value=bloomRT[0].texture;
     matComposite.uniforms.tB1.value=bloomRT[2].texture;
     matComposite.uniforms.tB2.value=bloomRT[4].texture;
@@ -1637,7 +1870,10 @@ function renderFrame(){
   matComposite.uniforms.uTime.value=performance.now()*0.001;
   matComposite.uniforms.uAA.value=POST.fxaa?1:0;
   matComposite.uniforms.uRes.value.set(rtScene.width,rtScene.height);
+  const _cp=profBegin('composite');
   fsPass(matComposite,null);
+  profEnd(_cp);
+  profDrain();
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -6542,6 +6778,7 @@ addEventListener('mousedown',e=>{
   if(state==='play'&&e.button===0)useItem();
 });
 function onKeyDown(e){
+  if(e.code==='F2'){e.preventDefault();profToggle();return;}
   if(e.code==='KeyM'){AUDIO.muted=!AUDIO.muted;
     if(AUDIO.master)AUDIO.master.gain.value=AUDIO.muted?0:0.55;
     toast(AUDIO.muted?'Sound muted':'Sound on',1.4);return;}
@@ -7289,7 +7526,9 @@ function animate(){
   if(state==='play')adaptQuality(dt);
   mapAcc+=dt;
   if(mapAcc>0.1&&state==='play'){mapAcc=0;drawMap();}
+  if(PROF.overlay)renderer.info.reset();
   renderFrame();
+  profOverlay(dt);
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -7489,6 +7728,7 @@ function placeRiskCaches(){
 
 /* dev hooks (handy for testing) */
 window.__game={
+  PROF,profile,profileLayers,profReport,profToggle,
   P,items,crows,keys,hazards,renderer,scene,camera,sun,hemi,AUDIO,POST,BOOT,
   renderFrame,buildTargets,matComposite,
   gust:gustU,gustAt,WIND_DIR,THORN,HERON,GLASS,CAT,FLIP,WEATHER,WASP,BEETLE,SHELL,
