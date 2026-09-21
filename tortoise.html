@@ -194,7 +194,8 @@
        Three <b style="color:#e8c56a">Sunstones</b> keep the Sun Gate shut. Find them, and the forest will let you go.
        Mind the crows: when they dive, pull into your shell.</p>
     <div class="keys">
-      <div>W A S D</div><div>Crawl</div>
+      <div>W S</div><div>Crawl forward and back</div>
+      <div>A D</div><div>Turn</div>
       <div>Mouse</div><div>Look around</div>
       <div>Shift</div><div>Scurry (costs stamina)</div>
       <div>Space (hold)</div><div>Hide in shell — crows can't hurt you</div>
@@ -7824,6 +7825,7 @@ function thirdPersonCamera(gH,roll,dt){
 const P={
   pos:new THREE.Vector3(),vel:new THREE.Vector3(),
   yaw:0,pitch:0,bob:0,
+  turn:0,                          // how far into a turn the keys have leaned
   hp:100,sp:100,
   hidden:false,hideAmt:0,
   raft:null,                       // the leaf you are standing on, if any
@@ -7867,7 +7869,7 @@ function resetPlayer(){
   else P.yaw=0;                                    // north
   P.pitch=-0.05;
   P.hp=100;P.sp=100;P.hidden=false;P.hideAmt=0;P.boost=0;P.lastHurt=99;
-  P.winded=false;
+  P.winded=false;P.turn=0;
   P.stones=0;P.berries=0;P.shrooms=0;P.hasLantern=false;P.lanternOn=false;
   P.berriesEaten=0;P.slot=0;P.time=0;
   huntedHintShown=false;gloomHintShown=false;heronHintShown=false;glassHintShown=false;
@@ -8431,7 +8433,7 @@ function losClear(ax,az,bx,bz){
 /* ═══════════════════════════════════════════════════════════════
    14. UPDATE
    ═══════════════════════════════════════════════════════════════ */
-const fwd=new THREE.Vector3(),right=new THREE.Vector3();
+const fwd=new THREE.Vector3();
 const _sunF=new THREE.Vector3(),_sunR=new THREE.Vector3(),_sunU=new THREE.Vector3(),
       _sunT=new THREE.Vector3();
 const _bodyN=new THREE.Vector3(),_tiltQ=new THREE.Quaternion(),_yawQ=new THREE.Quaternion(),
@@ -8446,6 +8448,24 @@ const _bodyN=new THREE.Vector3(),_tiltQ=new THREE.Quaternion(),_yawQ=new THREE.Q
    expressed as fractions of WALK_SPEED, so the legs and the head bob follow
    this number down on their own. */
 const WALK_SPEED=1.05, SPRINT_SPEED=2.75;
+/* A and D turn the animal; they used to slide it sideways, which no tortoise
+   does and which looked worst from the new third-person camera -- the body
+   rig yaws with P.yaw, so a strafing tortoise walked sideways while facing
+   straight ahead.
+
+   Turning writes P.yaw, the one heading in the game: the mouse writes it,
+   the body rig reads it, the third-person boom hangs off it. So there is
+   nothing to reconcile between the mouse and the keys, and the camera's
+   0.32s view glide is not involved -- that clock only crossfades between
+   the two views.
+
+   1.5 rad/s, 86 degrees a second. A right-angle corner takes 1.05s, and
+   crossing the cell it turns in takes 1.9s at a walk, so the turn finishes
+   inside the corridor without the animal swivelling on a pin. The rate
+   eases in over `ramp` -- a tap is a nudge, a hold is a sweep -- but stops
+   the moment the key is released, because a turn that coasts overshoots the
+   corner you were lining up. */
+const TURN={rate:1.5, ramp:0.18};
 const STAMINA_REARM=34;      // how much has to come back before you can run again
 let chirpTimer=3,nearChime=0,huntedHintShown=false,gloomHintShown=false;
 let dripTimer=1.0, dripCount=0;
@@ -8500,31 +8520,36 @@ function update(dt){
 
   /* ---- movement ---- */
   fwd.set(-Math.sin(P.yaw),0,-Math.cos(P.yaw));
-  right.set(Math.cos(P.yaw),0,-Math.sin(P.yaw));
-  let ix=0,iz=0;
+  let iz=0;
   if(!P.hidden){
     if(keys['KeyW'])iz+=1;
     if(keys['KeyS'])iz-=1;
-    if(keys['KeyD'])ix+=1;
-    if(keys['KeyA'])ix-=1;
   }
-  /* Arrow keys also steer (works without a captured mouse) -- but not while
-     upturned, where left and right are the swing itself. */
+  /* Turning, on A/D and on the arrow keys both -- the arrows are the
+     fallback for an uncaptured mouse, and there is no reason for the two to
+     turn at different rates. Not while upturned, where left and right are
+     the swing itself. Held both ways cancels. */
+  let turnIn=0;
+  if(!P.flipped){
+    if(keys['KeyA']||keys['ArrowLeft'])turnIn+=1;
+    if(keys['KeyD']||keys['ArrowRight'])turnIn-=1;
+  }
+  P.turn = turnIn===0 ? 0
+         : clamp(P.turn+Math.sign(turnIn)*dt/TURN.ramp,-1,1);
+  P.yaw += P.turn*TURN.rate*dt;
   const look=2.0*dt;
   if(!P.flipped){
-    if(keys['ArrowLeft'])P.yaw+=look;
-    if(keys['ArrowRight'])P.yaw-=look;
     if(keys['ArrowUp'])P.pitch=clamp(P.pitch+look*0.7,-1.25,1.05);
     if(keys['ArrowDown'])P.pitch=clamp(P.pitch-look*0.7,-1.25,1.05);
   }
 
   /* Tossed: for a moment the tortoise is skidding and the controls are not
      connected to anything. Health is untouched -- the cat is playing. */
-  if(P.tumble>0){ P.tumble=Math.max(0,P.tumble-dt); ix=0; iz=0; }
+  if(P.tumble>0){ P.tumble=Math.max(0,P.tumble-dt); iz=0; }
   // on your back, the keys do something else entirely
-  if(updateFlip(dt)){ ix=0; iz=0; }
-  const mag=Math.hypot(ix,iz);
-  if(mag>0){ix/=mag;iz/=mag;}
+  if(updateFlip(dt)){ iz=0; }
+  const mag=Math.abs(iz);
+  if(mag>0)iz=Math.sign(iz);
   /* Winded, with hysteresis. Sprinting until the last leaf ran out and then
      letting go at 1% meant the next frame had enough to sprint again: the
      tortoise stuttered between 2.75 and 1.05 m/s several times a second and
@@ -8540,7 +8565,7 @@ function update(dt){
   if(boosted)speed*=1.35;
   if(P.hp<30)speed*=0.82;
 
-  const wish=_v.set(fwd.x*iz+right.x*ix,0,fwd.z*iz+right.z*ix);
+  const wish=_v.set(fwd.x*iz,0,fwd.z*iz);
   if(wish.lengthSq()>0)wish.normalize().multiplyScalar(speed);
   // smooth accel/decel — a tortoise has weight
   P.vel.x=lerp(P.vel.x,wish.x,1-Math.pow(0.0015,dt));

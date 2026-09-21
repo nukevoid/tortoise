@@ -61,11 +61,14 @@ mark done tasks like - [X]
 - [X] sound of wind has to depend on wind power. And make wins lighter by defaul, and stronger time to time
 - [X] bug: some ponds looks like without water, maybe camera beneth the water plane 
 - [X] fix camera in 3rd mode ( has to look from the top bottom to forward), investigate how cameras in 3d view works
-- [ ] remove strafes, assign to A and D YAW rotation
+- [X] remove strafes, assign to A and D YAW rotation
 - [ ] fix legs and head animation and model of tortoise (looks bed in 3rd view mode)
-- [ ] bug - on leaft is camera jitter - camera m oves eventy frame w
-- [ ] add rain drops on water
+- [ ] bug - on lake's leaf  player movement has jitter 
+- [ ] do more time of calm wind 
+- [ ] add rain drops on water when it rains
+- [ ] in swing flipped animation rotation has to be oposite to movement
 - [ ] add smooth water - bank intersection
 - [ ] add small rocks and debris that shows only in small range 
 - [ ] sunbeam visibility has to depend on weather 
+- [ ] on leaf change sound from steps to water splahes
 - [ ] when pick mashrom - game freeze for 1-2 second
