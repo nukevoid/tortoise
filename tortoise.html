@@ -3821,16 +3821,27 @@ function buildClutter(){
     new THREE.MeshStandardMaterial({color:0x4d6128,roughness:0.9}),false,true));
   worldGroup.add(stem.build(new THREE.CylinderGeometry(0.85,1.15,1,8),
     new THREE.MeshStandardMaterial({color:0xcfc4a8,roughness:0.92}),false,true));
-  // a lathe profile gives the cap a rolled edge and a proper underside
+  /* A lathe profile gives the cap a rolled edge and a proper underside.
+
+     The order of the points matters and it was backwards. LatheGeometry
+     winds its faces from the direction the profile runs, and this one was
+     written top-down -- apex first, then out to the rim, then in under the
+     gills -- which turns every face inside out. Measured on the generated
+     geometry: the crown of the cap, at y=+0.72, had a normal of Y=-1. It
+     pointed at the floor. So the caps were lit from underneath and read as
+     dented rather than domed.
+
+     Same profile, built bottom-up: under the gills, out to the rim, over
+     the dome to the apex. */
   const capPts=[];
-  for(let i=0;i<=6;i++){
+  capPts.push(new THREE.Vector2(0.0,-0.08));
+  capPts.push(new THREE.Vector2(0.22,-0.10));
+  capPts.push(new THREE.Vector2(0.86,-0.14));
+  for(let i=6;i>=0;i--){
     const t=i/6;
     capPts.push(new THREE.Vector2(Math.sin(t*Math.PI*0.52)*1.0+0.02,
                                   Math.cos(t*Math.PI*0.52)*0.72));
   }
-  capPts.push(new THREE.Vector2(0.86,-0.14));
-  capPts.push(new THREE.Vector2(0.22,-0.10));
-  capPts.push(new THREE.Vector2(0.0,-0.08));
   const capGeo=new THREE.LatheGeometry(capPts,10);
   worldGroup.add(shroom.build(capGeo,new THREE.MeshStandardMaterial({
     color:0x8f4636,roughness:0.74,metalness:0}),true,true));

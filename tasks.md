@@ -48,7 +48,8 @@ mark done tasks like - [X]
 - [X] lake - separate biom with own flora and fauna
 - [X] lake has to be in center of map. Dont extend it to borders. Separate each part of map using regular wals and connect them at center at lake
 - [X] sky can't be blue at the top what it's heavyrain
-- [ ] fix masshroms heads - thay inverted
+- [X] fix masshroms heads - thay inverted
 - [ ] remove timer for the shell
 - [ ] do step sound faster and lighter
 - [ ] fix anemy plant mode  - it don't hase stem from root to flower
+- [ ] don't make that diagonal free cells not connected (visualy I can see next diagonal cell, but can't go to it now)
