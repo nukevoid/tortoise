@@ -2097,7 +2097,7 @@ function stage(i){ RNG.reseed((DECO_SEED+Math.imul(i,0x9E3779B1))|0); }
    prints, and paste it here. Null means "generate one". */
 /* Generated offline with ?export and pasted here. This is the forest
    the game ships; delete it and the generator grows a fresh one. */
-const LEVEL_BAKED={"v":1,"grid":"/////yMIgAJW13jVrSogiljVQ9e1AICIaGGPd92CAACiAR4cXAMAIIgGcFjQLwgAgNhYANS1CgCgaAAAAMAAAACAAQAAAKMCgABWFQDDjQgAKNh1AFQ3IACoYsGNP9QCAACIBT/+cAsACCjWfVBVLSCgqNrd4V01igCq6t2NVdeAACCg/////wE=","gloomCell":[15,3],"biomes":[[-36.424,-36.349,1],[-2.832,-28.044,2],[21.427,-36.178,3],[1.629,10.874,0],[11.461,17.62,1],[-21.601,-7.412,2],[38.938,16.568,3]],"items":[["stone",39,-23.4,0.5],["stone",23.4,18.2,0.5],["stone",-28.6,18.2,0.5],["lantern",-33.8,-7.8,0.12],["berry",28.158,2.5,0.14],["berry",12.34,-38.488,0.14],["berry",-22.743,33.167,0.14],["berry",38.872,38.297,0.14],["berry",-38.557,23.213,0.14],["berry",7.125,23.084,0.14],["berry",17.44,34.455,0.14],["berry",23.523,-23.771,0.14],["shroom",-28.122,23.2,0.06],["shroom",-13.609,-12.254,0.06],["shroom",38.606,-13.525,0.06],["berry",4.876,-11.222,0.14],["shroom",4.542,-11.478,0.06],["berry",-11.39,-17.995,0.14],["berry",-11.18,-17.948,0.14],["shroom",-10.497,-18.035,0.06],["berry",-39.61,31.202,0.14],["berry",-39.627,31.091,0.14],["shroom",-39.132,30.968,0.06],["berry",-24.18,15.777,0.14],["shroom",-23.642,15.855,0.06],["berry",-33.021,5.259,0.14],["shroom",-33.242,5.871,0.06],["berry",1.028,-31.013,0.14],["shroom",1.765,-30.926,0.06]],"hazardCells":[[13,15],[5,9],[1,8],[2,8],[0,15],[15,8],[15,1],[11,1],[12,12],[13,5],[10,14],[0,10],[15,10],[3,14]],"thornmaws":[[2.368,-12.991],[-8.08,-18.337],[-38.931,28.134],[-23.595,13.175],[-33.959,8.219],[-18.391,-28.256],[2.375,-33.97],[13.02,-13.405],[-18.43,-12.734],[38.976,-33.584],[-17.881,2.69]],"rooms":[[5,9,3.4],[23,9,2.6],[5,23,2.6],[25,23,1.9],[15,13,1.9],[7,15,1.9],[25,17,1.9]]};
+const LEVEL_BAKED={"v":1,"grid":"/////yOAgwJW13fVrSouiljVX9e1ALiIaGH/d92C4ACiAd4dXAOAI4gGcF9QLwgAgNjYANY1CgCg6P8B8P//A+D//wfA/6MCAABWFQDDjQgAKNj1AFQ3IACqYsH9P9QC4ACIBf//cAuAAyjWfVdVLSCuqNrd/V01ijiq6t39VdeA4CCg/////wE=","gloomCell":[10,3],"biomes":[[-36.424,-36.349,1],[-2.832,-28.044,2],[21.427,-36.178,3],[1.629,10.874,0],[11.461,17.62,1],[-21.601,-7.412,2],[38.938,16.568,3]],"items":[["stone",13,-23.4,0.5],["stone",23.4,18.2,0.5],["stone",-28.6,18.2,0.5],["lantern",-7.8,-28.6,0.12],["berry",28.158,2.5,0.14],["berry",12.34,-38.488,0.14],["berry",-12.343,33.167,0.14],["berry",38.872,38.297,0.14],["berry",-22.957,23.213,0.14],["berry",17.525,23.084,0.14],["berry",22.64,34.455,0.14],["berry",18.323,-23.771,0.14],["shroom",-12.522,23.2,0.06],["shroom",-29.209,-12.254,0.06],["shroom",28.206,-13.525,0.06],["berry",7.529,-31.065,0.14],["shroom",7.195,-31.321,0.06],["berry",1.869,-31.444,0.14],["berry",2.079,-31.397,0.14],["shroom",2.762,-31.484,0.06],["berry",12.089,-15.123,0.14],["berry",12.072,-15.234,0.14],["shroom",12.567,-15.357,0.06],["berry",-18.704,-15.609,0.14],["shroom",-18.166,-15.531,0.06],["berry",-17.447,-36.325,0.14],["shroom",-17.668,-35.713,0.06],["berry",23.546,-35.879,0.14],["shroom",24.284,-35.792,0.06]],"hazardCells":[[13,15],[5,9],[15,6],[0,8],[1,15],[15,8],[14,1],[10,1],[14,12],[11,5],[11,14],[3,10],[2,11],[4,14]],"thornmaws":[[12.768,-18.191],[7.785,-33.717],[-18.119,-18.211],[2.766,-28.479],[-33.983,-12.642],[8.278,-13.032],[-7.715,-17.736],[2.925,-18.257],[-28.724,7.608],[17.753,-7.944],[-18.385,-33.365]],"rooms":[[5,9,3.4],[23,9,2.6],[5,23,2.6],[25,23,1.9],[15,13,1.9],[7,15,1.9],[25,17,1.9]]};
 
 let LEVEL_USED=null;               // the level actually in play
 /* Whatever the generator decided this run, so it can be written out. */
@@ -2579,35 +2579,98 @@ if(!LEVEL_FRESH&&LEVEL_BAKED&&LEVEL_BAKED.v===LEVEL_VERSION&&LEVEL_BAKED.grid){
   generateMaze();
   LEVEL_ROOMS=LEVEL_REC.rooms.map(r=>[r[0],r[1],r[2]]);
 }
-/* ── The waterway ──────────────────────────────────────────────────
-   A channel running the full width and the full height of the maze, meeting
-   in a pool at the middle. It is cut out of the wall grid here, before the
-   BFS runs, so everything downstream that reasons about open cells -- item
-   placement, mob placement, the distance field -- is looking at the board
-   that actually exists.
+/* -- The lake, and the four quarters around it ----------------------
+   One body of water in the middle of the board, and four walled quarters
+   around it that meet nowhere else.
 
-   Cells sit at odd grid indices, so there is no cell line at the exact
-   centre (index 16 is a wall line). 15 is the nearest, which puts the arms
-   at world -2.6 on both axes.
+   This replaces a cross of channels running out to the borders. That
+   version worked but it cut the Hollow into strips and put water against
+   the outer wall on all four sides; a lake belongs in the middle of a map,
+   not spread across it.
 
-   Taking walls away can only join regions, never separate them, so the carve
-   itself cannot strand anything. Filling it with water can, and that is
-   handled further down where the water is laid out. */
-const WAY_G=15;                       // the grid line both arms run along
-const WAY_WIDE=1;                     // ...and one line either side of it
-const WAY_POOL=[11,21];               // the pool: grid 11..21 on both axes
-for(let i=1;i<G-1;i++){
-  for(let w=-WAY_WIDE;w<=WAY_WIDE;w++){
-    if(WAY_G+w>0&&WAY_G+w<G-1){
-      solid[gi(WAY_G+w,i)]=0;         // the north-south arm
-      solid[gi(i,WAY_G+w)]=0;         // the east-west arm
+   The separation is ordinary hedge. Grid lines 14, 15 and 16 are made solid
+   on both axes, which is a wall three tiles thick between each pair of
+   quarters -- the same wall the maze is made of everywhere else. Then the
+   middle is opened out for the water.
+
+   The important part is that the BFS still crosses. The lake's cells are
+   OPEN grid, so the distance field, the item placement, the mob placement
+   and everything else that reasons about reachable floor still reach every
+   quarter -- they cross through the middle. It is only walking that the
+   water refuses, which is exactly the rule wanted: the quarters are joined,
+   and the joining is a boat ride. */
+const LAKE_R=12.5;                    // the water
+const LAKE_OPEN=LAKE_R+2.6;           // ...and the grid opened around it
+const WAY_G=[14,15,16];               // the dividing walls, three tiles thick
+for(const w of WAY_G){
+  for(let i=1;i<G-1;i++){ solid[gi(w,i)]=1; solid[gi(i,w)]=1; }
+}
+for(let gy=1;gy<G-1;gy++)for(let gx=1;gx<G-1;gx++){
+  if(Math.hypot(tileX(gx),tileZ(gy))<=LAKE_OPEN)solid[gi(gx,gy)]=0;
+}
+
+/* Walling the quarters apart breaks them internally.
+
+   The maze was one connected thing, and a lot of it was connected THROUGH
+   the middle. Three tiles of new wall on each axis cuts those routes, and
+   what is left behind is a quarter in several pieces -- with, in the worst
+   case measured here, the south-east quarter only 4% reachable from its own
+   shore, which put the Sun Gate on the wrong side of a wall and made the
+   level unwinnable.
+
+   So each quarter is repaired on its own. Everything in it that cannot walk
+   to its own lakeside is dug through to something that can, by the same
+   straight-line method connectRegions uses -- but scoped, so the digging
+   never breaches the wall between two quarters. The separation is the
+   point; the isolation inside one is not. */
+(function healQuarters(){
+  const inLake=(gx,gy)=>Math.hypot(tileX(gx),tileZ(gy))<=LAKE_OPEN;
+  const quarters=[[1,13,1,13],[17,G-2,1,13],[1,13,17,G-2],[17,G-2,17,G-2]];
+  for(const [x0,x1,z0,z1] of quarters){
+    const own=(gx,gy)=>gx>=x0&&gx<=x1&&gy>=z0&&gy<=z1;
+    // label the walkable regions inside this quarter
+    const id=new Int32Array(G*G).fill(-1);
+    const regions=[];
+    for(let gy=z0;gy<=z1;gy++)for(let gx=x0;gx<=x1;gx++){
+      if(solid[gi(gx,gy)]||id[gi(gx,gy)]>=0)continue;
+      const r=regions.length, q=[[gx,gy]], cells=[];
+      id[gi(gx,gy)]=r;
+      while(q.length){
+        const [cx,cy]=q.pop(); cells.push([cx,cy]);
+        for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){
+          const nx=cx+dx, ny=cy+dy;
+          if(!own(nx,ny)||solid[gi(nx,ny)]||id[gi(nx,ny)]>=0)continue;
+          id[gi(nx,ny)]=r; q.push([nx,ny]);
+        }
+      }
+      regions.push(cells);
+    }
+    if(regions.length<2)continue;
+    /* The main one is whichever touches the water -- that is the piece a
+       leaf can put you on, so everything else has to reach it. Failing
+       that, the biggest. */
+    let main=null;
+    for(const r of regions) if(r.some(c=>inLake(c[0],c[1]))){
+      if(!main||r.length>main.length)main=r;
+    }
+    if(!main){ regions.sort((a,b)=>b.length-a.length); main=regions[0]; }
+    for(const r of regions){
+      if(r===main)continue;
+      let best=null,bd=1e9;
+      for(const a of r)for(const b of main){
+        const d=Math.abs(a[0]-b[0])+Math.abs(a[1]-b[1]);
+        if(d<bd){bd=d;best=[a,b];}
+      }
+      if(!best)continue;
+      let [ax,ay]=best[0]; const [bx,by]=best[1];
+      while(ax!==bx){ ax+=Math.sign(bx-ax); if(own(ax,ay))solid[gi(ax,ay)]=0; }
+      while(ay!==by){ ay+=Math.sign(by-ay); if(own(ax,ay))solid[gi(ax,ay)]=0; }
+      for(const c of r)main.push(c);
     }
   }
-}
-for(let y=WAY_POOL[0];y<=WAY_POOL[1];y++)
-  for(let x=WAY_POOL[0];x<=WAY_POOL[1];x++)solid[gi(x,y)]=0;
+})();
 
-RNG.reseed(DECO_SEED);
+RNG.reseed(DECO_SEED);RNG.reseed(DECO_SEED);
 if(LEVEL_USED&&LEVEL_USED.biomes)BIOME_SEEDS=LEVEL_USED.biomes.map(a=>[a[0],a[1],a[2]]);
 else seedBiomes();
 
@@ -2686,7 +2749,7 @@ const CREEK={pts:[],halfWidth:0.95,depth:0.34,srcY:0,dstY:0};
    the channel is. The pool where they meet is the same structure with a
    bigger radius rather than a separate dish. */
 const WAY={
-  ax:-2.6, az:-2.6,          // where the two arms cross; grid line 15
+  ax:0, az:0,                // the middle of the board
   /* Sized twice. At 3.4 and a 6m bank the lake ate the board: a fifth of
      the Hollow under water and two fifths of the terrain flattened, which
      is a flood, not a lake. 2.4 leaves 4.8m of water in a 7.8m cut, so
@@ -2694,53 +2757,29 @@ const WAY={
      side -- you can walk the length of the lake, and still need a leaf to
      get across it, which is the shape the crossing was always meant to
      have. */
-  half:2.4,                  // the water, inside a 7.8m cut
-  pool:9.0,                  // the wide water at the crossing
+  r:LAKE_R,                  // the water
   depth:0.50,                // 0.62 of this is standing depth: 0.31m
-  bank:3.5,                  // and the banks have this far to come down
-  reach:40.3,                // the arms run to the border wall
+  bank:5.0,                  // and the banks have this far to come down
   floor:0, level:0
 };
 /* Distance from a point to the waterway, negative-free, and 0 inside it.
    Two axis-aligned segments and a disc, so this is three cheap tests. */
-/* The waterline, and why it is not one number.
+/* The waterline.
 
-   It was, and it could not be. The land rolls through 3.06m along the arms,
-   so a single flat surface is a canyon at one end or a flood at the other --
-   I shipped both in turn. At the low end the ground outside the channel sat
-   0.8m UNDER the waterline while still reporting itself dry, so the player
-   walked out beneath the water plane and saw its back face: a dry trench
-   with an invisible lid. That is the "deep trench without water".
+   The cross of channels needed a level that varied along its length,
+   because it crossed three metres of relief and one flat surface was a
+   canyon at one end or a flood at the other. A round lake in the middle
+   does not have that problem: the land moves 2.25m across the whole disc,
+   so one level works, and one level is what a body of water actually has.
 
-   So the water follows the land, the way a chain of pools down a valley
-   does. The height along each arm is the terrain under it, smoothed hard,
-   and a point takes the level of whichever arm it is nearer. The depth is
-   then small and even everywhere, the shoreline falls wherever the ground
-   crosses the line instead of at an arbitrary radius, and nothing is ever
-   below the water and dry at the same time. */
-const WAY_PROF={step:1.3, z:[], x:[]};
-function profAt(arr,t){
-  const f=(t+WAY.reach)/WAY_PROF.step;
-  const i=Math.max(0,Math.min(arr.length-1,Math.floor(f)));
-  const j=Math.min(arr.length-1,i+1);
-  return lerp(arr[i],arr[j],clamp(f-i,0,1));
-}
-function wayLevelAt(x,z){
-  if(!WAY_PROF.z.length)return WAY.level;
-  const dx=Math.abs(x-WAY.ax), dz=Math.abs(z-WAY.az);
-  const lz=profAt(WAY_PROF.z,clamp(z-WAY.az,-WAY.reach,WAY.reach));
-  const lx=profAt(WAY_PROF.x,clamp(x-WAY.ax,-WAY.reach,WAY.reach));
-  // near the north-south arm dx is small and the level varies with z
-  return lerp(lz,lx,smoothstep(-3,3,dx-dz))-WAY.depth*0.38;
-}
-function wayFloorAt(x,z){ return wayLevelAt(x,z)-WAY.depth*0.62; }
+   wayLevelAt survives as a function because everything downstream calls it
+   -- the raft deck, the surface mesh, the depth test -- and it costs
+   nothing to keep the shape in case the lake is ever moved again. */
+function wayLevelAt(x,z){ return WAY.level; }
+function wayFloorAt(x,z){ return WAY.floor; }
 
 function wayDist(x,z){
-  const dx=Math.abs(x-WAY.ax), dz=Math.abs(z-WAY.az);
-  const alongZ=Math.abs(z-WAY.az)<=WAY.reach ? dx : Math.hypot(dx,dz-WAY.reach);
-  const alongX=Math.abs(x-WAY.ax)<=WAY.reach ? dz : Math.hypot(dz,dx-WAY.reach);
-  const pool=Math.hypot(dx,dz)-WAY.pool;
-  return Math.min(alongZ-WAY.half, alongX-WAY.half, pool);
+  return Math.hypot(x-WAY.ax,z-WAY.az)-WAY.r;
 }
 function addBasin(x,z,r,depth){
   const b={x,z,r,depth,floor:terrainBase(x,z)-depth};
@@ -2872,7 +2911,7 @@ const openCells=[];
 for(let cy=0;cy<N;cy++)for(let cx=0;cx<N;cx++){
   if(dist[cy*N+cx]<0)continue;
   const c=cellCenter(cx,cy);
-  if(wayDist(c.x,c.z)<1.0)continue;      // the channel: nothing stands here
+  if(wayDist(c.x,c.z)<1.0)continue;      // the lake: nothing stands in it
   openCells.push([cx,cy]);
 }
 
@@ -2896,31 +2935,19 @@ for(let cy=0;cy<N;cy++)for(let cx=0;cx<N;cx++){
    one in four. Symmetric, and it leaves the landform either side intact
    instead of levelling the map. */
 (function settleWay(){
-  const n=Math.ceil(2*WAY.reach/WAY_PROF.step)+1;
-  const rawZ=[],rawX=[];
-  for(let i=0;i<n;i++){
-    const t=-WAY.reach+i*WAY_PROF.step;
-    rawZ.push(terrainBase(WAY.ax,WAY.az+t));
-    rawX.push(terrainBase(WAY.ax+t,WAY.az));
-  }
-  /* Smoothed hard. The waterline should ease along the valley, not ripple
-     with every bump the height field puts under it. */
-  const smooth=a=>{
-    let b=a.slice();
-    for(let pass=0;pass<14;pass++){
-      const c=b.slice();
-      for(let i=0;i<b.length;i++){
-        const l=c[Math.max(0,i-1)], r=c[Math.min(c.length-1,i+1)];
-        b[i]=(l+c[i]*2+r)*0.25;
-      }
+  /* The floor at the median of the land the lake covers, so it fills the low
+     ground as readily as it cuts the high and no bank is a cliff. */
+  const hs=[];
+  for(let r=0;r<=WAY.r+WAY.bank;r+=1.0){
+    for(let a=0;a<24;a++){
+      const th=a/24*6.283;
+      hs.push(terrainBase(WAY.ax+Math.cos(th)*r, WAY.az+Math.sin(th)*r));
     }
-    return b;
-  };
-  WAY_PROF.z=smooth(rawZ); WAY_PROF.x=smooth(rawX);
-  SHORE_READY=true;    // the shore biome can be asked about now
-  // a nominal level, for the few places that want one number
-  WAY.level=(WAY_PROF.z[n>>1]+WAY_PROF.x[n>>1])*0.5-WAY.depth*0.38;
-  WAY.floor=WAY.level-WAY.depth*0.62;
+  }
+  hs.sort((a,b)=>a-b);
+  WAY.floor=hs[hs.length>>1]-WAY.depth;
+  WAY.level=WAY.floor+WAY.depth*0.62;
+  SHORE_READY=true;                  // the shore biome can be asked about now
 })();
 const POND=addBasin(LAKE.x,LAKE.z,LAKE.r,1.15);
 POND.r=LAKE.r;
@@ -4100,44 +4127,24 @@ function tagWaterDepth(geo,level,ox,oz){
    surfaces overlap -- water is drawn transparent and with depthWrite off, so
    an overlap would show as a seam of double-strength water. */
 function waywaySurface(){
-  const HALF_W=WAY.bank;               // out to where the banks bring it to nothing
+  /* One fan for one round lake. It was a ladder of quads down each of four
+     arms plus a fan for the pool, which is what the cross needed and is
+     needless now. */
   const pos=[],idx=[],dep=[];
-  const push=(x,z)=>{ const lv=wayLevelAt(x,z);
-                      pos.push(x,lv,z);
-                      dep.push(Math.max(0,lv-groundH(x,z)));
+  const push=(x,z)=>{ pos.push(x,WAY.level,z);
+                      dep.push(Math.max(0,WAY.level-groundH(x,z)));
                       return pos.length/3-1; };
-  const strip=(along,lo,hi)=>{          // along: 0 = runs in z, 1 = runs in x
-    const STEPS=Math.ceil((hi-lo)/1.2), ACROSS=6;
-    let prev=null;
-    for(let i=0;i<=STEPS;i++){
-      const t=lo+(hi-lo)*i/STEPS, row=[];
-      for(let j=0;j<=ACROSS;j++){
-        const u=-HALF_W+2*HALF_W*j/ACROSS;
-        row.push(along ? push(t,WAY.az+u) : push(WAY.ax+u,t));
-      }
-      // wound anticlockwise seen from above: the water material is
-      // single-sided, and the first version of this was inside out, which
-      // renders as a channel with no water in it at all
-      if(prev)for(let j=0;j<ACROSS;j++){
-        idx.push(prev[j],row[j],prev[j+1], prev[j+1],row[j],row[j+1]);
-      }
-      prev=row;
-    }
-  };
-  const R0=WAY.pool-0.6;
-  strip(0,WAY.az-WAY.reach-1.2,WAY.az-R0);   // north arm
-  strip(0,WAY.az+R0,WAY.az+WAY.reach+1.2);   // south
-  strip(1,WAY.ax-WAY.reach-1.2,WAY.ax-R0);   // west
-  strip(1,WAY.ax+R0,WAY.ax+WAY.reach+1.2);   // east
-  // the pool, as a fan
-  const c=push(WAY.ax,WAY.az), SEG=56, RINGS=4;
+  const OUT=WAY.r+WAY.bank, SEG=72, RINGS=12;
+  const c=push(WAY.ax,WAY.az);
   let inner=[c];
   for(let r=1;r<=RINGS;r++){
-    const rad=(WAY.pool+1.1)*r/RINGS, ring=[];
+    const rad=OUT*r/RINGS, ring=[];
     for(let a=0;a<=SEG;a++){
       const th=a/SEG*6.283;
       ring.push(push(WAY.ax+Math.cos(th)*rad, WAY.az+Math.sin(th)*rad));
     }
+    // anticlockwise seen from above: the water material is single-sided, and
+    // an inside-out surface renders as a lake with no water in it
     if(r===1){ for(let a=0;a<SEG;a++) idx.push(c,ring[a+1],ring[a]); }
     else { for(let a=0;a<SEG;a++) idx.push(inner[a],ring[a+1],ring[a],
                                            inner[a],inner[a+1],ring[a+1]); }
@@ -4147,7 +4154,7 @@ function waywaySurface(){
   g2.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
   g2.setAttribute('aDepth',new THREE.Float32BufferAttribute(dep,1));
   const uv=[];
-  for(let i=0;i<pos.length;i+=3)uv.push(pos[i]*0.14,pos[i+2]*0.14);
+  for(let k=0;k<pos.length;k+=3)uv.push(pos[k]*0.14,pos[k+2]*0.14);
   g2.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
   g2.setIndex(idx);
   g2.computeVertexNormals();
@@ -4268,17 +4275,15 @@ function buildWater(){
       }
       return false;
     };
-    // walk both arms and the pool rim, planting where it is ankle deep
+    // walk the rim, planting where it is ankle deep
     const tryReed=(x,z)=>{
       const d=waterDepth(x,z);
       if(d<=0.04||d>0.30)return;
       if(RNG()<0.45)plantReed(x+rr(-0.3,0.3),z+rr(-0.3,0.3),rr(1.6,3.1));
     };
-    for(let t=-W.reach;t<=W.reach;t+=0.7){
-      for(let o=-(W.half+W.bank);o<=W.half+W.bank;o+=0.35){
-        tryReed(W.ax+o, W.az+t);
-        tryReed(W.ax+t, W.az+o);
-      }
+    for(let r=W.r-2.0;r<=W.r+W.bank;r+=0.35){
+      const step=0.55/Math.max(r,1);
+      for(let a=0;a<6.283;a+=step)tryReed(W.ax+Math.cos(a)*r, W.az+Math.sin(a)*r);
     }
   }
   worldGroup.add(reed.build(GEO_GRASS,matGrass,false,true));
@@ -4290,9 +4295,10 @@ function buildWater(){
     const tint=new THREE.Color();
     const W=WAY;
     for(let i=0;i<900;i++){
-      const onArm=RNG()<0.5;
-      const t=rr(-W.reach,W.reach), o=rr(-W.half,W.half);
-      const x=onArm?W.ax+o:W.ax+t, z=onArm?W.az+t:W.az+o;
+      // sqrt of a uniform spreads them evenly over a disc rather than
+      // crowding the middle
+      const a=RNG()*6.283, r=Math.sqrt(RNG())*W.r;
+      const x=W.ax+Math.cos(a)*r, z=W.az+Math.sin(a)*r;
       if(waterDepth(x,z)<0.18)continue;          // pads want water under them
       const lv=wayLevelAt(x,z);
       const sc=rr(0.16,0.34);
@@ -6553,11 +6559,11 @@ function spawnWasps(n){
    on. Literal stepping, so the random stream is not disturbed. */
 function spawnSkaters(n){
   const spots=[];
-  for(let t=-WAY.reach;t<=WAY.reach;t+=1.5){
-    for(let o=-WAY.half;o<=WAY.half;o+=1.1){
-      for(const p of [[WAY.ax+o,WAY.az+t],[WAY.ax+t,WAY.az+o]]){
-        if(wayLevelAt(p[0],p[1])-groundH(p[0],p[1])>WADE_MAX)spots.push(p);
-      }
+  for(let r=1.2;r<WAY.r;r+=1.5){
+    const step=1.5/Math.max(r,1);
+    for(let a=0;a<6.283;a+=step){
+      const x=WAY.ax+Math.cos(a)*r, z=WAY.az+Math.sin(a)*r;
+      if(wayLevelAt(x,z)-groundH(x,z)>WADE_MAX)spots.push([x,z]);
     }
   }
   let placed=0;
@@ -7427,7 +7433,23 @@ function blockedWorld(x,z){
      the water's edge, and keep the spot only if there is dry standing ground
      within boarding reach of it. No grid, no guessing -- if a leaf is here,
      you can get on it. */
-  const SIDE=WAY.half-0.3;
+  /* Round the rim, at the waterline rather than at a fixed radius.
+
+     A fixed radius was wrong for the third time: with the lake round, the
+     shore is not the same distance from the middle in every direction --
+     the land rolls, so the water reaches further where the ground is low.
+     Moored at r-0.9 not one of them was within reach of anywhere you could
+     stand. So each angle is scanned outward for the last point that still
+     floats a leaf, which is the waterline, and the leaf ties up just inside
+     it. */
+  const moorAt=(a)=>{
+    let last=null;
+    for(let r=2;r<WAY.r+WAY.bank;r+=0.2){
+      const x=WAY.ax+Math.cos(a)*r, z=WAY.az+Math.sin(a)*r;
+      if(waterDepth(x,z)>WADE_MAX)last=[x,z];
+    }
+    return last;
+  };
   const dryWithin=(x,z)=>{
     for(let a=0;a<40;a++){
       const ang=a/40*6.283;
@@ -7442,13 +7464,13 @@ function blockedWorld(x,z){
   const kept=[];
   const tryMoor=(x,z)=>{
     if(waterDepth(x,z)<=WADE_MAX)return;            // not afloat here
-    if(kept.some(k=>Math.hypot(k[0]-x,k[1]-z)<7))return;
+    if(kept.some(k=>Math.hypot(k[0]-x,k[1]-z)<5))return;
     if(!dryWithin(x,z))return;
     kept.push([x,z]); addRaft(x,z);
   };
-  for(let t=-WAY.reach;t<=WAY.reach;t+=2.0){
-    tryMoor(WAY.ax-SIDE, WAY.az+t); tryMoor(WAY.ax+SIDE, WAY.az+t);
-    tryMoor(WAY.ax+t, WAY.az-SIDE); tryMoor(WAY.ax+t, WAY.az+SIDE);
+  for(let a=0;a<6.283;a+=0.035){
+    const m=moorAt(a);
+    if(m)tryMoor(m[0],m[1]);
   }
 })();
 function updateRafts(dt){
