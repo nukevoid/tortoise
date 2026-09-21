@@ -3117,19 +3117,32 @@ const DISSOLVE=15;
 /* Grass stands on its instance origin and is planted 35mm under the
    surface, so the ground is 35mm above that origin. A short band, because a
    blade is only a couple of hand-widths tall and the eye is at 0.26m. */
+/* How hard the wind takes hold of each thing, as a multiplier on its height
+   in the vertex shader. Everything here bends to the same travelling gust,
+   so these numbers are only about mass: a blade of grass is thrown about, a
+   hedge breathes.
+
+   Three of them were zero, which is why a storm used to move the grass and
+   leave the hedges, the tree crowns and every scattered leaf standing
+   perfectly still. The hedge numbers are deliberately tiny -- a blob is over
+   a metre tall, so 0.045 is about 13cm of lean at the peak of a gust in
+   rain, which reads as a mass shifting rather than a bush waving. */
 patchFoliage(matGrass,0.55,0.55,false,DISSOLVE,{drop:0,lift:0.035,band:0.11});
 patchFoliage(matFern,0.28,0.85,false,DISSOLVE);
-patchFoliage(matLeafCard,0,0.75,false,DISSOLVE);
+patchFoliage(matLeafCard,0.30,0.75,false,DISSOLVE);   // small, light, everywhere
 /* The grown bushes get their own pair. Wood and leaf sway by the SAME
    amplitude: they share one instance transform, so equal amplitude keeps
    every leaf attached to the twig it grew on. */
 const matBushWood=matBark.clone();
 const matBushLeaf=matLeafCard.clone();
-patchFoliage(matBushWood,0.10,0,false,DISSOLVE);      // branches
-patchFoliage(matBushLeaf,0.10,0.80,false,DISSOLVE);
-patchFoliage(matFoliage,0,0.30);
-patchFoliage(matFoliageCut,0,0.30,true);
-patchFoliage(matCanopy,0,0.40,true);
+patchFoliage(matBushWood,0.14,0,false,DISSOLVE);      // branches
+patchFoliage(matBushLeaf,0.14,0.80,false,DISSOLVE);
+patchFoliage(matFoliage,0.045,0.30);
+patchFoliage(matFoliageCut,0.045,0.30,true);
+/* The crowns get a little more -- they are up where the air moves -- but
+   not much: the trunk under them does not sway, so a crown that swung would
+   come off its own tree. */
+patchFoliage(matCanopy,0.035,0.40,true);
 
 const GLOOM={x:0,z:0,r:15};
 
