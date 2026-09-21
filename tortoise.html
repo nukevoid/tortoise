@@ -5577,6 +5577,12 @@ defineMob('cat',{
   think(m,dt,d){
     const rig=m.parts.rig;
     if(state!=='play'){ rig.visible=false; return; }
+    /* Every frame, in every state, before anything else: if it is standing
+       in water, it climbs out. It has to be here rather than in catStep,
+       because the state it spends most of its time in is 'away', which does
+       not step at all -- so a cat dropped in the lake off stage would still
+       be there whenever it next appeared. */
+    catAshore(m);
     if(m.state==='idle')setMobState(m,'away');
 
     if(m.state==='away'){
@@ -5721,7 +5727,34 @@ function lerpAngle(a,b,t){
   if(d<-3.141592653)d+=6.283185307;
   return a+d*t;
 }
-/* Walk the cat towards a point, refusing to walk into hedges. */
+/* Walk the cat towards a point, refusing to walk into hedges.
+
+   And out of water, if it somehow finds itself in some. blocked() already
+   refuses to step into anything deeper than a wade, so the cat cannot walk
+   in -- but it can be PUT in, and was: every set piece parked at the origin
+   while off stage, and a lake was later cut through the origin. Stepping
+   out is then impossible, because every direction is equally blocked, so it
+   stands there in the water forever.
+
+   Rather than trusting that no future change ever drops it in a pond, it
+   climbs out. This is the whole of "just don't". */
+function catAshore(m){
+  if(waterDepth(m.x,m.z)<=WADE_MAX)return false;
+  /* Out to 16m, because the pool is nine across and a first attempt that
+     gave up at eight could not get out of the middle of it. */
+  for(let r=0.8;r<=16;r+=0.8){
+    for(let k=0;k<20;k++){
+      const a=k*0.3142;
+      const cx=m.x+Math.sin(a)*r, cz=m.z+Math.cos(a)*r;
+      if(waterDepth(cx,cz)>WADE_MAX||blocked(cx,cz))continue;
+      m.x=cx; m.z=cz; return true;
+    }
+  }
+  // and if it is somehow in the middle of something with no shore at all,
+  // it goes back to where it waits, which is dry by construction
+  m.x=m.home.x; m.z=m.home.z;
+  return true;
+}
 function catStep(m,tx,tz,sp,dt){
   const dx=tx-m.x, dz=tz-m.z;
   const L=Math.hypot(dx,dz);
@@ -8229,9 +8262,20 @@ async function boot(){
   stage(15); placeRestPockets(5);
   stage(16); placeRiskCaches();
   stage(11);
-  spawnMob('heron',P.pos.x,P.pos.z);
-  spawnMob('glass',P.pos.x,P.pos.z);
-  spawnMob('cat',P.pos.x,P.pos.z);
+  /* The three set pieces wait off stage somewhere before they appear, and
+     this is where. It used to be P.pos, which at this point in the boot is
+     still (0,0) because the player has not been placed yet -- harmless for
+     as long as the middle of the map was a hedge, and not harmless at all
+     once a lake went through it: all three sat in 30cm of water, and the
+     cat, which is the one that walks out of its parking spot rather than
+     teleporting, waded out of the lake or got stuck in it.
+
+     The start cell instead. It is open, it is dry, and it is where the
+     player is about to be put. */
+  const park=cellCenter(START_CELL[0],START_CELL[1]);
+  spawnMob('heron',park.x,park.z);
+  spawnMob('glass',park.x,park.z);
+  spawnMob('cat',park.x,park.z);
   setLoad(88,'Letting in the light…');await frame();
   stage(12); buildEnvironment();buildShafts();buildMotes();
   collectMaterials();
