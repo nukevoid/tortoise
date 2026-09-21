@@ -1581,7 +1581,7 @@ function stage(i){ RNG.reseed((DECO_SEED+Math.imul(i,0x9E3779B1))|0); }
    prints, and paste it here. Null means "generate one". */
 /* Generated offline with ?export and pasted here. This is the forest
    the game ships; delete it and the generator grows a fresh one. */
-const LEVEL_BAKED={"v":1,"grid":"/////yOIgAJW133VrSooiljVX9e1AICIaGHfd92CIACiAV4dXAOAIogGcF3QLwgAgNjY49e1CgCgaIWPX90IgKCgF/5VeKMCogBW9dXDjQgiKNj1/VU3IACqYsH9P9QCAACIBf//cAsACCjWfVVVLSCiqNrd9V01igiq6t39VdeAACCg/////wE=","gloomCell":[12,3],"biomes":[[-36.424,-36.349,1],[-2.832,-28.044,2],[21.427,-36.178,3],[1.629,10.874,0],[11.461,17.62,1],[-21.601,-7.412,2],[38.938,16.568,3]],"items":[["stone",23.4,-23.4,0.5],["stone",23.4,18.2,0.5],["stone",-28.6,18.2,0.5],["lantern",2.6,-33.8,0.12],["berry",-29.042,2.5,0.14],["berry",17.54,-38.488,0.14],["berry",-33.143,33.167,0.14],["berry",38.872,38.297,0.14],["berry",13.443,18.013,0.14],["berry",-18.875,23.084,0.14],["berry",7.04,34.455,0.14],["berry",-28.477,-18.571,0.14],["shroom",29.078,18,0.06],["shroom",27.991,-12.254,0.06],["shroom",2.206,-8.325,0.06],["berry",-10.746,37.967,0.14],["shroom",-11.079,37.711,0.06],["berry",-29.075,10.348,0.14],["berry",-28.866,10.395,0.14],["shroom",-28.183,10.308,0.06],["berry",-18.491,-30.893,0.14],["berry",-18.508,-31.004,0.14],["shroom",-18.013,-31.127,0.06],["berry",-34.513,0.121,0.14],["shroom",-33.975,0.199,0.06],["berry",33.263,-21.798,0.14],["shroom",33.042,-21.187,0.06],["berry",5.043,38.775,0.14],["shroom",5.781,38.861,0.06]],"hazardCells":[[12,15],[12,8],[8,7],[9,7],[15,14],[4,8],[4,2],[13,1],[7,12],[4,6],[8,14],[7,9],[7,10],[1,14]],"thornmaws":[[-8.274,38.769],[-29.077,7.583],[-17.812,-33.961],[33.809,-18.605],[-33.928,-2.481],[2.472,38.964],[7.785,7.883]],"rooms":[[5,9,3.4],[23,9,2.6],[5,23,2.6],[25,23,1.9],[15,13,1.9],[7,15,1.9],[25,17,1.9]]};
+const LEVEL_BAKED={"v":1,"grid":"/////yOIgAJW133VrSooiljVX9e1AICIaGHfd92CIACiAV4dXAOAIogGcF3QLwgAgNjY49e1CgCgaIWPX90IgKCgF/5VeKMCogBW9dXDjQgiKNj1/VU3IACqYsH9P9QCAACIBf//cAsACCjWfVVVLSCiqNrd9V01igiq6t39VdeAACCg/////wE=","gloomCell":[12,3],"biomes":[[-36.424,-36.349,1],[-2.832,-28.044,2],[21.427,-36.178,3],[1.629,10.874,0],[11.461,17.62,1],[-21.601,-7.412,2],[38.938,16.568,3]],"items":[["stone",23.4,-23.4,0.5],["stone",23.4,18.2,0.5],["stone",-28.6,18.2,0.5],["lantern",2.6,-33.8,0.12],["berry",-29.042,2.5,0.14],["berry",17.54,-38.488,0.14],["berry",-33.143,33.167,0.14],["berry",38.872,38.297,0.14],["berry",13.443,18.013,0.14],["berry",-18.875,23.084,0.14],["berry",7.04,34.455,0.14],["berry",-28.477,-18.571,0.14],["shroom",29.078,18,0.06],["shroom",27.991,-12.254,0.06],["shroom",2.206,-8.325,0.06],["berry",-0.104,-39.793,0.14],["shroom",-0.437,-40.049,0.06],["berry",-23.678,5.228,0.14],["berry",-23.469,5.275,0.14],["shroom",-22.786,5.188,0.06],["berry",21.025,-28.244,0.14],["berry",21.008,-28.355,0.14],["shroom",21.503,-28.477,0.06],["berry",-24.255,21.006,0.14],["shroom",-23.717,21.084,0.06],["berry",5.17,-19.444,0.14],["shroom",4.949,-18.833,0.06],["berry",-34.669,-4.875,0.14],["shroom",-33.932,-4.788,0.06]],"hazardCells":[[12,15],[12,8],[8,7],[9,7],[15,14],[4,8],[4,2],[13,1],[7,12],[4,6],[8,14],[7,9],[7,10],[1,14]],"thornmaws":[[2.368,-38.991],[-23.68,2.463],[18.269,-29.066],[-23.67,18.404],[8.061,-17.96],[-33.322,-7.832],[-7.715,13.464]],"rooms":[[5,9,3.4],[23,9,2.6],[5,23,2.6],[25,23,1.9],[15,13,1.9],[7,15,1.9],[25,17,1.9]]};
 
 let LEVEL_USED=null;               // the level actually in play
 /* Whatever the generator decided this run, so it can be written out. */
@@ -3749,6 +3749,19 @@ function resetMobs(){
 
 
 
+/* A shadow on the ground is the only warning the heron and the falling
+   glass give, and in the gloom grove there is not enough light on the floor
+   for one to read. Something dropping out of a dark sky with no telegraph is
+   not difficulty, it is a trap, so neither of them commits while the player
+   is under the gloom -- they hold and come back when the player is out in
+   the wood again, which is also a reason for the grove to feel like shelter
+   rather than only like somewhere dark. */
+function shadowReadable(x,z){
+  const d=Math.hypot(x-GLOOM.x,z-GLOOM.z);
+  if(d<GLOOM.r*0.92)return false;          // under the canopy: no floor light
+  return WEATHER.wet<0.75;                 // ...and not in the heaviest rain
+}
+
 /* ═══ One set piece at a time ══════════════════════════════════════
    The heron, the falling glass and the cat each run on their own cooldown,
    and until now nothing stopped two of them from coming due in the same
@@ -3969,6 +3982,28 @@ defineMob('thornmaw',{
 
 /* Thornmaws guard corridors. They are kept off the start cell and away from
    the Sunstones, so nothing the player must reach is behind a wall of teeth. */
+/* Which ground each thing likes, as a weight on where it is allowed to be
+   placed. Nothing is forbidden outright -- a board where every wasp is in
+   the birches is a board you can read from the biome colours alone -- but a
+   thorn-maw is three times likelier in the brambles than in the fen, so the
+   rusty corner of the Hollow is the one that bites and the wet one hums.
+
+   The shadow threats are not in this table: they follow the player wherever
+   they are, and what stops them is whether their own telegraph can be seen.
+   See shadowReadable. */
+const MOB_GROUND={
+  thornmaw:{bramble:3.0, hollow:1.0, birch:0.7, fen:0.35},
+  wasp:    {birch:2.6, hollow:1.2, bramble:0.8, fen:0.5},
+  beetle:  {fen:2.2, hollow:1.2, birch:0.9, bramble:0.6}
+};
+function groundFavour(kind,x,z){
+  const t=MOB_GROUND[kind];
+  if(!t)return 1;
+  const a=biomeAt(x,z);
+  const w=t[a.b.name];
+  return w===undefined?1:(1+(w-1)*(0.35+0.65*a.edge));
+}
+
 function spawnThornmaws(n){
   if(LEVEL_USED&&LEVEL_USED.thornmaws){
     stage(101);
@@ -3983,7 +4018,16 @@ function spawnThornmaws(n){
   const spots=[];
   let placed=0, guard=0;
   while(placed<n && guard++<n*40 && far.length){
-    const c=far[Math.floor(RNG()*far.length)];
+    /* Five candidates, and the one on the ground this plant likes best
+       wins. Rejecting outright would leave the last few wherever they would
+       fit; weighting lets the whole board stay used. */
+    let c=null, best=-1;
+    for(let k=0;k<5;k++){
+      const q=far[Math.floor(RNG()*far.length)];
+      const qp=cellCenter(q[0],q[1]);
+      const w=groundFavour('thornmaw',qp.x,qp.z)*(0.6+RNG()*0.8);
+      if(w>best){best=w;c=q;}
+    }
     const p=cellCenter(c[0],c[1]);
     // not on top of an item, and not shoulder to shoulder with another one
     if(items.some(it=>Math.hypot(it.x-p.x,it.z-p.z)<2.2))continue;
@@ -4155,6 +4199,8 @@ defineMob('heron',{
       m.data.cd-=dt;
       if(m.data.cd<=0){
         if(!stageFree(m)){ m.data.cd=rr(0.4,1.3); return; }   // jittered, so ties do not always go to the same mob
+        // it will not come where its own shadow cannot be seen
+        if(!shadowReadable(P_.pos.x,P_.pos.z)){ m.data.cd=rr(1.5,3.0); return; }
         stageTake(m);
         m.data.tx=P_.pos.x; m.data.tz=P_.pos.z;
         setMobState(m,'telegraph');
@@ -4450,6 +4496,8 @@ defineMob('glass',{
       m.data.cd-=dt;
       if(m.data.cd<=0){
         if(!stageFree(m)){ m.data.cd=rr(0.4,1.3); return; }   // jittered, so ties do not always go to the same mob
+        // same rule as the heron: no telegraph, no drop
+        if(!shadowReadable(P.pos.x,P.pos.z)){ m.data.cd=rr(1.5,3.0); return; }
         stageTake(m);
         m.data.tx=P.pos.x; m.data.tz=P.pos.z;
         m.data.spider=RNG()<GLASS.spiderChance;
@@ -5473,7 +5521,13 @@ function spawnWasps(n){
   const taken=[];
   let placed=0, guard=0;
   while(placed<n && guard++<n*40 && far.length){
-    const c=far[Math.floor(RNG()*far.length)];
+    let c=null, best=-1;
+    for(let k=0;k<5;k++){
+      const q=far[Math.floor(RNG()*far.length)];
+      const qp=cellCenter(q[0],q[1]);
+      const w=groundFavour('wasp',qp.x,qp.z)*(0.6+RNG()*0.8);
+      if(w>best){best=w;c=q;}
+    }
     const p=cellCenter(c[0],c[1]);
     if(items.some(it=>Math.hypot(it.x-p.x,it.z-p.z)<3.0))continue;
     if(taken.some(t=>Math.hypot(t[0]-p.x,t[1]-p.z)<14))continue;
@@ -5486,7 +5540,14 @@ function spawnWasps(n){
 function spawnBeetles(n){
   const pool=openCells.filter(c=>dist[c[1]*N+c[0]]>2);
   for(let i=0;i<n&&pool.length;i++){
-    const c=pool.splice(Math.floor(RNG()*pool.length),1)[0];
+    let bi=0, best=-1;
+    for(let k=0;k<5&&pool.length;k++){
+      const j=Math.floor(RNG()*pool.length);
+      const qp=cellCenter(pool[j][0],pool[j][1]);
+      const w=groundFavour('beetle',qp.x,qp.z)*(0.6+RNG()*0.8);
+      if(w>best){best=w;bi=j;}
+    }
+    const c=pool.splice(bi,1)[0];
     const p=cellCenter(c[0],c[1]);
     spawnMob('beetle',p.x+rr(-0.7,0.7),p.z+rr(-0.7,0.7));
   }
@@ -7282,7 +7343,7 @@ window.__game={
   flipPlayer,unflipPlayer,
   mobs,MOB_TYPES,defineMob,spawnMob,despawnMob,setMobState,mobDist,
   mobStrike,attackTick,playerSheltered,makeThreatShadow,placeThreatShadow,
-  STAGE,stageFree,stageBusy,
+  STAGE,stageFree,stageBusy,shadowReadable,groundFavour,MOB_GROUND,GLOOM,
   get shafts(){return shaftMesh;},get motes(){return moteMesh;},
 
   press(code,down){keys[code]=!!down;},
