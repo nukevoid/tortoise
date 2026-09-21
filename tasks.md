@@ -62,7 +62,7 @@ mark done tasks like - [X]
 - [X] bug: some ponds looks like without water, maybe camera beneth the water plane 
 - [X] fix camera in 3rd mode ( has to look from the top bottom to forward), investigate how cameras in 3d view works
 - [X] remove strafes, assign to A and D YAW rotation
-- [ ] fix legs and head animation and model of tortoise (looks bed in 3rd view mode)
+- [X] fix legs and head animation and model of tortoise (looks bed in 3rd view mode)
 - [ ] bug - on lake's leaf  player movement has jitter 
 - [ ] do more time of calm wind 
 - [ ] add rain drops on water when it rains

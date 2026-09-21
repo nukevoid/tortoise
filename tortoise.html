@@ -775,9 +775,12 @@ function makeShellTextures(){
   ctx.putImageData(img,0,0);
   const map=new THREE.CanvasTexture(c);
   map.wrapS=map.wrapT=THREE.RepeatWrapping;map.colorSpace=THREE.SRGBColorSpace;
-  map.repeat.set(2,1);map.anisotropy=8;
+  /* One tile, not two across: the carapace maps this as a disc about its
+     own crown (see buildBody), so the plate grid is walked once from the
+     middle out to the rim rather than twice round a cylinder. */
+  map.repeat.set(1,1);map.anisotropy=8;
   const nrm=normalMapFromHeight(height,S,14);
-  nrm.repeat.set(2,1);
+  nrm.repeat.set(1,1);
   return {map,nrm};
 }
 
@@ -7332,16 +7335,57 @@ function buildFireflies(){
 const bodyRig=new THREE.Group();scene.add(bodyRig);
 bodyRig.scale.setScalar(TORTOISE);
 let legs=[],snout,head,shellMesh,lanternHeld,neck,shellRoof,shellFloor;
+/* Where the front of the animal sits when it is not pulled in. These live
+   out here because buildBody places the meshes and the frame loop moves them
+   again every frame: with the numbers written twice they drifted, and the
+   head spent the whole game a centimetre from where it was built -- and the
+   scale it was built with was thrown away on the first frame by a
+   setScalar. */
+const HEAD_AT={x:0,y:0.280,z:-0.172}, SNOUT_AT={x:0,y:0.248,z:-0.264}, NECK_Z=-0.040;
+const HEAD_SCALE={x:1.02,y:0.92,z:1.34};
+/* How far out to the side a foot stands, in metres of world: the lever the
+   body's own turn swings it round on. */
+const FOOT_R=0.277*TORTOISE;
 (function buildBody(){
   const texShell=makeShellTextures();
   const shellMat=new THREE.MeshStandardMaterial({
-    map:texShell.map,normalMap:texShell.nrm,normalScale:new THREE.Vector2(1.6,1.6),
+    /* 1.6 was set when the shell was only ever seen edge-on from inside
+       the animal. Straight down on it, that much relief turned every
+       plate's growth rings into a target. */
+    map:texShell.map,normalMap:texShell.nrm,normalScale:new THREE.Vector2(1.05,1.05),
     roughness:0.62,metalness:0.04});
-  const scuteMat=new THREE.MeshStandardMaterial({color:0x33240e,roughness:0.75});
-  const skinMat=new THREE.MeshStandardMaterial({color:0x4a5230,roughness:0.93});
+  /* The rim only. 0x33240e is a dark brown on paper, but it is a smooth
+     untextured torus taking the full 3.8 of sun at exposure 1.38, and it
+     came back a salmon band round the bottom of the shell -- a rubber ring,
+     not the marginal scutes. Darker, and rougher so it keeps less of the
+     sun. */
+  const scuteMat=new THREE.MeshStandardMaterial({color:0x1d1508,roughness:0.92});
+  /* Darker than it was. Lit from above by a 3.8 sun, 0x4a5230 on a smooth
+     limb came back almost white, and four white sticks and a white knob
+     round a pale shell is what made the animal read as a toy. */
+  const skinMat=new THREE.MeshStandardMaterial({color:0x353a22,roughness:0.96});
 
   // --- carapace: an ellipsoid dome sitting behind the head ---
-  shellMesh=new THREE.Mesh(new THREE.SphereGeometry(1,30,20),shellMat);
+  /* A sphere's own UVs converge on its poles, and the pole is the part of
+     the shell you look straight down at in third person: every scute in
+     the texture ran into the apex in a star, like the ribs of an umbrella.
+     This maps a dome in polar coordinates about its own crown instead --
+     angle down from the top for the radius, azimuth for the angle -- which
+     is also how a carapace is really laid out: plates radiating from the
+     crown out to the marginals. `rim` is where the equator lands in the
+     plate grid; what wraps past 1 is the curl underneath, which is inside
+     the animal. */
+  const polarDome=(geo,rim)=>{
+    const pa=geo.attributes.position, ua=geo.attributes.uv;
+    for(let i=0;i<pa.count;i++){
+      const t=Math.acos(clamp(pa.getY(i),-1,1))/(Math.PI/2)*rim;
+      const a=Math.atan2(pa.getZ(i),pa.getX(i));
+      ua.setXY(i,0.5+Math.cos(a)*t,0.5+Math.sin(a)*t);
+    }
+    ua.needsUpdate=true;
+    return geo;
+  };
+  shellMesh=new THREE.Mesh(polarDome(new THREE.SphereGeometry(1,30,20),0.40),shellMat);
   shellMesh.scale.set(0.30,0.205,0.37);
   shellMesh.position.set(0,0.165,0.30);
   shellMesh.castShadow=true;shellMesh.receiveShadow=true;
@@ -7359,35 +7403,96 @@ let legs=[],snout,head,shellMesh,lanternHeld,neck,shellRoof,shellFloor;
   rim.rotation.x=Math.PI/2;rim.position.set(0,0.10,0.30);rim.scale.set(1,1.2,1);
   rim.castShadow=true;bodyRig.add(rim);
 
-  // --- neck + head, just under the eye line ---
-  neck=new THREE.Mesh(new THREE.CylinderGeometry(0.052,0.068,0.16,10),skinMat);
-  neck.rotation.x=1.0;neck.position.set(0,0.245,0.085);
+  /* --- neck + head, out past the shell's own rim ---
+     The head used to sit at z -0.015 and the dome's front rim is at -0.07:
+     the head was under its own roof. First person never noticed -- you
+     never see your own body while crawling -- but the third-person lens
+     sits behind and above, which is exactly where the dome is in the way,
+     and at a low aim two thirds of the head was gone. It comes out on a
+     longer neck now, clear of the overhang and a little lower, so the crown
+     of the shell is the highest thing on the animal and the head is the
+     front of it. */
+  /* Thick at the shoulder, thin at the head. Rotated this far the mesh's
+     top end is the one inside the shell, so the radii read backwards from
+     how they look: built 0.048 to 0.074 the neck was fatter than the skull
+     it carried, which is what made the front end read as a chess pawn. */
+  neck=new THREE.Mesh(new THREE.CylinderGeometry(0.072,0.046,0.235,10),skinMat);
+  neck.rotation.x=1.24;neck.position.set(0,0.256,NECK_Z);
   neck.castShadow=true;bodyRig.add(neck);
   head=new THREE.Mesh(new THREE.SphereGeometry(0.058,16,12),skinMat);
-  head.scale.set(1,0.95,1.30);head.position.set(0,0.300,-0.015);
+  head.scale.set(HEAD_SCALE.x,HEAD_SCALE.y,HEAD_SCALE.z);
+  head.position.set(HEAD_AT.x,HEAD_AT.y,HEAD_AT.z);
   head.castShadow=true;bodyRig.add(head);
+  /* Two beads of eye, parented to the head so they draw in with it. Tiny,
+     and most of what makes the front end read as a face from a metre up
+     rather than as a knuckle of the same olive as the legs. */
+  {
+    const eyeGeo=new THREE.SphereGeometry(0.0130,7,5);
+    const eyeMat=new THREE.MeshStandardMaterial({color:0x15110b,roughness:0.26,metalness:0.03});
+    for(const s of [-1,1]){
+      const e=new THREE.Mesh(eyeGeo,eyeMat);
+      e.position.set(s*0.040,0.013,-0.028);
+      head.add(e);
+    }
+  }
   snout=new THREE.Mesh(new THREE.ConeGeometry(0.019,0.072,14,1,true),
     new THREE.MeshStandardMaterial({color:0x5a5636,roughness:0.72}));
-  snout.rotation.x=-Math.PI/2-0.30;snout.position.set(0,0.247,-0.118);
+  snout.rotation.x=-Math.PI/2-0.30;snout.position.set(SNOUT_AT.x,SNOUT_AT.y,SNOUT_AT.z);
   snout.castShadow=true;bodyRig.add(snout);
 
-  // --- four legs; the front pair swings in view when you look down ---
-  const legGeo=new THREE.CapsuleGeometry(0.052,0.10,5,10);
-  const footGeo=new THREE.SphereGeometry(0.058,10,8);
-  for(const [x,z,front] of [[-0.20,-0.02,1],[0.20,-0.02,1],[-0.19,0.50,0],[0.19,0.50,0]]){
+  /* --- four legs ---
+     A capsule and a ball at x 0.20 used to be the whole limb, and 0.20 is
+     inside the dome's widest line: from behind and above, the shell hid
+     four fifths of each leg and what showed at the rim was a pale bead --
+     like peas stuck to a beachball, five of them counting the head.
+
+     So the stance goes wider than the shell, which is a tortoise's stance
+     anyway (they stand on their elbows, not under them); the limb leans out
+     as well as down, so there is something to see swinging; and the foot is
+     a flat splay with three claws instead of a sphere, because from above a
+     foot is mostly toes. Cheaper than what it replaces, too: the old
+     capsule and ball carried more segments than a 6cm limb can show. */
+  const limbGeo=new THREE.CylinderGeometry(0.046,0.058,0.130,8,1);
+  const footGeo=new THREE.SphereGeometry(0.058,9,6);
+  const clawGeo=new THREE.ConeGeometry(0.014,0.036,5);
+  const clawMat=new THREE.MeshStandardMaterial({color:0x585441,roughness:0.6});
+  for(const [x,z,front] of [[-0.235,0.03,1],[0.235,0.03,1],[-0.235,0.45,0],[0.235,0.45,0]]){
     const g=new THREE.Group();
-    g.position.set(x,0.135,z);
-    const l=new THREE.Mesh(legGeo,skinMat);
-    l.position.y=-0.03;l.rotation.z=x<0?0.30:-0.30;l.castShadow=true;
-    const f=new THREE.Mesh(footGeo,skinMat);
-    f.position.set(x<0?-0.035:0.035,-0.095,0.012);f.scale.set(1,0.62,1.2);f.castShadow=true;
+    g.position.set(x,0.150,z);
+    const side=x<0?-1:1;
+    /* The limb is a flattened column rather than a pipe, and it leans out
+       only a little: what has to clear the carapace is the foot, not the
+       thigh. Leaning the whole leg out put a bright horizontal rod either
+       side of the shell -- the animal looked trestled. The front pair
+       reaches forward and the hind pair trails, which is how a tortoise
+       stands. */
+    const l=new THREE.Mesh(limbGeo,skinMat);
+    l.position.set(side*0.014,-0.056,0);
+    l.rotation.set(front?-0.22:0.16,0,-side*0.19);
+    l.scale.set(1,1,0.74);
+    l.castShadow=true;
+    /* The foot is its own group so the sole can be held flat to the ground
+       while the limb above it swings. */
+    const f=new THREE.Group();
+    f.position.set(side*0.042,-0.122,front?-0.050:0.040);
+    const fm=new THREE.Mesh(footGeo,skinMat);
+    fm.scale.set(1.12,0.42,1.30);fm.castShadow=true;f.add(fm);
+    for(let k=-1;k<=1;k++){
+      const c=new THREE.Mesh(clawGeo,clawMat);
+      c.position.set(k*0.028,-0.008,-0.066);
+      c.rotation.set(-1.70,0,k*0.24);
+      c.castShadow=true;f.add(c);
+    }
     g.add(l);g.add(f);
-    g.userData.front=front;g.userData.side=x<0?-1:1;
+    g.userData.front=front;g.userData.side=side;g.userData.foot=f;
     bodyRig.add(g);legs.push(g);
   }
-  // --- tail ---
-  const tail=new THREE.Mesh(new THREE.ConeGeometry(0.038,0.13,8),skinMat);
-  tail.rotation.x=-1.9;tail.position.set(0,0.135,0.62);tail.castShadow=true;
+  /* --- tail ---
+     It was pitched at -1.9, which points it forwards and down: the whole
+     cone lived inside the dome and the animal had no tail from any angle.
+     Turned round, and dropped so it comes out under the rear rim. */
+  const tail=new THREE.Mesh(new THREE.ConeGeometry(0.050,0.160,7),skinMat);
+  tail.rotation.x=1.98;tail.position.set(0,0.152,0.622);tail.castShadow=true;
   bodyRig.add(tail);
 
   // Collect the body meshes so they can be made invisible-but-shadow-casting:
@@ -7403,7 +7508,7 @@ let legs=[],snout,head,shellMesh,lanternHeld,neck,shellRoof,shellFloor;
   const innerMat=new THREE.MeshStandardMaterial({
     map:texShell.map,normalMap:texShell.nrm,normalScale:new THREE.Vector2(0.8,0.8),
     color:0x3f3120,roughness:0.96,metalness:0,side:THREE.DoubleSide});
-  shellRoof=new THREE.Mesh(new THREE.SphereGeometry(1,26,14,0,6.283,0,Math.PI*0.52),innerMat);
+  shellRoof=new THREE.Mesh(polarDome(new THREE.SphereGeometry(1,26,14,0,6.283,0,Math.PI*0.52),0.42),innerMat);
   shellRoof.scale.set(0.44,0.30,0.50);
   shellRoof.position.set(0,0.305,0.34);
   shellRoof.visible=false;
@@ -7412,7 +7517,7 @@ let legs=[],snout,head,shellMesh,lanternHeld,neck,shellRoof,shellFloor;
   const plastronMat=new THREE.MeshStandardMaterial({
     map:texShell.map,normalMap:texShell.nrm,normalScale:new THREE.Vector2(0.6,0.6),
     color:0x5b4a2e,roughness:0.95,metalness:0});
-  shellFloor=new THREE.Mesh(new THREE.SphereGeometry(1,24,10,0,6.283,0,Math.PI*0.5),plastronMat);
+  shellFloor=new THREE.Mesh(polarDome(new THREE.SphereGeometry(1,24,10,0,6.283,0,Math.PI*0.5),0.40),plastronMat);
   shellFloor.scale.set(0.36,0.09,0.44);
   shellFloor.position.set(0,0.00,0.32);
   shellFloor.visible=false;
@@ -8623,8 +8728,16 @@ function update(dt){
      it sounded like a cow. 5.4 halved that and was still too slow. 7.6 puts
      it at 0.41m and 2.5 a second: four short legs under a shell, not two
      long ones under something heavy. */
-  P.bob+=spd*dt*7.6;
-  if(spd>0.25&&Math.floor(P.bob/Math.PI)!==Math.floor(prevBob/Math.PI)){
+  /* ...and it runs off how fast the feet are working, which is not how
+     fast the animal is travelling: turning on the spot swings all four feet
+     through an arc while the body stays where it is. Driven by speed alone,
+     a tortoise pivoting on A or D slid round like a turntable, legs held
+     still, in silence. */
+  const omega=P.turn*TURN.rate;                                   // rad/s of swing
+  const vFwd=-(P.vel.x*Math.sin(P.yaw)+P.vel.z*Math.cos(P.yaw));  // speed along the facing
+  const gaitSpd=Math.hypot(vFwd,omega*FOOT_R);
+  P.bob+=gaitSpd*dt*7.6;
+  if(gaitSpd>0.25&&Math.floor(P.bob/Math.PI)!==Math.floor(prevBob/Math.PI)){
     const sf=surfaceAt(P.pos.x,P.pos.z);
     if(sf==='water')SFX.stepWater(waterDepth(P.pos.x,P.pos.z));
     else if(sf==='litter')SFX.stepLitter();
@@ -8724,22 +8837,38 @@ function update(dt){
   }else{
     bodyRig.position.set(P.pos.x,gH+bobY*0.45,P.pos.z);
   }
-  const walk=clamp(spd/(WALK_SPEED*1.07),0,1);
+  const walk=clamp(gaitSpd/(WALK_SPEED*1.07),0,1);
   for(let i=0;i<legs.length;i++){
     const g=legs[i];
     const ph=P.bob+(i%2?Math.PI:0)+(g.userData.front?0:Math.PI);
-    g.rotation.x=Math.sin(ph)*0.55*walk;
-    g.position.y=0.135+Math.abs(Math.sin(ph))*0.018*walk-P.hideAmt*0.075;
+    /* How fast this one foot is travelling fore and aft: the body's own
+       speed, plus what the turn does to a foot held out to one side.
+       Walking, all four agree and the animal strides; pivoting, the two
+       sides disagree and it paddles itself round; backing up, all four
+       reverse. One line, and no special case in it. */
+    const legV=clamp((vFwd-omega*g.userData.side*FOOT_R)/(WALK_SPEED*1.07),-1,1);
+    g.rotation.x=Math.sin(ph)*0.55*legV;
+    /* Lifted on the half of the stroke that goes forward, planted on the
+       half that pushes back. It was |sin| before, which lifts a foot twice
+       a cycle and sets it down at both ends of the swing: a leg that hops
+       rather than one that walks. */
+    g.position.y=0.150+Math.max(0,Math.cos(ph))*Math.abs(legV)*0.030-P.hideAmt*0.075;
     g.scale.setScalar(1-P.hideAmt*0.45);
+    g.userData.foot.rotation.x=-g.rotation.x*0.62;   // the sole stays flat to the ground
   }
   // pulling into the shell: head and legs draw in, the world narrows
   const retract=P.hideAmt;
-  head.position.set(0,0.300-retract*0.050,-0.015+retract*0.22);
-  head.scale.setScalar(1-retract*0.35);
-  snout.position.set(0,0.247-retract*0.05,-0.118+retract*0.24);
+  head.position.set(HEAD_AT.x,HEAD_AT.y-retract*0.055,HEAD_AT.z+retract*0.46);
+  head.scale.set(HEAD_SCALE.x,HEAD_SCALE.y,HEAD_SCALE.z).multiplyScalar(1-retract*0.35);
+  snout.position.set(SNOUT_AT.x,SNOUT_AT.y-retract*0.05,SNOUT_AT.z+retract*0.48);
   snout.scale.setScalar(1-retract*0.4);
-  neck.position.z=0.095+retract*0.10;
+  neck.position.z=NECK_Z+retract*0.13;
   neck.scale.setScalar(1-retract*0.5);
+  /* The head leads the turn. A tortoise looks where it is going, and from
+     behind the animal that is most of what tells you it is the tortoise
+     turning and not the world. */
+  head.rotation.y=P.turn*0.30;
+  neck.rotation.y=P.turn*0.14;
   head.position.y+=Math.sin(P.bob)*0.008*walk;
 
   /* ---- sun follows the player so shadows stay crisp ---- */
