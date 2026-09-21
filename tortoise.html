@@ -2860,6 +2860,22 @@ function addBasin(x,z,r,depth){
   BASINS.push(b);
   return b;
 }
+/* ...and a basin the land refuses.
+
+   A basin is dug from terrainBase, but the ground is the sum of every
+   carve -- and the lake's berm lifts the land for eight metres past its
+   bank, which fills in anything dug inside that ring. One maze puddle
+   landed there and came out as seven wet stones and a stand of reeds
+   round a sheet of water with no water under it. So a basin that is
+   placed by the generator is dug, then asked whether it actually holds
+   any, and dropped if it does not. The hand-placed ponds do not go
+   through here: they have to exist. */
+function addPool(x,z,r,depth){
+  const b=addBasin(x,z,r,depth);
+  if(b.level-groundH(x,z)>0.02)return b;
+  BASINS.pop();
+  return null;
+}
 const LAKE={x:HALF+15,z:GATE_Z-10,r:9.5};
 function creekAt(x,z){
   const p=CREEK.pts;
@@ -2922,6 +2938,31 @@ function groundH(x,z){
   }
   return h;
 }
+/* The ground as the picture has it, which is not the same thing.
+
+   groundH is exact everywhere. The ground MESH samples it on a grid and
+   the card interpolates between those samples, so anything narrower than
+   a grid step exists for the physics and not in the picture. At 300m over
+   180 segments that step is 1.67m -- wider than most of the pools in the
+   maze. Their bowls were therefore invisible: the soil shader wets the bed
+   analytically at full resolution, so you saw the wet bottom of a pond
+   with the water plane buried under the flat cell it was dug in. Eight of
+   thirty-one pools had their whole sheet under the drawn ground and half
+   the rest showed under two centimetres of it.
+
+   So the water asks this instead of groundH when it wants to know where
+   the ground is to the eye. Four groundH calls, at build time only. */
+const GROUND_SPAN=300, GROUND_SEG=180, GROUND_STEP=GROUND_SPAN/GROUND_SEG;
+function drawnGroundH(x,z){
+  const h=GROUND_SPAN*0.5;
+  const fx=(x+h)/GROUND_STEP, fz=(z+h)/GROUND_STEP;
+  const ix=Math.floor(fx), iz=Math.floor(fz), tx=fx-ix, tz=fz-iz;
+  const at=i=>-h+i*GROUND_STEP;
+  const x0=at(ix), x1=at(ix+1), z0=at(iz), z1=at(iz+1);
+  return lerp(lerp(groundH(x0,z0),groundH(x1,z0),tx),
+              lerp(groundH(x0,z1),groundH(x1,z1),tx),tz);
+}
+
 /* depth of standing water at a point, 0 on dry land */
 function waterDepth(x,z){
   const h=groundH(x,z);
@@ -3081,8 +3122,9 @@ for(const c of openCells){
   if(dist[c[1]*N+c[0]]<3)continue;
   if(RNG()<0.115){
     const pc=cellCenter(c[0],c[1]);
-    PUDDLES.push(addBasin(pc.x+rr(-0.6,0.6),pc.z+rr(-0.6,0.6),
-                          rr(0.85,1.55),rr(0.14,0.24)));
+    const b=addPool(pc.x+rr(-0.6,0.6),pc.z+rr(-0.6,0.6),
+                    rr(0.85,1.55),rr(0.14,0.24));
+    if(b)PUDDLES.push(b);
   }
 }
 /* Marshes: broader, shallower sheets, and they belong in the fen -- which
@@ -3098,8 +3140,9 @@ for(let i=0;i<5;i++){
     if(a.edge>bestEdge){bestEdge=a.edge;best=pc;}
   }
   if(!best)break;
-  PUDDLES.push(addBasin(best.x+rr(-0.4,0.4),best.z+rr(-0.4,0.4),
-                        rr(2.1,3.2),rr(0.20,MAX_WADEABLE_DEPTH)));
+  const b=addPool(best.x+rr(-0.4,0.4),best.z+rr(-0.4,0.4),
+                  rr(2.1,3.2),rr(0.20,MAX_WADEABLE_DEPTH));
+  if(b)PUDDLES.push(b);
 }
 /* A second real pond, out in the meadow where depth costs nothing. */
 const POND2=addBasin(HALF+42,GATE_Z+16,7.0,0.95);
@@ -3181,8 +3224,8 @@ function wetPools(){
   texGround.map.repeat.set(62,62);
   texGround.rough.repeat.set(62,62);
   texGround.nrm.repeat.set(62,62);
-  const SEG=180;
-  const g=new THREE.PlaneGeometry(300,300,SEG,SEG);
+  const SEG=GROUND_SEG;                 // drawnGroundH interpolates this grid
+  const g=new THREE.PlaneGeometry(GROUND_SPAN,GROUND_SPAN,SEG,SEG);
   const p=g.attributes.position;
   for(let i=0;i<p.count;i++){
     // plane is still in XY here: x -> world x, y -> world -z
@@ -4360,18 +4403,14 @@ function bakeWaterProbes(){
    bank instead of cutting across it. */
 function shorelineGeometry(b,segs){
   const LIMIT=b.r*1.12;                 // never search past the basin's reach
-  const n=segs+1;
-  const pos=new Float32Array(n*3), uv=new Float32Array(n*2), nrm=new Float32Array(n*3);
-  const clip=new Uint8Array(n);
   const idx=[];
   let clipped=0;
-  uv[0]=0.5; uv[1]=0.5;
   /* March out and take the FIRST crossing. Bisecting the whole ray looks
      tidier and is wrong: the terrain under a basin is not monotonic, so
      neighbouring rays settle on different crossings and the rim jumps by
      metres between adjacent vertices -- on the lake it jumped 3.7m, which
      draws as a spike of water hanging over dry ground. */
-  const rad=new Float32Array(segs);
+  const rad=new Float32Array(segs), clipRay=new Uint8Array(segs);
   const step=Math.max(0.04,b.r/60);
   for(let i=0;i<segs;i++){
     const a=i/segs*Math.PI*2;
@@ -4382,7 +4421,7 @@ function shorelineGeometry(b,segs){
       if(groundH(b.x+wx*d,b.z+wz*d)>=b.level){ hi=d; break; }
       lo=d;
     }
-    if(hi<0){ rad[i]=LIMIT; clip[i+1]=1; clipped++; continue; }
+    if(hi<0){ rad[i]=LIMIT; clipRay[i]=1; clipped++; continue; }
     for(let k=0;k<12;k++){
       const mid=(lo+hi)*0.5;
       if(groundH(b.x+wx*mid,b.z+wz*mid)<b.level)lo=mid; else hi=mid;
@@ -4395,16 +4434,58 @@ function shorelineGeometry(b,segs){
     const a=rad[(i-1+segs)%segs], c=rad[i], d=rad[(i+1)%segs];
     sm[i]=(a+2*c+d)*0.25;
   }
-  for(let i=0;i<segs;i++){
-    const a=i/segs*Math.PI*2, r=sm[i], j=i+1;
-    pos[j*3]=Math.cos(a)*r; pos[j*3+1]=Math.sin(a)*r;
-    uv[j*2]=Math.cos(a)*r/(2*b.r)+0.5; uv[j*2+1]=Math.sin(a)*r/(2*b.r)+0.5;
-    idx.push(0,j,i===segs-1?1:j+1);
+  /* Rings, not one rim.
+
+     This was a centre vertex and a ring of shore, and the shore is where
+     the water is exactly nought deep -- so of the twenty-nine vertices in
+     a puddle, twenty-eight carried zero depth and one carried all of it.
+     The shader fades the last five centimetres out to draw a waterline,
+     which then had two thirds of the sheet's area to work on: every small
+     pool in the game was a disc of almost nothing lying on wet ground,
+     which is exactly the "pond with no water" that was reported. The one
+     body that looked right -- the lake in the middle -- is the one built
+     with concentric rings.
+
+     So the fan gets rings, and each vertex gets the depth of the ground
+     under it. The fade goes back to being the last band at the edge. One
+     ring per half metre of radius, which is 3 for a puddle and 9 for the
+     meadow pond: the cost is vertices in a pass that is bound by fill. */
+  const RINGS=Math.max(3,Math.min(9,Math.round(b.r/0.5)));
+  /* ...and it is laid on the ground the eye has, not the one the height
+     field has. A pool narrower than a grid step is dug in the middle of a
+     flat cell, so its level came out under the drawn dirt and the pool
+     read as a wet hollow with nothing in it. Where that happens the sheet
+     rides two centimetres over the drawn ground instead of cutting through
+     it -- which is what a puddle lying in a dip looks like anyway. Depth
+     is still the real depth, so it is coloured and faded as the water it
+     is, and nothing about the footing or the wading changes. */
+  const lift=(wx,wz)=>Math.max(0,drawnGroundH(wx,wz)+0.02-b.level);
+  const pos=[], uv=[], clip=[0];
+  pos.push(0,0,lift(b.x,b.z)); uv.push(0.5,0.5);
+  let inner=null;
+  for(let k=1;k<=RINGS;k++){
+    const f=k/RINGS, ring=[];
+    for(let i=0;i<segs;i++){
+      const a=i/segs*Math.PI*2, r=sm[i]*f;
+      const cx=Math.cos(a)*r, cy=Math.sin(a)*r;
+      pos.push(cx,cy,lift(b.x+cx,b.z-cy));
+      uv.push(Math.cos(a)*r/(2*b.r)+0.5,Math.sin(a)*r/(2*b.r)+0.5);
+      clip.push(k===RINGS?clipRay[i]:0);
+      ring.push(pos.length/3-1);
+    }
+    // anticlockwise seen from above, or the water renders inside out
+    for(let i=0;i<segs;i++){
+      const j=(i+1)%segs;
+      if(inner)idx.push(inner[i],ring[i],ring[j], inner[i],ring[j],inner[j]);
+      else idx.push(0,ring[i],ring[j]);
+    }
+    inner=ring;
   }
-  for(let i=0;i<n;i++)nrm[i*3+2]=1;     // +Z here is +Y once rotated flat
+  const nrm=new Float32Array(pos.length);
+  for(let i=2;i<nrm.length;i+=3)nrm[i]=1;   // +Z here is +Y once rotated flat
   const geo=new THREE.BufferGeometry();
-  geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
-  geo.setAttribute('uv',new THREE.BufferAttribute(uv,2));
+  geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  geo.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
   geo.setAttribute('normal',new THREE.BufferAttribute(nrm,3));
   geo.setIndex(idx);
   /* A ray that never found its shore ran out at the basin's reach, with the
@@ -4512,12 +4593,28 @@ function buildWater(){
     group.add(w);
   }
 
-  // --- the creek: a ribbon following the channel down to the lake ---
-  const SEG=90, pos=[], uv=[], idx=[];
+  /* --- the creek: a ribbon following the channel down to the lake ---
+
+     It was drawn with the water shader and without the attribute that
+     shader fades on: no aDepth means vDepth reads zero at every vertex,
+     the waterline fade takes the alpha to nothing, and the creek has been
+     running down the meadow completely invisible. It gets its depth now.
+
+     And a centre line, for the same reason the basins got rings: with two
+     vertices to a station, both of them on the bank where the water is
+     nought deep, there was nowhere for any depth to live. */
+  const SEG=90, pos=[], uv=[], idx=[], dep=[];
   const P=CREEK.pts;
   const at=t=>{
     const f=t*(P.length-1), i=Math.min(P.length-2,Math.floor(f)), k=f-i;
     return [lerp(P[i][0],P[i+1][0],k), lerp(P[i][1],P[i+1][1],k)];
+  };
+  // ...and the same lift the basins get, for the stretches where the
+  // channel is narrower than the ground mesh can show
+  const put=(x,z,y,u,t)=>{
+    pos.push(x,Math.max(y,drawnGroundH(x,z)+0.02),z);
+    uv.push(u,t*9);
+    dep.push(Math.max(0,y-groundH(x,z)));
   };
   for(let i=0;i<=SEG;i++){
     const t=i/SEG;
@@ -4527,13 +4624,16 @@ function buildWater(){
     // widen as it nears the lake
     const w=CREEK.halfWidth*(0.72+t*0.85);
     const y=creekLevel(t);
-    pos.push(c[0]-dz*w,y,c[1]+dx*w, c[0]+dz*w,y,c[1]-dx*w);
-    uv.push(0,t*9, 1,t*9);
-    if(i<SEG){const a=i*2;idx.push(a,a+2,a+1,a+1,a+2,a+3);}
+    put(c[0]-dz*w, c[1]+dx*w, y, 0,   t);
+    put(c[0],      c[1],      y, 0.5, t);
+    put(c[0]+dz*w, c[1]-dx*w, y, 1,   t);
+    if(i<SEG){const a=i*3;
+      idx.push(a,a+3,a+1, a+1,a+3,a+4, a+1,a+4,a+2, a+2,a+4,a+5);}
   }
   const cg=new THREE.BufferGeometry();
   cg.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
   cg.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
+  cg.setAttribute('aDepth',new THREE.Float32BufferAttribute(dep,1));
   cg.setIndex(idx);
   cg.computeVertexNormals();
   const creek=new THREE.Mesh(cg,mat);
@@ -6194,10 +6294,17 @@ function catToss(m){
    about six, the glass holds you for five and a quarter -- so this never
    takes away an answer. What it takes away is camping. */
 const SHELL={
-  wetMax:0.10,     /* standing water this deep and the shell is not an option.
+  wetMax:0.08,     /* standing water this deep and the shell is not an option.
                       Chosen against the heron: from the middle of the worst
                       marsh in the maze, dry ground is close enough to reach
-                      inside its 2.7s shadow. */
+                      inside its 2.7s shadow.
+                      0.10 was above the camera's own margin and so broke the
+                      rule it states: pulling in drops the eye 0.16m and EYE
+                      is 0.255m, leaving 0.095m of head above the ground, so
+                      in a tenth of a metre of water the lens went under the
+                      surface -- and the surface is single-sided, so the pool
+                      you were standing in vanished. 0.08 keeps the eye above
+                      its own waterline with a centimetre and a half over. */
 };
 
 /* The swing is a forced oscillator on a fixed clock, not a free pendulum.
