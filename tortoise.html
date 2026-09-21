@@ -1177,10 +1177,19 @@ function patchFoliage(mat,amp,trans,rimCut,far,gb){
     sh.vertexShader='uniform float uTime;uniform float uAmp;uniform float uGust;uniform vec2 uWindDir;' + '\n' + sh.vertexShader.replace(
       '#include <begin_vertex>',
       `#include <begin_vertex>
+       /* Where this plant is, for the wind phase and both distance fades.
+
+          The non-instanced branch used to be vec3(0.0) -- the world origin,
+          not the object -- so anything patched with a dissolve and drawn as
+          a plain Mesh faded by the CAMERA's distance from the middle of the
+          map. The thorn-maw's stem is exactly that: past fifteen metres
+          from the origin, which is most of the Hollow, the stem shrank to
+          nothing and left the jaws hanging in the air with no stalk under
+          them. modelMatrix's translation is the object's own position. */
        #ifdef USE_INSTANCING
          vec3 wp = instanceMatrix[3].xyz;
        #else
-         vec3 wp = vec3(0.0);
+         vec3 wp = modelMatrix[3].xyz;
        #endif
        if(uAmp > 0.0){
          // the gust front, travelling downwind across the whole world
