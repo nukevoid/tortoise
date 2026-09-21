@@ -8043,6 +8043,11 @@ function blocked(x,z){
    bank; and, once aboard, the whole channel, so the waterway becomes a road.
    Step off onto any shore and the hole closes behind you. */
 const RAFT={ r:1.15, moorPull:0.55, deck:0.055, board:1.30, bobAmp:0.035 };
+/* How high the deck of a given leaf is right now, bob and all. The mesh was
+   drawn on this and the player stood on the same number WITHOUT the bob, so
+   the deck swung three and a half centimetres through the feet of whatever
+   was standing on it. One expression, both readers. */
+const raftDeckH=(R)=>wayLevelAt(R.x,R.z)+RAFT.deck+Math.sin(R.t*1.4)*RAFT.bobAmp;
 const RAFTS=[];
 function addRaft(x,z){ RAFTS.push({hx:x,hz:z,x,z,mesh:null,t:RAFTS.length*1.7}); }
 /* Where a leaf may go: anywhere there is water to float it.
@@ -8179,13 +8184,29 @@ function updateRafts(dt){
       R.z=lerp(R.z,R.hz,1-Math.pow(0.22,dt*RAFT.moorPull));
     }
     if(R.mesh){
-      R.mesh.position.set(R.x,wayLevelAt(R.x,R.z)+RAFT.deck+Math.sin(R.t*1.4)*RAFT.bobAmp,R.z);
+      R.mesh.position.set(R.x,raftDeckH(R),R.z);
       R.mesh.rotation.set(-Math.PI/2+Math.cos(R.t*1.1)*0.03,0,Math.sin(R.t*0.9)*0.035);
     }
   }
+  /* Aboard or ashore is ONE question, asked once. It used to be two, and
+     they disagreed: you came aboard because a leaf was within reach, and
+     you went ashore because the water was too shallow to float one. At a
+     mooring both are true at the same time -- the leaf ties up just inside
+     the waterline and the lake is 31cm deep at its deepest, so the outer
+     half of the boarding circle stands in water shallower than the wade
+     limit. So you boarded and stepped off on alternate frames: 59 flips in
+     60, and since the deck and the lakebed under it are 11cm apart, the
+     tortoise and the camera rode an 11cm square wave at frame rate. That
+     was the jitter, and it was worst at exactly the spot you use the leaf
+     from.
+
+     A leaf is the floor where it is afloat and you are standing on it,
+     which is the deep-water test the ashore rule already made. Asked once
+     and shared by both branches, the two cannot contradict each other. */
+  const afloat=waterDepth(P.pos.x,P.pos.z)>WADE_MAX;
   if(P.raft){
-    if(waterDepth(P.pos.x,P.pos.z)<=WADE_MAX)P.raft=null;      // ashore
-  }else if(state==='play'&&!P.flipped){
+    if(!afloat)P.raft=null;                                    // ashore
+  }else if(state==='play'&&!P.flipped&&afloat){
     const R=raftAt(P.pos.x,P.pos.z,RAFT.r*0.85);
     if(R)P.raft=R;                                             // aboard
   }
@@ -8753,7 +8774,7 @@ function update(dt){
      P.pos.y, the camera, the body rig, the shadow camera -- reads gH, so
      this one line puts the tortoise on the deck instead of on the lakebed
      two feet under it. */
-  const gH=P.raft ? wayLevelAt(P.pos.x,P.pos.z)+RAFT.deck
+  const gH=P.raft ? raftDeckH(P.raft)
                   : groundH(P.pos.x,P.pos.z);
   P.pos.y=gH+EYE;
   if(P.flipped){

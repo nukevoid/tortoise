@@ -63,9 +63,11 @@ mark done tasks like - [X]
 - [X] fix camera in 3rd mode ( has to look from the top bottom to forward), investigate how cameras in 3d view works
 - [X] remove strafes, assign to A and D YAW rotation
 - [X] fix legs and head animation and model of tortoise (looks bed in 3rd view mode)
-- [ ] bug - on lake's leaf  player movement has jitter 
+- [X] bug - on lake's leaf  player movement has jitter 
 - [ ] do more time of calm wind 
 - [ ] add rain drops on water when it rains
+- [ ] in V mode when hides in SHell: additional shel apiars around the body - fix it
+- [ ] in V mode uppar part of the legs visible thought shell
 - [ ] in swing flipped animation rotation has to be oposite to movement
 - [ ] add smooth water - bank intersection
 - [ ] add small rocks and debris that shows only in small range 
