@@ -10147,13 +10147,14 @@ function update(dt){
   camera.fov=lerp(camera.fov,P.hidden?62:(sprinting?80:74),1-Math.pow(0.002,dt));
   camera.updateProjectionMatrix();
 
-  /* You never see your own body while crawling — only when you pull in does
-     the view slide back under the carapace and the shell close around you.
-     The rig stays in the scene either way so its shadow never disappears. */
+  /* You never see your own body in first-person view — external body meshes
+     are drawn only when viewed from outside in third person or when flipped.
+     In first person, shellRoof and shellFloor provide the shell interior slot
+     when retracted. The rig stays in the scene either way so shadow never disappears. */
   if(P.tpAmt<=0.02)P.tpBody=false;
   else if(P.tpDist<VIEW.hideUnder)P.tpBody=false;
   else if(P.tpDist>VIEW.showOver)P.tpBody=true;
-  setBodyVisible(P.hideAmt>0.015||P.flipped||P.tpBody);
+  setBodyVisible(P.flipped||P.tpBody);
   /* Inside the shell the eyes are inside the skull, so the head, neck and
      beak must not be drawn -- they sat 17 cm from the lens as a dark blob --
      and the lantern's glow sprite must not either, or it floods the whole
