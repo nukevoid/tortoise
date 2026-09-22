@@ -1213,15 +1213,15 @@ function patchGroundBlend(mat,gb){
   mat.customProgramCacheKey=()=>'gb'+gb.drop+'_'+gb.lift+'_'+gb.band;
 }
 
-function patchFoliage(mat,amp,trans,rimCut,far,gb){
+function patchFoliage(mat,amp,trans,rimCut,far,gb,triplanar){
   amp=amp||0; trans=trans||0;
   mat.onBeforeCompile=sh=>{
     sh.uniforms.uTime=windU;
-    sh.uniforms.uFar={value:far||0};      // 0 = never dissolve
-    sh.uniforms.uFarBand={value:3.0};   // the metres it takes to shrink away
-    sh.uniforms.uAmp={value:amp};
     sh.uniforms.uGust=gustU;
+    sh.uniforms.uAmp={value:amp};
     sh.uniforms.uWindDir=windDirU;
+    sh.uniforms.uFar={value:far||0};      // 0 = never dissolve
+    sh.uniforms.uFarBand={value:far?5.0:3.0};   // the metres it takes to shrink away
     sh.vertexShader='uniform float uTime;uniform float uAmp;uniform float uGust;uniform vec2 uWindDir;' + '\n' + sh.vertexShader.replace(
       '#include <begin_vertex>',
       `#include <begin_vertex>
@@ -1272,15 +1272,23 @@ function patchFoliage(mat,amp,trans,rimCut,far,gb){
        }
        #ifdef USE_INSTANCING
          vec4 wv = modelMatrix * instanceMatrix * vec4(transformed,1.0);
+         mat3 instM = mat3(instanceMatrix);
+         vec3 c0 = instM[0].xyz, c1 = instM[1].xyz, c2 = instM[2].xyz;
+         mat3 invTransp = mat3(c0 / dot(c0, c0), c1 / dot(c1, c1), c2 / dot(c2, c2));
+         vec3 wNorm = normalize(mat3(modelMatrix) * (invTransp * normal));
        #else
          vec4 wv = modelMatrix * vec4(transformed,1.0);
+         vec3 wNorm = normalize(mat3(modelMatrix) * normal);
        #endif
-       vNearD = distance(wv.xyz, cameraPosition);`);
+       vNearD = distance(wv.xyz, cameraPosition);
+       ${triplanar ? 'vTriPos = wv.xyz; vTriNorm = wNorm;' : ''}`);
     sh.vertexShader='varying float vNearD;\nuniform float uFar;uniform float uFarBand;\n'
+                   +(triplanar ? 'varying vec3 vTriPos; varying vec3 vTriNorm;\n' : '')
                    +sh.vertexShader;
     // screen-door fade for anything that gets within a few centimetres of
     // the lens — at tortoise height that happens constantly
     sh.fragmentShader='varying float vNearD;\n'
+                     +(triplanar ? 'varying vec3 vTriPos; varying vec3 vTriNorm;\n' : '')
                      +sh.fragmentShader.replace(
       '#include <clipping_planes_fragment>',
       `#include <clipping_planes_fragment>
@@ -1298,7 +1306,55 @@ function patchFoliage(mat,amp,trans,rimCut,far,gb){
            if((bv+0.5)/16.0 > nf) discard;
          }
        }`);
-    if(rimCut){
+    if(triplanar){
+      sh.fragmentShader=sh.fragmentShader.replace('void main() {',
+        `void main() {
+           vec3 _bf = pow(abs(vTriNorm), vec3(3.5));
+           _bf /= (_bf.x + _bf.y + _bf.z);
+           vec2 _uvX = vTriPos.zy * 0.36;
+           vec2 _uvY = vTriPos.xz * 0.36;
+           vec2 _uvZ = vTriPos.xy * 0.36;`);
+      sh.fragmentShader=sh.fragmentShader.replace('#include <map_fragment>',
+        `#ifdef USE_MAP
+           vec4 colX = texture2D(map, _uvX);
+           vec4 colY = texture2D(map, _uvY);
+           vec4 colZ = texture2D(map, _uvZ);
+           diffuseColor *= (colX * _bf.x + colY * _bf.y + colZ * _bf.z);
+         #else
+           #include <map_fragment>
+         #endif`);
+      sh.fragmentShader=sh.fragmentShader.replace('#include <roughnessmap_fragment>',
+        `float roughnessFactor = roughness;
+         #ifdef USE_ROUGHNESSMAP
+           float rX = texture2D(roughnessMap, _uvX).g;
+           float rY = texture2D(roughnessMap, _uvY).g;
+           float rZ = texture2D(roughnessMap, _uvZ).g;
+           roughnessFactor *= (rX * _bf.x + rY * _bf.y + rZ * _bf.z);
+         #endif`);
+      if(rimCut){
+        sh.fragmentShader=sh.fragmentShader.replace('#include <alphamap_fragment>',
+          `#ifdef USE_ALPHAMAP
+             float aX = texture2D(alphaMap, _uvX).g;
+             float aY = texture2D(alphaMap, _uvY).g;
+             float aZ = texture2D(alphaMap, _uvZ).g;
+             diffuseColor.a *= (aX * _bf.x + aY * _bf.y + aZ * _bf.z);
+           #endif
+           {
+             float ndv = abs(dot(normalize(vNormal), normalize(vViewPosition)));
+             diffuseColor.a = mix(diffuseColor.a, 1.0, smoothstep(0.22, 0.62, ndv));
+           }`);
+      }else{
+        sh.fragmentShader=sh.fragmentShader.replace('#include <alphamap_fragment>',
+          `#ifdef USE_ALPHAMAP
+             float aX = texture2D(alphaMap, _uvX).g;
+             float aY = texture2D(alphaMap, _uvY).g;
+             float aZ = texture2D(alphaMap, _uvZ).g;
+             diffuseColor.a *= (aX * _bf.x + aY * _bf.y + aZ * _bf.z);
+           #else
+             #include <alphamap_fragment>
+           #endif`);
+      }
+    }else if(rimCut){
       /* A bush that is alpha-cut everywhere turns to lace and you can see the
          corridor through the hedge. Only the silhouette needs chewing: where
          the surface faces the camera keep it solid, and fade into the leaf
@@ -1333,7 +1389,7 @@ function patchFoliage(mat,amp,trans,rimCut,far,gb){
      in one of those would otherwise share a compiled program, and one of
      them would silently run on the other's numbers. */
   mat.customProgramCacheKey=()=>'fol'+amp+'_'+trans+'_'+(rimCut?1:0)+'_'+(far||0)
-    +'_'+(gb?gb.drop+':'+gb.lift+':'+gb.band:'n');
+    +'_'+(gb?gb.drop+':'+gb.lift+':'+gb.band:'n')+'_'+(triplanar?1:0);
 }
 const applyWind=(m,a)=>patchFoliage(m,a,0);
 
@@ -3489,7 +3545,7 @@ patchFoliage(matFoliageCut,0.045,0.30,true);
 /* The crowns get a little more -- they are up where the air moves -- but
    not much: the trunk under them does not sway, so a crown that swung would
    come off its own tree. */
-patchFoliage(matCanopy,0.035,0.40,true);
+patchFoliage(matCanopy,0.035,0.40,true,0,null,true);
 
 const GLOOM={x:0,z:0,r:15};
 

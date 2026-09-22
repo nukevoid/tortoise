@@ -75,5 +75,6 @@ mark done tasks like - [X]
 - [X] on leaf change sound from steps to water splahes
 - [X] when pick mashrom - game freeze for 1-2 second
 - [X] make water-bank transition shorter, add some kind of foam
-- [ ] fix texture stretching on Trees cronas
-- [ ] leaf phase has to be slower and feel like we float. Also change splash sound to some floating \swiming 
+- [X] fix texture stretching on Trees cronas
+- [ ] leaf phase has to be slower and feel like we float. Also change splash sound to some floating \swiming
+- [ ] make foam more realistic and not so pixelated
