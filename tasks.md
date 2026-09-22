@@ -82,4 +82,7 @@ mark done tasks like - [X]
 - [X] show small part of map in minimap, orient it with rotation of tortoise
 - [X] test and fix all map colllision \ visual corelation and map tracebility
 - [X] turtoise has to move legs when rotates
--
+- [X] Add thunderstorms (rare)
+- [ ] between some hexes path renders like very narrow, but sometimes narow path is just visual and in fuct is obstacle
+- [ ] do research for more intersting AI for al mobs (don't implement, only research in MD). Thay has to interact and fill like thay life their life
+- [ ] add large fish to lake

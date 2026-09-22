@@ -1500,7 +1500,9 @@ renderer.shadowMap.autoUpdate=false;   // driven by hand, see renderFrame
 
 const scene=new THREE.Scene();
 const FOG_BASE=0.019;
-scene.fog=new THREE.FogExp2(0xa7bba6,FOG_BASE);
+const BASE_FOG_COL=new THREE.Color(0xa7bba6);
+const LIGHTNING_FOG_COL=new THREE.Color(0xdce8f8);
+scene.fog=new THREE.FogExp2(BASE_FOG_COL.clone(),FOG_BASE);
 
 const camera=new THREE.PerspectiveCamera(74,innerWidth/innerHeight,0.02,400);
 camera.rotation.order='YXZ';
@@ -1599,6 +1601,8 @@ const SKY_DRY={ top:new THREE.Color(0x2f6ab4), mid:new THREE.Color(0x9dc2e6),
    hue to speak of. */
 const SKY_WET={ top:new THREE.Color(0x4b4f53), mid:new THREE.Color(0x6e7175),
                 bot:new THREE.Color(0x8a8b88), sun:new THREE.Color(0xc3c5c6) };
+const SKY_LIGHTNING={ top:new THREE.Color(0xb8d4f8), mid:new THREE.Color(0xdee8f8),
+                      bot:new THREE.Color(0xf0f4fa), sun:new THREE.Color(0xffffff) };
 let skyWet=0;
 function updateSkyColour(dt,want){
   // ~25s end to end: exp(-1/25) is 0.9608
@@ -1608,6 +1612,13 @@ function updateSkyColour(dt,want){
   u.uMid.value.copy(SKY_DRY.mid).lerp(SKY_WET.mid,skyWet);
   u.uBot.value.copy(SKY_DRY.bot).lerp(SKY_WET.bot,skyWet);
   u.uSunCol.value.copy(SKY_DRY.sun).lerp(SKY_WET.sun,skyWet);
+  const lf=(typeof WEATHER!=='undefined'&&WEATHER.lightning)||0;
+  if(lf>0){
+    u.uTop.value.lerp(SKY_LIGHTNING.top,lf*0.92);
+    u.uMid.value.lerp(SKY_LIGHTNING.mid,lf*0.95);
+    u.uBot.value.lerp(SKY_LIGHTNING.bot,lf*0.95);
+    u.uSunCol.value.lerp(SKY_LIGHTNING.sun,lf*0.90);
+  }
 }
 
 /* ---------------------------------------------------------------
@@ -6751,14 +6762,68 @@ const WEATHER={
   wet:0,            // 0 = dry and bright, 1 = properly raining
   want:0,
   hold:26,          // seconds before the next spell is chosen
-  drops:900
+  drops:900,
+  storm:false,      // rare thunderstorm
+  lightning:0       // lightning flash intensity (0..1)
 };
 const WEATHER_SPELLS=[
-  {w:0.00, min:70, max:150},   // clear
-  {w:0.30, min:45, max:95},    // grey, spitting
-  {w:0.75, min:40, max:85},    // rain
-  {w:1.00, min:25, max:55}     // downpour
+  {w:0.00, min:70, max:150},             // clear
+  {w:0.30, min:45, max:95},              // grey, spitting
+  {w:0.75, min:40, max:85},              // rain
+  {w:1.00, min:25, max:55},              // downpour
+  {w:1.00, min:22, max:48, storm:true}   // rare thunderstorm
 ];
+
+let rainHintShown=false, stormHintShown=false;
+let lightningTimer=rr(3,7);
+let lightningElapsed=1, lightningDuration=0.44, lightningIntensity=1.0;
+
+/* Multi-stroke lightning flash curve: stepped leader pre-flash, brief dip,
+   violent return stroke peak, restrike, and exponential afterglow tail. */
+function evalLightning(t,dur){
+  if(t<=0||t>=dur)return 0;
+  if(t<0.05)return (t/0.05)*0.70;
+  if(t<0.09)return 0.70-((t-0.05)/0.04)*0.50;
+  if(t<0.14)return 0.20+((t-0.09)/0.05)*0.80;
+  if(t<0.19)return 1.00-((t-0.14)/0.05)*0.60;
+  if(t<0.24)return 0.40+((t-0.19)/0.05)*0.35;
+  const p=(t-0.24)/(dur-0.24);
+  return 0.75*Math.pow(Math.max(0,1-p),2.2);
+}
+
+function triggerLightning(intensity){
+  lightningElapsed=0;
+  lightningDuration=rr(0.38,0.48);
+  lightningIntensity=intensity||rr(0.85,1.0);
+  WEATHER.lightning=evalLightning(0.001,lightningDuration)*lightningIntensity;
+  const dist=rr(0.15,0.95);
+  const delay=0.25+dist*1.6;
+  const vol=clamp(1.05-dist*0.45,0.55,1.0);
+  if(typeof SFX!=='undefined'&&SFX.thunder)SFX.thunder(vol,delay,dist);
+}
+
+function updateLightning(dt){
+  if(lightningElapsed<lightningDuration){
+    lightningElapsed+=dt;
+    if(lightningElapsed>=lightningDuration)WEATHER.lightning=0;
+    else WEATHER.lightning=evalLightning(lightningElapsed,lightningDuration)*lightningIntensity;
+  }else{
+    WEATHER.lightning=0;
+  }
+  if(WEATHER.storm){
+    lightningTimer-=dt;
+    if(lightningTimer<=0){
+      if(WEATHER.wet>=0.55){
+        triggerLightning();
+        lightningTimer=rr(8.0,16.0);
+      }else{
+        lightningTimer=rr(1.5,3.0);
+      }
+    }
+  }else if(WEATHER.wet>0.96&&RNG()<0.0004){
+    triggerLightning(0.65);
+  }
+}
 
 let rainMesh=null, rainData=[];
 function buildRain(){
@@ -6787,7 +6852,8 @@ function updateRain(dt){
   if(!rainMesh.visible)return;
   const live=Math.floor(WEATHER.drops*clamp(wet,0,1));
   rainMesh.count=live;
-  rainMesh.material.opacity=0.16+0.34*wet;
+  rainMesh.material.opacity=Math.min(1.0,(0.16+0.34*wet)*(1+WEATHER.lightning*1.2));
+  rainMesh.material.color.setHex(WEATHER.lightning>0.1 ? 0xd8eaf8 : 0xbcd2de);
   // rain leans with the wind, and harder when it is gusting
   const lean=(0.18+0.5*gustU.value);
   const fall=0.7+0.5*wet;
@@ -6828,17 +6894,25 @@ function updateWeather(dt){
   if(WEATHER.hold<=0){
     // never repeat the same spell twice running, or nothing seems to change
     let pick;
-    do{ pick=WEATHER_SPELLS[Math.floor(RNG()*WEATHER_SPELLS.length)]; }
-    while(Math.abs(pick.w-WEATHER.want)<0.01&&RNG()<0.8);
+    do{
+      pick=WEATHER_SPELLS[Math.floor(RNG()*WEATHER_SPELLS.length)];
+      if(pick.storm&&RNG()>0.30)pick=WEATHER_SPELLS[3];
+    }
+    while(Math.abs(pick.w-WEATHER.want)<0.01&&!pick.storm&&RNG()<0.8);
     WEATHER.want=pick.w;
+    WEATHER.storm=!!pick.storm;
     WEATHER.hold=rr(pick.min,pick.max);
-    if(pick.w>=0.7&&!rainHintShown){ rainHintShown=true; toast('Rain over the Hollow.',3.0); }
+    if(pick.storm){
+      if(!stormHintShown){ stormHintShown=true; toast('Thunder over the Hollow.',3.5); }
+    }else if(pick.w>=0.7&&!rainHintShown){
+      rainHintShown=true; toast('Rain over the Hollow.',3.0);
+    }
   }
   // weather arrives slowly; nothing about it should snap
   WEATHER.wet=lerp(WEATHER.wet,WEATHER.want,1-Math.pow(0.55,dt));
+  updateLightning(dt);
   updateRain(dt);
 }
-let rainHintShown=false;
 
 
 
@@ -7958,9 +8032,9 @@ function tone(freq,dur,type,vol,slideTo,delay){
   g.gain.exponentialRampToValueAtTime(0.0001,t0+dur);
   o.connect(g);g.connect(AUDIO.master);o.start(t0);o.stop(t0+dur+0.05);
 }
-function noiseHit(dur,freq,q,vol,type){
+function noiseHit(dur,freq,q,vol,type,delay){
   if(!AUDIO.ready||AUDIO.muted)return;
-  const ctx=AUDIO.ctx,t0=ctx.currentTime;
+  const ctx=AUDIO.ctx,t0=ctx.currentTime+(delay||0);
   const s=ctx.createBufferSource();s.buffer=noiseBuf(0.3,'white');
   const f=ctx.createBiquadFilter();f.type=type||'bandpass';f.frequency.value=freq;f.Q.value=q||1;
   const g=ctx.createGain();
@@ -8099,6 +8173,62 @@ const SFX={
   thornBite(hit){
     if(hit){ tone(150,0.12,'square',0.16,60); tone(420,0.07,'sawtooth',0.09,120,0.01); }
     else   { tone(118,0.09,'square',0.07,55); }
+  },
+  /* Rolling thunder synthesized via Web Audio: an initial acoustic shock crack
+     for close strikes, a deep resonant sub-bass punch, and a tumbling brown
+     noise body that rolls, swells on echoes, and fades into the distance. */
+  thunder(vol,delay,dist){
+    if(!AUDIO.ready||AUDIO.muted)return;
+    const ctx=AUDIO.ctx, v=vol||1.0, d=dist!==undefined?dist:0.5;
+    const t0=ctx.currentTime+(delay||0);
+
+    // 1. Initial shockwave crack for nearby strikes
+    if(d<0.7){
+      const cVol=(1-d)*0.16*v;
+      noiseHit(rr(0.06,0.12),rr(500,950),1.6,cVol,'bandpass',delay);
+      tone(rr(140,220),0.08,'sawtooth',cVol*0.8,rr(50,80),delay);
+    }
+
+    // 2. Sub-bass boom & impact
+    const osc=ctx.createOscillator(), og=ctx.createGain();
+    osc.type='sine';
+    const baseF=rr(62,78)-d*12;
+    osc.frequency.setValueAtTime(baseF,t0);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(28,baseF*0.45),t0+1.8);
+    og.gain.setValueAtTime(0.0001,t0);
+    og.gain.linearRampToValueAtTime(0.24*v,t0+0.04);
+    og.gain.exponentialRampToValueAtTime(0.08*v,t0+0.6);
+    og.gain.exponentialRampToValueAtTime(0.03*v,t0+1.6);
+    og.gain.exponentialRampToValueAtTime(0.0001,t0+2.8);
+    osc.connect(og);og.connect(AUDIO.master);
+    osc.start(t0);osc.stop(t0+2.9);
+
+    // 3. Deep rolling brown noise rumble
+    const rDur=rr(3.8,4.8);
+    const s=ctx.createBufferSource();
+    s.buffer=noiseBuf(rDur+0.2,'brown');
+    const f=ctx.createBiquadFilter();
+    f.type='lowpass';
+    f.Q.value=2.0;
+    const startCut=rr(200,280)-d*50;
+    f.frequency.setValueAtTime(startCut,t0);
+    f.frequency.exponentialRampToValueAtTime(Math.max(60,startCut*0.55),t0+0.35);
+    f.frequency.exponentialRampToValueAtTime(Math.min(260,startCut*0.85),t0+0.85);
+    f.frequency.exponentialRampToValueAtTime(Math.max(55,startCut*0.45),t0+1.45);
+    f.frequency.exponentialRampToValueAtTime(Math.min(180,startCut*0.65),t0+1.95);
+    f.frequency.exponentialRampToValueAtTime(38,t0+rDur);
+
+    const g=ctx.createGain();
+    g.gain.setValueAtTime(0.0001,t0);
+    g.gain.linearRampToValueAtTime(0.30*v,t0+0.06);
+    g.gain.exponentialRampToValueAtTime(0.14*v,t0+0.45);
+    g.gain.linearRampToValueAtTime(0.22*v,t0+0.90);
+    g.gain.exponentialRampToValueAtTime(0.08*v,t0+1.50);
+    g.gain.linearRampToValueAtTime(0.13*v,t0+2.00);
+    g.gain.exponentialRampToValueAtTime(0.0001,t0+rDur);
+
+    s.connect(f);f.connect(g);g.connect(AUDIO.master);
+    s.start(t0);s.stop(t0+rDur+0.1);
   }
 };
 
@@ -8303,7 +8433,7 @@ function resetPlayer(){
   huntedHintShown=false;gloomHintShown=false;heronHintShown=false;glassHintShown=false;
   wetShellHintShown=false;
   P.trap=null; P.caught=false; P.tumble=0;
-  WEATHER.wet=0; WEATHER.want=0; WEATHER.hold=26; rainHintShown=false; skyWet=0;
+  WEATHER.wet=0; WEATHER.want=0; WEATHER.hold=26; WEATHER.storm=false; WEATHER.lightning=0; stormHintShown=false; rainHintShown=false; skyWet=0; lightningElapsed=1;
   P.flipped=false; P.flipAngle=0; P.flipVel=0;
   P.flipTheta=0; P.flipAmp=0;
   P.flipPhase='rock'; P.flipRightT=0; P.camLift=0;
@@ -9090,7 +9220,8 @@ function update(dt){
      drives every sway, every travelling gust band and the ambience itself
      runs up to 45% quicker in rain, so the hedges work harder rather than
      merely leaning further. */
-  windU.value+=dt*(1+0.45*WEATHER.wet);
+  const stormBoost=WEATHER.storm?0.30:0;
+  windU.value+=dt*(1+0.45*WEATHER.wet+stormBoost);
   /* Rain arrives on the water as fast as it arrives in the air and leaves it
      slowly: the rings already spreading have to finish, so the surface
      settles over a few seconds rather than going flat with the last drop.
@@ -9105,8 +9236,8 @@ function update(dt){
   /* Rain does not merely gust harder, it never rests: the wet lifts the floor
      as well as scaling the peaks, so a storm is a continuous working roar
      with gusts on top of it rather than the dry day's lulls played louder. */
-  gustU.value=clamp(gustEnvelope(windU.value)*(1+0.45*WEATHER.wet)
-                    +0.55*WEATHER.wet, 0, 1.6);
+  gustU.value=clamp(gustEnvelope(windU.value)*(1+0.45*WEATHER.wet+stormBoost)
+                    +0.55*WEATHER.wet+stormBoost*0.25, 0, 1.8);
 
   /* ---- hide in shell ---- */
   /* There is no clock on it any more.
@@ -9499,8 +9630,10 @@ function update(dt){
   const lanternLit=P.hasLantern&&P.lanternOn;
   /* Weather rides on top of the gloom: the grove is always darker than
      the rest, and rain darkens whatever it falls on. */
-  const wet=WEATHER.wet;
+  const wet=WEATHER.wet, lf=WEATHER.lightning;
   scene.fog.density=lerp(FOG_BASE,0.115,gl)*(lanternLit?0.82:1)*(1+1.7*wet);
+  if(lf>0)scene.fog.color.copy(BASE_FOG_COL).lerp(LIGHTNING_FOG_COL,lf*0.85);
+  else scene.fog.color.copy(BASE_FOG_COL).lerp(SKY_WET.bot,skyWet);
   /* ...and the sky is made of the same air. Thicker fog reaches further up
      the dome and takes more of the blue out of it. */
   {
@@ -9515,12 +9648,12 @@ function update(dt){
     skyMat.uniforms.uFogSpan.value=lerp(0.30,1.70,Math.max(fk,wet*0.9));
   }
   updateSkyColour(dt,WEATHER.want);
-  hemi.intensity=lerp(0.20,0.03,gl)*(1+0.8*wet);
-  amb.intensity=lerp(0.06,0.01,gl)*(1+0.9*wet);
-  sun.intensity=lerp(3.8,0.34,gl)*(1-0.72*wet);
+  hemi.intensity=lerp(0.20,0.03,gl)*(1+0.8*wet)+lf*1.75;
+  amb.intensity=lerp(0.06,0.01,gl)*(1+0.9*wet)+lf*1.15;
+  sun.intensity=lerp(3.8,0.34,gl)*(1-0.72*wet)+lf*2.8;
   if(matComposite){
-    matComposite.uniforms.uSat.value=POST.sat*(1-0.30*wet);
-    matComposite.uniforms.uExposure.value=POST.exposure*(1-0.14*wet);
+    matComposite.uniforms.uSat.value=POST.sat*(1-0.30*wet+lf*0.15);
+    matComposite.uniforms.uExposure.value=POST.exposure*(1-0.14*wet)*(1.0+lf*0.85);
   }
   const envWant=lerp(ENV_BASE,0.10,gl)*(1-0.45*wet);
   if(Math.abs(envWant-envCur)>0.01){envCur=envWant;setEnvIntensity(envCur);}
@@ -10047,7 +10180,8 @@ window.__game={
   RAFTS,WAY,wayDist,wayLevelAt,blockedWorld,waterProbes,bakeWaterProbes,setView,
   mobStrike,attackTick,playerSheltered,makeThreatShadow,placeThreatShadow,
   STAGE,stageFree,stageBusy,shadowReadable,groundFavour,MOB_GROUND,GLOOM,
-  get shafts(){return shaftMesh;},get motes(){return moteMesh;},SFX,
+  get shafts(){return shaftMesh;},get motes(){return moteMesh;},SFX,triggerLightning,
+  get storm(){return{active:WEATHER.storm,lightning:+WEATHER.lightning.toFixed(3)};},
   hexWallNormal,sdHexagon,solid,gi,hexNeighbors,isSolid,tileX,tileZ,G,HEX_r,HEX_R,worldToHex,legs,
 
   press(code,down){keys[code]=!!down;},
