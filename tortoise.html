@@ -7953,6 +7953,28 @@ const SFX={
     tone(rr(340,460),0.075,'sine',0.038*v,rr(180,240));
     tone(rr(520,760),0.045,'sine',0.022*v,rr(280,360),0.04);
   },
+  floatGlide(vol){
+    if(!AUDIO.ready||AUDIO.muted)return;
+    const ctx=AUDIO.ctx, t0=ctx.currentTime, v=vol||1.0;
+    // Gentle fluid water surge: soft attack, watery displacement, fluid ripple
+    const dur=rr(0.32,0.44);
+    const s=ctx.createBufferSource(); s.buffer=noiseBuf(0.5,'white');
+    const f=ctx.createBiquadFilter(); f.type='bandpass';
+    f.frequency.setValueAtTime(rr(520,720),t0);
+    f.frequency.exponentialRampToValueAtTime(rr(260,380),t0+dur);
+    f.Q.value=1.5;
+    const g=ctx.createGain();
+    g.gain.setValueAtTime(0.0001,t0);
+    g.gain.linearRampToValueAtTime(0.085*v,t0+0.07);
+    g.gain.exponentialRampToValueAtTime(0.0001,t0+dur);
+    s.connect(f);f.connect(g);g.connect(AUDIO.master);
+    s.start(t0);s.stop(t0+dur+0.05);
+
+    // Deep water displacement body tone
+    tone(rr(160,220),dur*0.85,'sine',0.032*v,rr(110,140));
+    // Soft high water shimmer
+    noiseHit(0.08,rr(1900,2800),2.2,0.024*v,'bandpass');
+  },
   pickup(){tone(680,0.14,'sine',0.14);tone(1020,0.22,'sine',0.11,null,0.08);},
   stone(){tone(523,0.3,'sine',0.16);tone(784,0.35,'sine',0.14,null,0.1);tone(1046,0.6,'sine',0.13,null,0.2);},
   /* The Hollow tightening, heard rather than read: one drone per stone taken,
@@ -8817,8 +8839,8 @@ const fwd=new THREE.Vector3();
 const _sunF=new THREE.Vector3(),_sunR=new THREE.Vector3(),_sunU=new THREE.Vector3(),
       _sunT=new THREE.Vector3();
 const _bodyN=new THREE.Vector3(),_tiltQ=new THREE.Quaternion(),_yawQ=new THREE.Quaternion(),
-      _rollQ=new THREE.Quaternion(),_upAxis=new THREE.Vector3(0,1,0),
-      _zAxis=new THREE.Vector3(0,0,1);
+      _rollQ=new THREE.Quaternion(),_pitchQ=new THREE.Quaternion(),_xAxis=new THREE.Vector3(1,0,0),
+      _upAxis=new THREE.Vector3(0,1,0),_zAxis=new THREE.Vector3(0,0,1);
 /* A tortoise plods. The walk is the pace the whole animation rig is tuned
    around -- bob, roll and leg swing are all measured against it below, so
    changing it here keeps the gait looking like a full walk rather than a
@@ -8958,9 +8980,10 @@ function update(dt){
 
   const wish=_v.set(fwd.x*iz,0,fwd.z*iz);
   if(wish.lengthSq()>0)wish.normalize().multiplyScalar(speed);
-  // smooth accel/decel — a tortoise has weight
-  P.vel.x=lerp(P.vel.x,wish.x,1-Math.pow(0.0015,dt));
-  P.vel.z=lerp(P.vel.z,wish.z,1-Math.pow(0.0015,dt));
+  // smooth accel/decel — a tortoise has weight; on water a leaf floats and glides
+  const inertiaPow = P.raft ? 0.035 : 0.0015;
+  P.vel.x=lerp(P.vel.x,wish.x,1-Math.pow(inertiaPow,dt));
+  P.vel.z=lerp(P.vel.z,wish.z,1-Math.pow(inertiaPow,dt));
 
   const nx=P.pos.x+P.vel.x*dt, nz=P.pos.z+P.vel.z*dt;
   if(!blockedWorld(nx,P.pos.z))P.pos.x=nx;else P.vel.x*=0.2;
@@ -9022,10 +9045,12 @@ function update(dt){
   const omega=P.turn*TURN.rate;                                   // rad/s of swing
   const vFwd=-(P.vel.x*Math.sin(P.yaw)+P.vel.z*Math.cos(P.yaw));  // speed along the facing
   const gaitSpd=Math.hypot(vFwd,omega*FOOT_R);
-  P.bob+=gaitSpd*dt*7.6;
-  if(gaitSpd>0.25&&Math.floor(P.bob/Math.PI)!==Math.floor(prevBob/Math.PI)){
+  // Leaf phase is slower (~3.5x) and has gentle idle floating wave undulation
+  const bobRate=P.raft ? 2.2 : 7.6;
+  P.bob+=(P.raft ? (gaitSpd*bobRate + 0.6) : (gaitSpd*bobRate))*dt;
+  if(gaitSpd>(P.raft?0.16:0.25)&&Math.floor(P.bob/Math.PI)!==Math.floor(prevBob/Math.PI)){
     if(P.raft){
-      SFX.splash();
+      SFX.floatGlide();
     }else{
       const sf=surfaceAt(P.pos.x,P.pos.z);
       if(sf==='water')SFX.stepWater(waterDepth(P.pos.x,P.pos.z));
@@ -9034,8 +9059,12 @@ function update(dt){
     }
   }
   const gait=clamp(spd/(WALK_SPEED*0.98),0,1.3);   // 1.0 at a full walk
-  const bobY=Math.sin(P.bob)*0.028*gait;
-  const bobX=Math.cos(P.bob*0.5)*0.022*gait;
+  const bobY = P.raft
+    ? Math.sin(P.raft.t*1.2)*0.016 + Math.sin(P.bob)*0.010*gait
+    : Math.sin(P.bob)*0.028*gait;
+  const bobX = P.raft
+    ? Math.cos(P.raft.t*0.8)*0.012 + Math.cos(P.bob*0.5)*0.008*gait
+    : Math.cos(P.bob*0.5)*0.022*gait;
   const hideDrop=P.hideAmt*0.16;
 
   const eyeFwd=-P.hideAmt*0.40;              // pulling in draws the eyes back into the shell
@@ -9063,7 +9092,9 @@ function update(dt){
        smoothstep that reads this in thirdPersonCamera is what takes the
        corners off each end. */
     P.tpAmt=clamp(P.tpAmt+(P.third?dt:-dt)/VIEW.ease,0,1);
-    const roll=Math.sin(P.bob*0.5)*0.012;
+    const roll = P.raft
+      ? Math.sin(P.raft.t*0.9)*0.014 + Math.sin(P.bob*0.5)*0.006*gait
+      : Math.sin(P.bob*0.5)*0.012;
     if(P.tpAmt>0){
       thirdPersonCamera(gH,roll,dt);
     }else{
@@ -9109,15 +9140,23 @@ function update(dt){
     if(o.isSprite||o.isMesh)o.visible=!tuckedIn;
   });
 
-  /* body rig: rides the ground, leans with the slope, never follows the pitch */
+  /* body rig: rides the ground, leans with the slope; on a raft, pitches and rolls gently with the floating leaf */
   if(P.raft)_bodyN.set(0,1,0);            // a leaf lies flat; the bed under it does not
   else groundNormal(P.pos.x,P.pos.z,_bodyN);
   _tiltQ.setFromUnitVectors(_upAxis,_bodyN);
   _yawQ.setFromAxisAngle(_upAxis,P.yaw);
-  _rollQ.setFromAxisAngle(_zAxis,
-    P.flipped ? flipRoll()
-              : Math.sin(P.bob*0.5)*0.035*clamp(spd/(WALK_SPEED*0.98),0,1));
-  bodyRig.quaternion.copy(_tiltQ).multiply(_yawQ).multiply(_rollQ);
+  if(P.raft){
+    const tiltP = Math.cos(P.raft.t*1.1)*0.026 + Math.sin(P.bob)*0.008*gait;
+    const tiltR = Math.sin(P.raft.t*0.9)*0.030 + Math.cos(P.bob*0.5)*0.010*gait;
+    _pitchQ.setFromAxisAngle(_xAxis, tiltP);
+    _rollQ.setFromAxisAngle(_zAxis, tiltR);
+    bodyRig.quaternion.copy(_tiltQ).multiply(_yawQ).multiply(_pitchQ).multiply(_rollQ);
+  }else{
+    _rollQ.setFromAxisAngle(_zAxis,
+      P.flipped ? flipRoll()
+                : Math.sin(P.bob*0.5)*0.035*clamp(spd/(WALK_SPEED*0.98),0,1));
+    bodyRig.quaternion.copy(_tiltQ).multiply(_yawQ).multiply(_rollQ);
+  }
 
   /* Upturned, the shell rolls like a wheel, and a wheel turns about its own
      centre. The rig's origin is at the animal's feet, a hand's width below
@@ -9141,6 +9180,7 @@ function update(dt){
     bodyRig.position.set(P.pos.x,gH+bobY*0.45,P.pos.z);
   }
   const walk=clamp(gaitSpd/(WALK_SPEED*1.07),0,1);
+  const legAmp = P.raft ? 0.32 : 0.55;
   for(let i=0;i<legs.length;i++){
     const g=legs[i];
     const ph=P.bob+(i%2?Math.PI:0)+(g.userData.front?0:Math.PI);
@@ -9150,7 +9190,7 @@ function update(dt){
        sides disagree and it paddles itself round; backing up, all four
        reverse. One line, and no special case in it. */
     const legV=clamp((vFwd-omega*g.userData.side*FOOT_R)/(WALK_SPEED*1.07),-1,1);
-    g.rotation.x=Math.sin(ph)*0.55*legV;
+    g.rotation.x=Math.sin(ph)*legAmp*legV;
     /* Lifted on the half of the stroke that goes forward, planted on the
        half that pushes back. It was |sin| before, which lifts a foot twice
        a cycle and sets it down at both ends of the swing: a leg that hops
