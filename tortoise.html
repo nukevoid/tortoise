@@ -9922,9 +9922,11 @@ function update(dt){
      its own shell, which is fine on dry ground and not fine in a puddle --
      and it gave the player somewhere to sit out every threat in the game
      without ever having to read the ground. A puddle is a metre across;
-     one step is all it costs to be somewhere you can hide. */
+     one step is all it costs to be somewhere you can hide.
+     Aboard a leaf raft, the animal is on the floating deck above the water
+     surface, so pulling into the shell is safe. */
   const standingIn=waterDepth(P.pos.x,P.pos.z);
-  const tooWet=standingIn>SHELL.wetMax;
+  const tooWet=!P.raft && standingIn>SHELL.wetMax;
   if(tooWet&&!!keys['Space']&&!P.flipped&&!wetShellHintShown){
     wetShellHintShown=true;
     toast('You cannot pull in with your head under water — <b>get out of it first</b>.',3.8);
