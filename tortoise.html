@@ -7359,6 +7359,21 @@ function buildShafts(){
   scene.add(shaftMesh);
 }
 
+function updateShafts(dt){
+  if(!shaftMesh)return;
+  // Sunbeams depend on weather: clear skies give full beams, fading smoothly
+  // as clouds roll in, and disappearing completely during overcast or rain.
+  const wet=WEATHER.wet;
+  const beamVis=clamp(1.0-smoothstep(0.02,0.35,wet),0.0,1.0);
+  if(beamVis<=0.001){
+    shaftMesh.visible=false;
+    shaftMesh.material.uniforms.uStrength.value=0;
+  }else{
+    shaftMesh.visible=true;
+    shaftMesh.material.uniforms.uStrength.value=1.05*beamVis;
+  }
+}
+
 
 /* Motes on the air. A shaft of light is invisible until something is floating
    in it, and still air looks dead however well it is lit. These ride the same
@@ -7384,7 +7399,8 @@ function buildMotes(){
     uniforms:{uTime:windU,uSunDir:{value:SUN_DIR.clone()},
               uTint:{value:new THREE.Color(0xffeccb)},uPix:{value:1},
               uGloomC:{value:new THREE.Vector2(GLOOM.x,GLOOM.z)},
-              uGloomR:{value:GLOOM.r}},
+              uGloomR:{value:GLOOM.r},
+              uStrength:{value:1.0}},
     vertexShader:`
       attribute float aSeed; attribute float aSize;
       uniform float uTime; uniform float uPix;
@@ -7399,6 +7415,7 @@ function buildMotes(){
     fragmentShader:`
       uniform vec3 uSunDir; uniform vec3 uTint;
       uniform vec2 uGloomC; uniform float uGloomR;
+      uniform float uStrength;
       varying float vTw; varying vec3 vW;
       void main(){
         float a=smoothstep(0.5,0.06,length(gl_PointCoord-0.5));
@@ -7406,7 +7423,7 @@ function buildMotes(){
         vec3 vd=normalize(vW-cameraPosition);
         float back=pow(max(dot(vd,-uSunDir)*0.5+0.5,0.0),3.0);
         a*=vTw*mix(0.14,1.0,back);
-        gl_FragColor=vec4(uTint,a*0.9);
+        gl_FragColor=vec4(uTint,a*0.9*uStrength);
       }`,
     transparent:true,blending:THREE.AdditiveBlending,
     depthWrite:false,depthTest:true,fog:false});
@@ -7416,6 +7433,15 @@ function buildMotes(){
 }
 function updateMotes(dt){
   if(!moteMesh)return;
+  const wet=WEATHER.wet;
+  const moteVis=clamp(1.0-smoothstep(0.05,0.40,wet),0.0,1.0);
+  if(moteVis<=0.001){
+    moteMesh.visible=false;
+  }else{
+    moteMesh.visible=true;
+    if(moteMesh.material.uniforms.uStrength)
+      moteMesh.material.uniforms.uStrength.value=moteVis;
+  }
   moteMesh.material.uniforms.uPix.value=renderer.getPixelRatio();
   const arr=moteMesh.geometry.getAttribute('position');
   for(let i=0;i<moteData.length;i++){
@@ -9197,7 +9223,7 @@ function update(dt){
   if(!gateLocked&&P.pos.x>HALF+4.5)winGame();
 
   /* ---- particles ---- */
-  updateLeaves(dt);updateFireflies(dt);updateMotes(dt);
+  updateLeaves(dt);updateFireflies(dt);updateMotes(dt);updateShafts(dt);
 
   /* ---- ambience ---- */
   chirpTimer-=dt;

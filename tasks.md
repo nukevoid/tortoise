@@ -71,7 +71,7 @@ mark done tasks like - [X]
 - [X] in swing flipped animation rotation has to be oposite to movement
 - [X] add smooth water - bank intersection
 - [X] add small rocks and debris that shows only in small range 
-- [ ] sunbeam visibility has to depend on weather 
+- [X] sunbeam visibility has to depend on weather 
 - [ ] on leaf change sound from steps to water splahes
 - [ ] when pick mashrom - game freeze for 1-2 second
 - [ ] make water-bank transition shorter, add some kind of foam
