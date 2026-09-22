@@ -7312,6 +7312,399 @@ defineMob('beetle',{
   }
 });
 
+/* ═══════════════════════════════════════════════════════════════
+   Large Fish (Silurus lacustris) — Deep Water Leviathan
+   ═══════════════════════════════════════════════════════════════
+   The apex dweller of the central lake basin. A sleek, heavy river carp
+   and catfish hybrid (approx 1.1m long): dark olive-slate dorsal back with
+   specular sheen, pale iridescent underbelly, tactile mouth barbels, and an
+   articulated spine that undulates with fluid sine-wave physics.
+
+   Cruises deep water channels, banks into wide turns, surfaces periodically
+   to breach with a soft water gulp and expanding surface ripple rings (which
+   scatter surface pond skaters), escorts the player's leaf raft across the
+   water, and dives deep to hug the lake bed during thunderstorms. */
+const FISH={
+  len:1.08,
+  cruiseSpeed:0.85,
+  fastSpeed:1.35,
+  activeRange:42,
+  deepY:0.09,
+  bedY:0.04,
+  surfaceY:-0.015
+};
+const matFishBack=new THREE.MeshStandardMaterial({color:0x253427,roughness:0.28,metalness:0.22});
+const matFishBelly=new THREE.MeshStandardMaterial({color:0xdce3d5,roughness:0.32,metalness:0.18});
+const matFishFin=new THREE.MeshStandardMaterial({color:0x445540,roughness:0.36,metalness:0.12,
+  transparent:true,opacity:0.86,side:THREE.DoubleSide});
+const matFishEye=new THREE.MeshStandardMaterial({color:0x111410,roughness:0.12,metalness:0.65});
+const matFishBarbel=new THREE.MeshStandardMaterial({color:0x303d2e,roughness:0.4,metalness:0.1});
+const matFishRipple=new THREE.MeshBasicMaterial({color:0xcbe8f6,transparent:true,opacity:0,
+  depthWrite:false,side:THREE.DoubleSide});
+
+function spawnFishRipple(m,x,z){
+  if(!m.parts||!m.parts.ripples)return;
+  const r=m.parts.ripples.find(rp=>rp.age>1.7)||m.parts.ripples[0];
+  r.age=0; r.x=x; r.z=z; r.mesh.visible=true;
+  r.mesh.position.set(x,WAY.level+0.006,z);
+  r.mesh.scale.set(0.4,1,0.4);
+  r.mesh.material.opacity=0.75;
+}
+
+defineMob('fish',{
+  activeRange:FISH.activeRange,
+  worldSpace:true,
+  build(m){
+    const rig=new THREE.Group();
+    rig.rotation.order='YXZ';
+
+    // 1. Anterior torso / body core
+    const torso=new THREE.Group();
+    const upperBody=new THREE.Mesh(new THREE.SphereGeometry(1,14,10),matFishBack);
+    upperBody.scale.set(0.125,0.110,0.270);
+    upperBody.position.set(0,0.022,0.040);
+    upperBody.castShadow=true; upperBody.receiveShadow=true;
+    torso.add(upperBody);
+
+    const lowerBody=new THREE.Mesh(new THREE.SphereGeometry(1,14,10),matFishBelly);
+    lowerBody.scale.set(0.115,0.088,0.250);
+    lowerBody.position.set(0,-0.028,0.035);
+    lowerBody.castShadow=true; lowerBody.receiveShadow=true;
+    torso.add(lowerBody);
+
+    // Snout / Head front
+    const head=new THREE.Mesh(new THREE.SphereGeometry(1,12,8),matFishBack);
+    head.scale.set(0.112,0.085,0.150);
+    head.position.set(0,0.005,0.240);
+    head.castShadow=true; torso.add(head);
+
+    // Lower jaw / mouth
+    const jaw=new THREE.Mesh(new THREE.SphereGeometry(1,10,7),matFishBelly);
+    jaw.scale.set(0.088,0.048,0.095);
+    jaw.position.set(0,-0.038,0.280);
+    jaw.castShadow=true; torso.add(jaw);
+
+    // Eyes
+    for(const sx of [-1,1]){
+      const eye=new THREE.Mesh(new THREE.SphereGeometry(0.020,8,6),matFishEye);
+      eye.position.set(sx*0.096,0.028,0.255);
+      torso.add(eye);
+    }
+
+    // Whisker barbels (catfish style sensory whiskers)
+    for(const sx of [-1,1]){
+      const b=new THREE.Mesh(new THREE.CylinderGeometry(0.004,0.0015,0.17,5),matFishBarbel);
+      b.position.set(sx*0.075,-0.032,0.295);
+      b.rotation.set(0.85,0,sx*0.62);
+      torso.add(b);
+    }
+
+    // Dorsal Fin (swept back)
+    const dFin=new THREE.Mesh(new THREE.ConeGeometry(0.075,0.24,5),matFishFin);
+    dFin.scale.set(0.22,1.0,1.2);
+    dFin.position.set(0,0.130,-0.020);
+    dFin.rotation.set(-0.58,0,0);
+    dFin.castShadow=true; torso.add(dFin);
+
+    // Pectoral Fins (paired, left & right)
+    const finL=new THREE.Group(); finL.position.set(-0.115,-0.032,0.110);
+    const pMeshL=new THREE.Mesh(new THREE.PlaneGeometry(0.12,0.22),matFishFin);
+    pMeshL.position.set(-0.055,0,-0.08); pMeshL.rotation.set(1.45,-0.35,-0.45);
+    finL.add(pMeshL); torso.add(finL);
+
+    const finR=new THREE.Group(); finR.position.set(0.115,-0.032,0.110);
+    const pMeshR=new THREE.Mesh(new THREE.PlaneGeometry(0.12,0.22),matFishFin);
+    pMeshR.position.set(0.055,0,-0.08); pMeshR.rotation.set(1.45,0.35,0.45);
+    finR.add(pMeshR); torso.add(finR);
+
+    // Pelvic Fins (paired, smaller, lower belly)
+    for(const sx of [-1,1]){
+      const vFin=new THREE.Mesh(new THREE.PlaneGeometry(0.07,0.13),matFishFin);
+      vFin.position.set(sx*0.075,-0.075,-0.080);
+      vFin.rotation.set(1.65,sx*0.25,sx*0.35);
+      torso.add(vFin);
+    }
+
+    rig.add(torso);
+
+    // 2. Articulated Spine (Seg1 -> Seg2 -> TailFin)
+    const seg1=new THREE.Group();
+    seg1.position.set(0,0,-0.150);
+    const seg1Up=new THREE.Mesh(new THREE.SphereGeometry(1,12,8),matFishBack);
+    seg1Up.scale.set(0.092,0.088,0.160); seg1Up.position.set(0,0.015,-0.095);
+    seg1Up.castShadow=true; seg1.add(seg1Up);
+    const seg1Lo=new THREE.Mesh(new THREE.SphereGeometry(1,12,8),matFishBelly);
+    seg1Lo.scale.set(0.080,0.070,0.145); seg1Lo.position.set(0,-0.022,-0.090);
+    seg1Lo.castShadow=true; seg1.add(seg1Lo);
+    const adip=new THREE.Mesh(new THREE.ConeGeometry(0.035,0.10,4),matFishFin);
+    adip.scale.set(0.2,1,1); adip.position.set(0,0.095,-0.120); adip.rotation.x=-0.75;
+    seg1.add(adip);
+
+    const seg2=new THREE.Group();
+    seg2.position.set(0,0,-0.200);
+    const seg2Body=new THREE.Mesh(new THREE.SphereGeometry(1,10,8),matFishBack);
+    seg2Body.scale.set(0.060,0.068,0.150); seg2Body.position.set(0,0,-0.085);
+    seg2Body.castShadow=true; seg2.add(seg2Body);
+    const aFin=new THREE.Mesh(new THREE.ConeGeometry(0.045,0.12,4),matFishFin);
+    aFin.scale.set(0.2,1,1.1); aFin.position.set(0,-0.070,-0.080); aFin.rotation.x=0.65;
+    seg2.add(aFin);
+
+    const tailFin=new THREE.Group();
+    tailFin.position.set(0,0,-0.170);
+    const cFinGeo=new THREE.PlaneGeometry(0.18,0.28);
+    cFinGeo.rotateY(Math.PI*0.5);
+    const cFin=new THREE.Mesh(cFinGeo,matFishFin);
+    cFin.position.set(0,0.015,-0.110);
+    cFin.castShadow=true;
+    tailFin.add(cFin);
+
+    seg2.add(tailFin);
+    seg1.add(seg2);
+    rig.add(seg1);
+
+    m.parts.rig=rig;
+    m.parts.torso=torso;
+    m.parts.seg1=seg1;
+    m.parts.seg2=seg2;
+    m.parts.tailFin=tailFin;
+    m.parts.finL=finL;
+    m.parts.finR=finR;
+
+    rig.visible=false;
+    m.group.position.set(0,0,0);
+    m.group.add(rig);
+
+    // 3. Surface Ripple Rings (water breach rings)
+    const rippleGeo=new THREE.RingGeometry(0.14,0.28,32);
+    rippleGeo.rotateX(-Math.PI*0.5);
+    m.parts.ripples=[
+      {mesh:new THREE.Mesh(rippleGeo,matFishRipple.clone()),age:99,x:0,z:0},
+      {mesh:new THREE.Mesh(rippleGeo,matFishRipple.clone()),age:99,x:0,z:0},
+      {mesh:new THREE.Mesh(rippleGeo,matFishRipple.clone()),age:99,x:0,z:0}
+    ];
+    for(const r of m.parts.ripples){
+      r.mesh.visible=false;
+      m.group.add(r.mesh);
+    }
+
+    // Runtime state variables
+    m.data.dir=rr(0,6.283);
+    m.data.speed=FISH.cruiseSpeed;
+    m.data.pitch=0;
+    m.data.roll=0;
+    m.data.swimPhase=0;
+    m.data.targetY=WAY.floor+FISH.deepY;
+    m.data.surfaceTimer=rr(14,24);
+    m.data.turnTimer=rr(2,5);
+    m.data.targetDir=m.data.dir;
+    m.data.escortTimer=0;
+  },
+  onReset(m){
+    m.x=m.home.x; m.z=m.home.z;
+    m.y=WAY.floor+FISH.deepY;
+    m.data.dir=rr(0,6.283);
+    m.data.targetDir=m.data.dir;
+    m.data.speed=FISH.cruiseSpeed;
+    m.data.pitch=0;
+    m.data.roll=0;
+    m.data.swimPhase=0;
+    m.data.targetY=WAY.floor+FISH.deepY;
+    m.data.surfaceTimer=rr(14,24);
+    m.data.turnTimer=rr(2,5);
+    m.data.escortTimer=0;
+    setMobState(m,'cruise');
+    if(m.parts.rig)m.parts.rig.visible=false;
+    if(m.parts.ripples){
+      for(const r of m.parts.ripples){
+        r.age=99; r.mesh.visible=false;
+      }
+    }
+  },
+  think(m,dt,d){
+    const rig=m.parts.rig;
+    if(state!=='play'){ rig.visible=false; return; }
+    rig.visible=true;
+
+    // 1. Ripple animation update
+    if(m.parts.ripples){
+      for(const r of m.parts.ripples){
+        if(r.age<1.8){
+          r.age+=dt;
+          const prog=r.age/1.8;
+          const sc=lerp(0.4,2.2,prog);
+          r.mesh.scale.set(sc,1,sc);
+          r.mesh.material.opacity=Math.max(0,(1-prog)*0.75);
+          r.mesh.position.set(r.x,WAY.level+0.006,r.z);
+        }else{
+          r.mesh.visible=false;
+        }
+      }
+    }
+
+    // 2. High priority reaction: Thunderstorm / Lightning
+    const isStorming=WEATHER.storm||WEATHER.lightning>0.04;
+    if(isStorming&&m.state!=='storm_dive'){
+      setMobState(m,'storm_dive');
+    }
+
+    // 3. State Machine
+    const distFromCenter=Math.hypot(m.x-WAY.ax,m.z-WAY.az);
+    const deepLimit=9.8; // stay within central deep lake basin
+
+    if(m.state==='storm_dive'){
+      // Dive immediately to the lake bed and hug bottom
+      m.data.targetY=WAY.floor+FISH.bedY;
+      m.data.speed=FISH.fastSpeed;
+      if(!isStorming){
+        m.data.escortTimer+=dt;
+        if(m.data.escortTimer>2.5){
+          m.data.escortTimer=0;
+          m.data.surfaceTimer=rr(14,24);
+          setMobState(m,'cruise');
+        }
+      }
+    }else if(m.state==='cruise'){
+      m.data.targetY=WAY.floor+FISH.deepY;
+      m.data.speed=FISH.cruiseSpeed;
+
+      // Check if player is on a leaf raft crossing the lake
+      if(P.raft&&mobDist(m)<18){
+        setMobState(m,'escort_raft');
+      }else{
+        // Surfacing countdown
+        m.data.surfaceTimer-=dt;
+        if(m.data.surfaceTimer<=0){
+          setMobState(m,'surface_ascend');
+        }
+      }
+
+      // Gentle meandering steering
+      m.data.turnTimer-=dt;
+      if(m.data.turnTimer<=0){
+        m.data.turnTimer=rr(2.5,5.5);
+        m.data.targetDir=m.data.dir+rr(-0.9,0.9);
+      }
+    }else if(m.state==='escort_raft'){
+      // Player is crossing on the raft! Escort alongside or glide beneath
+      if(!P.raft||mobDist(m)>20){
+        m.data.escortTimer+=dt;
+        if(m.data.escortTimer>2.5){
+          m.data.escortTimer=0;
+          setMobState(m,'cruise');
+        }
+      }else{
+        m.data.escortTimer=0;
+        const raftX=P.raft.x, raftZ=P.raft.z;
+        const flankAngle=P.time*0.55;
+        const targetX=raftX+Math.sin(flankAngle)*1.35;
+        const targetZ=raftZ+Math.cos(flankAngle)*1.35;
+        const dx=targetX-m.x, dz=targetZ-m.z;
+        const toDist=Math.hypot(dx,dz);
+        if(toDist>0.3){
+          m.data.targetDir=Math.atan2(dx,dz);
+          m.data.speed=clamp(toDist*0.9,0.75,1.35);
+        }else{
+          m.data.speed=FISH.cruiseSpeed;
+        }
+        m.data.targetY=WAY.floor+0.07;
+      }
+    }else if(m.state==='surface_ascend'){
+      m.data.targetY=WAY.level+FISH.surfaceY;
+      m.data.speed=FISH.fastSpeed*0.95;
+      if(m.y>=WAY.level-0.035){
+        // Breaches surface!
+        SFX.fishSplash(0.85);
+        spawnFishRipple(m,m.x,m.z);
+        // Startle nearby pond skaters within 3.2m
+        for(const mob of mobs){
+          if(mob.type==='skater'&&mob.awake){
+            const dSk=Math.hypot(mob.x-m.x,mob.z-m.z);
+            if(dSk<3.2){
+              mob.data.dir=Math.atan2(mob.x-m.x,mob.z-m.z)+rr(-0.3,0.3);
+              mob.data.v=SKATER.glide*1.8;
+              mob.data.wait=0.15;
+            }
+          }
+        }
+        setMobState(m,'surface_crest');
+      }
+    }else if(m.state==='surface_crest'){
+      m.data.targetY=WAY.level+FISH.surfaceY;
+      m.data.speed=FISH.cruiseSpeed*0.85;
+      if(m.stateT>0.9){
+        spawnFishRipple(m,m.x,m.z);
+        setMobState(m,'surface_dive');
+      }
+    }else if(m.state==='surface_dive'){
+      m.data.targetY=WAY.floor+FISH.deepY;
+      m.data.speed=FISH.fastSpeed;
+      if(m.y<=WAY.floor+FISH.deepY+0.02){
+        m.data.surfaceTimer=rr(14,24);
+        setMobState(m,'cruise');
+      }
+    }
+
+    // Boundary containment: steer away from shallow banks towards lake center
+    if(distFromCenter>deepLimit){
+      const toCenter=Math.atan2(WAY.ax-m.x,WAY.az-m.z);
+      m.data.targetDir=toCenter;
+    }
+
+    // Smooth heading turn
+    let diff=m.data.targetDir-m.data.dir;
+    while(diff<-Math.PI)diff+=Math.PI*2;
+    while(diff>Math.PI)diff-=Math.PI*2;
+    const turnSpeed=2.2*dt;
+    const turn=clamp(diff,-turnSpeed,turnSpeed);
+    m.data.dir+=turn;
+
+    // Banking roll
+    const turnRate=turn/dt;
+    const targetRoll=clamp(-turnRate*0.28,-0.40,0.40);
+    m.data.roll=lerp(m.data.roll,targetRoll,1-Math.pow(0.08,dt));
+
+    // Vertical pitch
+    const dy=m.data.targetY-m.y;
+    const targetPitch=clamp(dy*2.0,-0.38,0.38);
+    m.data.pitch=lerp(m.data.pitch,targetPitch,1-Math.pow(0.08,dt));
+
+    // Position integration
+    m.x+=Math.sin(m.data.dir)*m.data.speed*dt;
+    m.z+=Math.cos(m.data.dir)*m.data.speed*dt;
+    if(distFromCenter>11.2){
+      const angle=Math.atan2(m.x-WAY.ax,m.z-WAY.az);
+      m.x=WAY.ax+Math.sin(angle)*11.2;
+      m.z=WAY.az+Math.cos(angle)*11.2;
+    }
+    m.y=lerp(m.y,m.data.targetY,1-Math.pow(0.08,dt));
+
+    // Update rig transform in world space
+    rig.position.set(m.x,m.y,m.z);
+    rig.rotation.y=m.data.dir;
+    rig.rotation.z=m.data.roll;
+    rig.rotation.x=m.data.pitch;
+
+    // 4. Undulating Spine Animation Physics
+    m.data.swimPhase+=dt*(3.2+m.data.speed*3.0);
+    const ph=m.data.swimPhase;
+    m.parts.torso.rotation.y=Math.sin(ph)*0.04;
+    m.parts.seg1.rotation.y=Math.sin(ph-0.75)*0.20;
+    m.parts.seg2.rotation.y=Math.sin(ph-1.50)*0.32;
+    m.parts.tailFin.rotation.y=Math.sin(ph-2.25)*0.45;
+
+    // Pectoral fin fluttering
+    const finFlutter=Math.sin(ph*0.8);
+    m.parts.finL.rotation.y=-0.28+finFlutter*0.16;
+    m.parts.finR.rotation.y=0.28-finFlutter*0.16;
+    m.parts.finL.rotation.z=-0.15+Math.cos(ph*0.8)*0.10;
+    m.parts.finR.rotation.z=0.15-Math.cos(ph*0.8)*0.10;
+  }
+});
+
+function spawnLargeFish(){
+  return spawnMob('fish',WAY.ax,WAY.az);
+}
+
 /* Nests go where you will walk past them, not where you must. */
 function spawnWasps(n){
   const far=openCells.filter(c=>dist[c[1]*N+c[0]]>6);
@@ -8112,6 +8505,13 @@ const SFX={
     noiseHit(rr(0.06,0.10),rr(2400,3600),1.5,0.065*v,'bandpass');
     tone(rr(340,460),0.075,'sine',0.038*v,rr(180,240));
     tone(rr(520,760),0.045,'sine',0.022*v,rr(280,360),0.04);
+  },
+  fishSplash(vol){
+    const v=vol||1.0;
+    // Soft watery surface break: fluid breach, gulp, and gentle ripple shimmer
+    tone(rr(170,230),0.09,'sine',0.065*v,rr(110,140));
+    noiseHit(rr(0.08,0.13),rr(1200,1700),1.4,0.055*v,'bandpass');
+    noiseHit(rr(0.04,0.07),rr(2800,4200),1.8,0.035*v,'bandpass',0.02);
   },
   floatGlide(vol){
     if(!AUDIO.ready||AUDIO.muted)return;
@@ -9985,7 +10385,7 @@ async function boot(){
   stage(10); spawnThornmaws(11);
   stage(13); spawnWasps(WASP.nests);
   stage(14); spawnBeetles(BEETLE.count);
-  stage(17); spawnSkaters(SKATER.count);
+  stage(17); spawnSkaters(SKATER.count); spawnLargeFish();
   stage(15); placeRestPockets(5);
   stage(16); placeRiskCaches();
   stage(11);
@@ -10175,7 +10575,7 @@ window.__game={
   PROF,profile,profileLayers,profReport,profToggle,
   P,items,crows,keys,hazards,renderer,scene,camera,sun,hemi,AUDIO,POST,BOOT,
   renderFrame,buildTargets,matComposite,
-  gust:gustU,gustAt,WIND_DIR,THORN,HERON,GLASS,CAT,FLIP,WEATHER,WASP,BEETLE,SHELL,
+  gust:gustU,gustAt,WIND_DIR,THORN,HERON,GLASS,CAT,FLIP,WEATHER,WASP,BEETLE,SHELL,FISH,
   threatPace,get roused(){return roused;},REST,inRestPocket,
   get rain(){return rainMesh;},
   get windLevels(){ return windGain?{
@@ -10193,7 +10593,7 @@ window.__game={
   BIOMES,biomeAt,get biomeSeeds(){return BIOME_SEEDS;},
   groundH,terrainBase,waterDepth,blocked,BASINS,CREEK,surfaceAt,biomeDensity,
   flipPlayer,unflipPlayer,
-  mobs,MOB_TYPES,defineMob,spawnMob,despawnMob,setMobState,mobDist,
+  mobs,MOB_TYPES,defineMob,spawnMob,despawnMob,setMobState,mobDist,spawnLargeFish,
   RAFTS,WAY,wayDist,wayLevelAt,blockedWorld,waterProbes,bakeWaterProbes,setView,
   mobStrike,attackTick,playerSheltered,makeThreatShadow,placeThreatShadow,
   STAGE,stageFree,stageBusy,shadowReadable,groundFavour,MOB_GROUND,GLOOM,
