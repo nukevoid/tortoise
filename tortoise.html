@@ -4951,6 +4951,7 @@ function addItem(type,x,z,y){
   mesh.position.set(x,gy+(y||0.35),z);
   itemGroup.add(mesh);
   baseDress(x,z,type==='stone'?0.16:0.11,type==='stone');
+  mesh.traverse(o=>{ if(o.isLight) o.userData.origIntensity=o.intensity; });
   const it={type,mesh,x,z,baseY:gy+(y||0.35),phase:rr(0,6.28),collected:false,seen:false};
   items.push(it);
   return it;
@@ -8159,7 +8160,7 @@ function resetPlayer(){
   gateLocked=true;gateOpenAmt=0;
   if(gateGroup){gateGroup.userData.curtain.position.y=0;
     gateGroup.userData.curtain.visible=true;gateBeam.material.opacity=0;}
-  for(const it of items){it.collected=false;it.seen=false;it.mesh.visible=true;}
+  for(const it of items){it.collected=false;it.seen=false;showItemMesh(it);}
   seen.fill(0);
   for(const c of crows){
     const cell=openCells[Math.floor(RNG()*openCells.length)];
@@ -8605,11 +8606,33 @@ function restart(){
 /* ═══════════════════════════════════════════════════════════════
    13. GAMEPLAY ACTIONS
    ═══════════════════════════════════════════════════════════════ */
+function hideItemMesh(it){
+  it.mesh.traverse(o=>{
+    if(o.isLight){
+      if(o.userData.origIntensity===undefined)o.userData.origIntensity=o.intensity;
+      o.intensity=0;
+      o.visible=true;
+    }else if(o!==it.mesh){
+      o.visible=false;
+    }
+  });
+}
+function showItemMesh(it){
+  it.mesh.visible=true;
+  it.mesh.traverse(o=>{
+    if(o.isLight){
+      if(o.userData.origIntensity!==undefined)o.intensity=o.userData.origIntensity;
+      o.visible=true;
+    }else{
+      o.visible=true;
+    }
+  });
+}
 let nearItem=null;
 function tryPickup(){
   if(!nearItem)return;
   const it=nearItem;
-  it.collected=true;it.mesh.visible=false;
+  it.collected=true;hideItemMesh(it);
   if(it.type==='stone'){
     P.stones++;SFX.stone();SFX.hollowStirs(P.stones);
     /* The places are joined on purpose now, so the stone tour is 161m rather
@@ -9677,7 +9700,7 @@ window.__game={
   toStone(i){const s=items.filter(t=>t.type==='stone')[i||0];if(s){P.pos.x=s.x;P.pos.z=s.z;}},
   toGate(){P.pos.x=GATE_X-3;P.pos.z=GATE_Z;},
   giveStones(){for(const it of items)if(it.type==='stone'&&!it.collected){
-      it.collected=true;it.mesh.visible=false;P.stones++;}
+      it.collected=true;hideItemMesh(it);P.stones++;}
     openGate();updateHUD();updateObjective();},
   god(){P.hp=100;setInterval(()=>P.hp=100,500);},
   info(){return{pos:P.pos.toArray().map(v=>+v.toFixed(2)),hp:P.hp,stones:P.stones,

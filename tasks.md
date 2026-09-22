@@ -73,5 +73,7 @@ mark done tasks like - [X]
 - [X] add small rocks and debris that shows only in small range 
 - [X] sunbeam visibility has to depend on weather 
 - [X] on leaf change sound from steps to water splahes
-- [ ] when pick mashrom - game freeze for 1-2 second
+- [X] when pick mashrom - game freeze for 1-2 second
 - [ ] make water-bank transition shorter, add some kind of foam
+- [ ] fix texture stretching on Trees cronas
+- [ ] leaf phase has to be slower and feel like we float. Also change splash sound to some floating \swiming 
