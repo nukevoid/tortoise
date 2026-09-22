@@ -8295,7 +8295,7 @@ function resetPlayer(){
   else if(!isSolid(sgx,sgy+1))P.yaw=Math.PI;      // south
   else if(!isSolid(sgx-1,sgy))P.yaw=Math.PI/2;    // west
   else P.yaw=0;                                    // north
-  P.pitch=-0.05;
+  P.pitch=-0.05; P.lastYaw=P.yaw;
   P.hp=100;P.sp=100;P.hidden=false;P.hideAmt=0;P.boost=0;P.lastHurt=99;
   P.winded=false;P.turn=0;
   P.stones=0;P.berries=0;P.shrooms=0;P.hasLantern=false;P.lanternOn=false;
@@ -9273,9 +9273,20 @@ function update(dt){
      through an arc while the body stays where it is. Driven by speed alone,
      a tortoise pivoting on A or D slid round like a turntable, legs held
      still, in silence. */
-  const omega=P.turn*TURN.rate;                                   // rad/s of swing
+  if(P.lastYaw===undefined)P.lastYaw=P.yaw;
+  let dyaw=P.yaw-P.lastYaw;
+  while(dyaw>Math.PI)dyaw-=2*Math.PI;
+  while(dyaw<-Math.PI)dyaw+=2*Math.PI;
+  const yawRate=dt>0.0005?dyaw/dt:0;
+  P.lastYaw=P.yaw;
+
+  const keyOmega=P.turn*TURN.rate;
+  // Blend key turning and mouse/direct yaw rotation
+  const omega = Math.abs(yawRate) > Math.abs(keyOmega) ? yawRate : keyOmega;
+
   const vFwd=-(P.vel.x*Math.sin(P.yaw)+P.vel.z*Math.cos(P.yaw));  // speed along the facing
-  const gaitSpd=Math.hypot(vFwd,omega*FOOT_R);
+  const turnFootSpd=Math.min(WALK_SPEED*1.2, Math.abs(omega)*FOOT_R*2.4);
+  const gaitSpd=Math.hypot(vFwd,turnFootSpd);
   // Leaf phase is slower (~3.5x) and has gentle idle floating wave undulation
   const bobRate=P.raft ? 2.2 : 7.6;
   P.bob+=(P.raft ? (gaitSpd*bobRate + 0.6) : (gaitSpd*bobRate))*dt;
@@ -9289,7 +9300,7 @@ function update(dt){
       else SFX.step();
     }
   }
-  const gait=clamp(spd/(WALK_SPEED*0.98),0,1.3);   // 1.0 at a full walk
+  const gait=clamp(gaitSpd/(WALK_SPEED*0.98),0,1.3);   // 1.0 at a full walk
   const bobY = P.raft
     ? Math.sin(P.raft.t*1.2)*0.016 + Math.sin(P.bob)*0.010*gait
     : Math.sin(P.bob)*0.028*gait;
@@ -9412,6 +9423,7 @@ function update(dt){
   }
   const walk=clamp(gaitSpd/(WALK_SPEED*1.07),0,1);
   const legAmp = P.raft ? 0.32 : 0.55;
+  const turnAngle = clamp(omega / TURN.rate, -1, 1);
   for(let i=0;i<legs.length;i++){
     const g=legs[i];
     const ph=P.bob+(i%2?Math.PI:0)+(g.userData.front?0:Math.PI);
@@ -9420,8 +9432,15 @@ function update(dt){
        Walking, all four agree and the animal strides; pivoting, the two
        sides disagree and it paddles itself round; backing up, all four
        reverse. One line, and no special case in it. */
-    const legV=clamp((vFwd-omega*g.userData.side*FOOT_R)/(WALK_SPEED*1.07),-1,1);
+    const turnContribution = -omega * g.userData.side * FOOT_R * 2.4;
+    const legV=clamp((vFwd + turnContribution)/(WALK_SPEED*1.07),-1,1);
     g.rotation.x=Math.sin(ph)*legAmp*legV;
+    // Lateral splay when pivoting: front legs reach into turn, back legs brace
+    if(!P.flipped && Math.abs(turnAngle) > 0.02){
+      g.rotation.y = g.userData.front ? -turnAngle * 0.24 : turnAngle * 0.16;
+    }else{
+      g.rotation.y = 0;
+    }
     /* Lifted on the half of the stroke that goes forward, planted on the
        half that pushes back. It was |sin| before, which lifts a foot twice
        a cycle and sets it down at both ends of the swing: a leg that hops
@@ -9452,8 +9471,8 @@ function update(dt){
   /* The head leads the turn. A tortoise looks where it is going, and from
      behind the animal that is most of what tells you it is the tortoise
      turning and not the world. */
-  head.rotation.y=P.turn*0.30;
-  neck.rotation.y=P.turn*0.14;
+  head.rotation.y=turnAngle*0.35;
+  neck.rotation.y=turnAngle*0.16;
   head.position.y+=Math.sin(P.bob)*0.008*walk;
 
   /* ---- sun follows the player so shadows stay crisp ---- */
@@ -10029,7 +10048,7 @@ window.__game={
   mobStrike,attackTick,playerSheltered,makeThreatShadow,placeThreatShadow,
   STAGE,stageFree,stageBusy,shadowReadable,groundFavour,MOB_GROUND,GLOOM,
   get shafts(){return shaftMesh;},get motes(){return moteMesh;},SFX,
-  hexWallNormal,sdHexagon,solid,gi,hexNeighbors,isSolid,tileX,tileZ,G,HEX_r,HEX_R,worldToHex,
+  hexWallNormal,sdHexagon,solid,gi,hexNeighbors,isSolid,tileX,tileZ,G,HEX_r,HEX_R,worldToHex,legs,
 
   press(code,down){keys[code]=!!down;},
   look(yaw,pitch){P.yaw=yaw;if(pitch!=null)P.pitch=pitch;},
