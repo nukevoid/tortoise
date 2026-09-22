@@ -6796,8 +6796,9 @@ function flipPlayer(){
   if(P.flipped||state!=='play')return false;
   P.flipped=true; P.flipT=0;
   P.flipAngle=0; P.flipVel=0; P.flipPhase='rock'; P.flipRightT=0; P.flipDir=1;
-  P.flipTheta=0; P.flipAmp=0.12; P.flipReload=0;
-  P.flipHeldL=false; P.flipHeldR=false; P.flipReload=0;
+  P.flipTheta=0; P.flipAmp=0.18; P.flipReload=0;
+  P.flipHeldL=!!(keys['KeyA']||keys['ArrowLeft']);
+  P.flipHeldR=!!(keys['KeyD']||keys['ArrowRight']);
   P.hidden=false;
   P.vel.set(0,0,0);
   SFX.flipOver();
@@ -6843,7 +6844,13 @@ function updateFlip(dt){
   let side=0;
   if(L&&!P.flipHeldL)side=-1; else if(R&&!P.flipHeldR)side=1;
   if(side&&P.flipReload<=0){
-    const align=side*Math.cos(P.flipTheta);
+    let align;
+    if(P.flipAmp<0.22){
+      P.flipTheta=side===1?0:Math.PI;
+      align=1.0;
+    }else{
+      align=side*Math.cos(P.flipTheta);
+    }
     P.flipAmp=Math.max(0.02,P.flipAmp+FLIP.gain*align*Math.sqrt(Math.abs(align)));
     P.flipReload=FLIP.reload;
     SFX.heave(align);

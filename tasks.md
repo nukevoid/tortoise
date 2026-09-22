@@ -93,7 +93,7 @@ mark done tasks like - [X]
 - [X] bug: in FPV camera (not V mode) shell mode visible head and legs
 - [X] revert animation in V mode before fix "- [X] bug: in shell mode visible head and legs"
 - [X] improvement: in the leaf mode we need to have ability to hide in shell
-- [ ] fix control of swing mechanic when we fliped - it hard to start swing now
+- [X] fix control of swing mechanic when we fliped - it hard to start swing now
 - [ ] Add spawn\ save points (4 on map) . Save progress to cooki
 - [ ] when you die - shell lefts in this place and you can find and get it
 - [ ] separate danger indication from demage indication
