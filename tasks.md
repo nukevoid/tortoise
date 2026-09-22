@@ -78,3 +78,8 @@ mark done tasks like - [X]
 - [X] fix texture stretching on Trees cronas
 - [X] leaf phase has to be slower and feel like we float. Also change splash sound to some floating \swiming
 - [X] make foam more realistic and not so pixelated
+- [X] change map tiles to hexagonal, adapt current map to new tile system
+- [ ] show small part of map in minimap, orient it with rotation of tortoise
+- [ ] test and fix all map colllision \ visual corelation and map tracebility
+- [ ] turtoise has to move legs when rotates
+-

@@ -2242,15 +2242,63 @@ function renderFrame(){
 /* ═══════════════════════════════════════════════════════════════
    4. MAZE GENERATION
    ═══════════════════════════════════════════════════════════════ */
-const N=16, T=2.6, G=2*N+1, WORLD=G*T, HALF=WORLD/2;
+const N=16, T=2.6, G=2*N+1;
+const HEX_R=T/Math.sqrt(3);                    // ~1.5011m circumradius
+const HEX_r=T/2;                               // 1.30m inradius
+const COL_STEP=T;                              // 2.60m column spacing
+const ROW_STEP=1.5*HEX_R;                      // ~2.2517m row spacing
+const HALFW=(G-0.5)*COL_STEP*0.5;
+const HALFH=(G-1)*ROW_STEP*0.5;
+const WORLD=G*T, HALF=WORLD/2;
 const solid=new Uint8Array(G*G).fill(1);
 const seen=new Uint8Array(G*G);
 const gi=(x,y)=>y*G+x;
-const tileX=gx=>gx*T-HALF+T/2;
-const tileZ=gy=>gy*T-HALF+T/2;
-const worldToGX=x=>Math.floor((x+HALF)/T);
-const worldToGZ=z=>Math.floor((z+HALF)/T);
-const cellCenter=(cx,cy)=>({x:tileX(2*cx+1),z:tileZ(2*cy+1)});
+
+const tileX=(gx,gy)=>(gx+((gy!==undefined?(gy&1):0)*0.5))*COL_STEP-HALFW+COL_STEP*0.5;
+const tileZ=(gy,gx)=>gy*ROW_STEP-HALFH+ROW_STEP*0.5;
+
+function worldToHex(wx,wz){
+  const px=wx+HALFW-COL_STEP*0.5;
+  const pz=wz+HALFH-ROW_STEP*0.5;
+  const q=(0.5773502691896257*px-0.3333333333333333*pz)/HEX_R;
+  const r=(0.6666666666666666*pz)/HEX_R;
+  let rx=Math.round(q), rz=Math.round(r), ry=Math.round(-q-r);
+  const x_diff=Math.abs(rx-q), y_diff=Math.abs(ry-(-q-r)), z_diff=Math.abs(rz-r);
+  if(x_diff>y_diff&&x_diff>z_diff){ rx=-ry-rz; }
+  else if(y_diff>z_diff){ ry=-rx-rz; }
+  else{ rz=-rx-ry; }
+  const col=rx+((rz-(rz&1))/2)|0;
+  const row=rz|0;
+  return {gx:col, gy:row};
+}
+
+function hexNeighbors(gx,gy){
+  const odd=gy&1;
+  return [
+    [gx+1, gy, 0],
+    [odd?gx+1:gx, gy+1, Math.PI/3],
+    [odd?gx:gx-1, gy+1, 2*Math.PI/3],
+    [gx-1, gy, Math.PI],
+    [odd?gx:gx-1, gy-1, 4*Math.PI/3],
+    [odd?gx+1:gx, gy-1, 5*Math.PI/3]
+  ];
+}
+
+function sdHexagon(px,pz,r){
+  px=Math.abs(px); pz=Math.abs(pz);
+  const R=r*1.1547005383792515;
+  const d1=px-r;
+  const d2=0.8660254037844386*px+0.5*pz-r;
+  if(d1<=0&&d2<=0) return Math.max(d1,d2);
+  if(pz>R) return Math.hypot(px,pz-R);
+  const cx0=r, cz0=0.5*R;
+  if(px>=r&&pz>=cz0) return Math.hypot(px-cx0,pz-cz0);
+  return Math.max(d1,d2);
+}
+
+const worldToGX=(x,z)=>z!==undefined?worldToHex(x,z).gx:Math.floor((x+HALFW)/COL_STEP);
+const worldToGZ=(z,x)=>x!==undefined?worldToHex(x,z).gy:Math.floor((z+HALFH)/ROW_STEP);
+const cellCenter=(cx,cy)=>({x:tileX(2*cx+1,2*cy+1),z:tileZ(2*cy+1,2*cx+1)});
 const isSolid=(gx,gy)=>(gx<0||gy<0||gx>=G||gy>=G)?1:solid[gi(gx,gy)];
 
 
@@ -2793,29 +2841,16 @@ for(const w of WAY_G){
   for(let i=1;i<G-1;i++){ solid[gi(w,i)]=1; solid[gi(i,w)]=1; }
 }
 for(let gy=1;gy<G-1;gy++)for(let gx=1;gx<G-1;gx++){
-  if(Math.hypot(tileX(gx),tileZ(gy))<=LAKE_OPEN)solid[gi(gx,gy)]=0;
+  if(Math.hypot(tileX(gx,gy),tileZ(gy,gx))<=LAKE_OPEN)solid[gi(gx,gy)]=0;
 }
 
 /* Walling the quarters apart breaks them internally.
-
-   The maze was one connected thing, and a lot of it was connected THROUGH
-   the middle. Three tiles of new wall on each axis cuts those routes, and
-   what is left behind is a quarter in several pieces -- with, in the worst
-   case measured here, the south-east quarter only 4% reachable from its own
-   shore, which put the Sun Gate on the wrong side of a wall and made the
-   level unwinnable.
-
-   So each quarter is repaired on its own. Everything in it that cannot walk
-   to its own lakeside is dug through to something that can, by the same
-   straight-line method connectRegions uses -- but scoped, so the digging
-   never breaches the wall between two quarters. The separation is the
-   point; the isolation inside one is not. */
+   Heal them using hexagonal neighbor connectivity. */
 (function healQuarters(){
-  const inLake=(gx,gy)=>Math.hypot(tileX(gx),tileZ(gy))<=LAKE_OPEN;
+  const inLake=(gx,gy)=>Math.hypot(tileX(gx,gy),tileZ(gy,gx))<=LAKE_OPEN;
   const quarters=[[1,13,1,13],[17,G-2,1,13],[1,13,17,G-2],[17,G-2,17,G-2]];
   for(const [x0,x1,z0,z1] of quarters){
     const own=(gx,gy)=>gx>=x0&&gx<=x1&&gy>=z0&&gy<=z1;
-    // label the walkable regions inside this quarter
     const id=new Int32Array(G*G).fill(-1);
     const regions=[];
     for(let gy=z0;gy<=z1;gy++)for(let gx=x0;gx<=x1;gx++){
@@ -2824,8 +2859,7 @@ for(let gy=1;gy<G-1;gy++)for(let gx=1;gx<G-1;gx++){
       id[gi(gx,gy)]=r;
       while(q.length){
         const [cx,cy]=q.pop(); cells.push([cx,cy]);
-        for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){
-          const nx=cx+dx, ny=cy+dy;
+        for(const [nx,ny] of hexNeighbors(cx,cy)){
           if(!own(nx,ny)||solid[gi(nx,ny)]||id[gi(nx,ny)]>=0)continue;
           id[gi(nx,ny)]=r; q.push([nx,ny]);
         }
@@ -2833,9 +2867,6 @@ for(let gy=1;gy<G-1;gy++)for(let gx=1;gx<G-1;gx++){
       regions.push(cells);
     }
     if(regions.length<2)continue;
-    /* The main one is whichever touches the water -- that is the piece a
-       leaf can put you on, so everything else has to reach it. Failing
-       that, the biggest. */
     let main=null;
     for(const r of regions) if(r.some(c=>inLake(c[0],c[1]))){
       if(!main||r.length>main.length)main=r;
@@ -2845,50 +2876,44 @@ for(let gy=1;gy<G-1;gy++)for(let gx=1;gx<G-1;gx++){
       if(r===main)continue;
       let best=null,bd=1e9;
       for(const a of r)for(const b of main){
-        const d=Math.abs(a[0]-b[0])+Math.abs(a[1]-b[1]);
+        const d=Math.hypot(tileX(a[0],a[1])-tileX(b[0],b[1]), tileZ(a[1],a[0])-tileZ(b[1],b[0]));
         if(d<bd){bd=d;best=[a,b];}
       }
       if(!best)continue;
-      let [ax,ay]=best[0]; const [bx,by]=best[1];
-      while(ax!==bx){ ax+=Math.sign(bx-ax); if(own(ax,ay))solid[gi(ax,ay)]=0; }
-      while(ay!==by){ ay+=Math.sign(by-ay); if(own(ax,ay))solid[gi(ax,ay)]=0; }
+      let curX=best[0][0], curY=best[0][1];
+      const targetX=best[1][0], targetY=best[1][1];
+      while(curX!==targetX||curY!==targetY){
+        if(own(curX,curY))solid[gi(curX,curY)]=0;
+        let bestN=null, bestD=1e9;
+        for(const [nx,ny] of hexNeighbors(curX,curY)){
+          if(!own(nx,ny))continue;
+          const d=Math.hypot(tileX(nx,ny)-tileX(targetX,targetY), tileZ(ny,nx)-tileZ(targetY,targetX));
+          if(d<bestD){bestD=d;bestN=[nx,ny];}
+        }
+        if(!bestN||(bestN[0]===curX&&bestN[1]===curY))break;
+        curX=bestN[0]; curY=bestN[1];
+      }
+      if(own(curX,curY))solid[gi(curX,curY)]=0;
       for(const c of r)main.push(c);
     }
   }
 })();
 
-
-/* Corners you can see through and cannot walk through.
-
-   Where two open tiles touch only at their corner and both ways round are
-   walled, the eye reads a way on and the feet do not get one. It is the
-   same complaint as the hedges that looked passable, in miniature, and the
-   disc of the lake makes them: a circle cut into a square grid leaves
-   stepped corners all round its rim.
-
-   One of the two orthogonal tiles is opened, and the dividing walls are
-   left alone -- the quarters stay quarters, and a pinch that could only be
-   fixed by breaching one is left as it is, since a wall that reads as a
-   wall is not the problem being fixed here. */
 (function openDiagonalPinches(){
-  const wallLine=i=>WAY_G.indexOf(i)>=0;
-  const inLake=(gx,gy)=>Math.hypot(tileX(gx),tileZ(gy))<=LAKE_OPEN;
-  const mayOpen=(gx,gy)=>
-    gx>0&&gy>0&&gx<G-1&&gy<G-1 &&
-    (inLake(gx,gy) || (!wallLine(gx)&&!wallLine(gy)));
-  /* Opening one corner can put two other tiles corner to corner, so this
-     runs until a pass changes nothing. It settles in a handful. */
-  for(let pass=0;pass<12;pass++){
+  const inLake=(gx,gy)=>Math.hypot(tileX(gx,gy),tileZ(gy,gx))<=LAKE_OPEN;
+  const mayOpen=(gx,gy)=>gx>0&&gy>0&&gx<G-1&&gy<G-1&&(inLake(gx,gy)||(WAY_G.indexOf(gx)<0&&WAY_G.indexOf(gy)<0));
+  for(let pass=0;pass<8;pass++){
     let changed=0;
     for(let gy=1;gy<G-1;gy++)for(let gx=1;gx<G-1;gx++){
       if(solid[gi(gx,gy)])continue;
-      for(const [dx,dy] of [[1,1],[1,-1]]){
-        const nx=gx+dx, ny=gy+dy;
-        if(nx<1||ny<1||nx>=G-1||ny>=G-1)continue;
-        if(solid[gi(nx,ny)])continue;
-        if(!solid[gi(nx,gy)]||!solid[gi(gx,ny)])continue;   // already walkable
-        if(mayOpen(nx,gy)){solid[gi(nx,gy)]=0;changed++;}
-        else if(mayOpen(gx,ny)){solid[gi(gx,ny)]=0;changed++;}
+      const nbrs=hexNeighbors(gx,gy);
+      for(let i=0;i<6;i++){
+        const n1=nbrs[i], n2=nbrs[(i+1)%6];
+        if(!isSolid(n1[0],n1[1]) && !isSolid(n2[0],n2[1])) continue;
+        const opp=nbrs[(i+3)%6];
+        if(!isSolid(opp[0],opp[1]) && isSolid(n1[0],n1[1]) && isSolid(n2[0],n2[1])){
+          if(mayOpen(n1[0],n1[1])){ solid[gi(n1[0],n1[1])]=0; changed++; }
+        }
       }
     }
     if(!changed)break;
@@ -2899,18 +2924,24 @@ RNG.reseed(DECO_SEED);RNG.reseed(DECO_SEED);
 if(LEVEL_USED&&LEVEL_USED.biomes)BIOME_SEEDS=LEVEL_USED.biomes.map(a=>[a[0],a[1],a[2]]);
 else seedBiomes();
 
-/* BFS distances from start cell */
+/* BFS distances from start cell across hexagonal maze */
 const START_CELL=[0,0];
 const dist=new Int32Array(N*N).fill(-1);
 (function bfs(){
   const q=[START_CELL[1]*N+START_CELL[0]];dist[q[0]]=0;
-  const dirs=[[0,-1],[1,0],[0,1],[-1,0]];
+  const cellNbrs=(cx,cy)=>[
+    [cx+1, cy, 2*cx+2, 2*cy+1],
+    [cx-1, cy, 2*cx,   2*cy+1],
+    [cx,   cy+1, 2*cx+1, 2*cy+2],
+    [cx+1, cy+1, 2*cx+2, 2*cy+2],
+    [cx,   cy-1, 2*cx+1, 2*cy],
+    [cx+1, cy-1, 2*cx+2, 2*cy]
+  ];
   for(let h=0;h<q.length;h++){
     const id=q[h],cx=id%N,cy=(id/N)|0;
-    for(const [dx,dy] of dirs){
-      const nx=cx+dx,ny=cy+dy;
+    for(const [nx,ny,wx,wy] of cellNbrs(cx,cy)){
       if(nx<0||ny<0||nx>=N||ny>=N)continue;
-      if(isSolid(2*cx+1+dx,2*cy+1+dy))continue;
+      if(isSolid(wx,wy))continue;
       const nid=ny*N+nx;
       if(dist[nid]<0){dist[nid]=dist[id]+1;q.push(nid);}
     }
@@ -2921,7 +2952,7 @@ const dist=new Int32Array(N*N).fill(-1);
 const EXIT_CY=N-1, EXIT_GX=2*N, EXIT_GY=2*EXIT_CY+1;
 solid[gi(2*(N-1)+1,EXIT_GY)]=0;
 let gateLocked=true;                                  // gate tile stays solid until unlocked
-const GATE_X=tileX(EXIT_GX), GATE_Z=tileZ(EXIT_GY);
+const GATE_X=tileX(EXIT_GX,EXIT_GY), GATE_Z=tileZ(EXIT_GY,EXIT_GX);
 
 /* ═══════════════════════════════════════════════════════════════
    4b. TERRAIN — one analytic height field, sampled by the ground mesh
@@ -3928,70 +3959,31 @@ function buildHedges(){
   for(let gy=0;gy<G;gy++)for(let gx=0;gx<G;gx++){
     if(!solid[gi(gx,gy)])continue;
     if(gx===EXIT_GX&&gy===EXIT_GY)continue;             // the gate tile
-    const cx=tileX(gx),cz=tileZ(gy);
+    const cx=tileX(gx,gy),cz=tileZ(gy,gx);
     const gy0=groundH(cx,cz);
     const border=(gx===0||gy===0||gx===G-1||gy===G-1);
-    /* Which sides of this wall tile face open corridor? Collision treats the
-       whole 2.6 m tile as solid, so if the leaves only fill the middle of it
-       the player is stopped with a metre of bare ground still ahead. Lean the
-       grounded blobs towards the open faces so the wall meets the floor on
-       the line the player is actually blocked at. */
-    // each tile leans a little green or a little turned, so the hedge line
-    // is not one flat colour from end to end
     const at=RNG();
     const season = at<0.62 ? [1,1,1]
                  : at<0.88 ? [1.12,1.0,0.82]
                            : [1.26,0.92,0.7];
-    // ...and then the patch of forest this tile stands in
     const bio=biomeLeaf(cx,cz);
     const autumn=[season[0]*bio[0],season[1]*bio[1],season[2]*bio[2]];
+    const nbrs=hexNeighbors(gx,gy);
     const faces=[];
-    if(!isSolid(gx+1,gy))faces.push([1,0]);
-    if(!isSolid(gx-1,gy))faces.push([-1,0]);
-    if(!isSolid(gx,gy+1))faces.push([0,1]);
-    if(!isSolid(gx,gy-1))faces.push([0,-1]);
-    /* One species leads each tile, so the hedge grows in drifts of a kind
-       rather than a different plant every metre. */
+    for(let i=0;i<6;i++){
+      const [nx,ny,ang]=nbrs[i];
+      if(nx<0||ny<0||nx>=G||ny>=G||!isSolid(nx,ny)) faces.push([Math.cos(ang),Math.sin(ang),ang]);
+    }
     const sp0=RNG()<0.46?0:(RNG()<0.62?1:2);
-    /* No grown bush is placed in the middle of the tile. That space is
-       inside the wall mass, where the core below already blocks sight and
-       nothing can ever silhouette a branch. Detail goes on the faces and
-       corners, which are the only parts a player can stand next to. */
     if(RNG()<0.34)baseDress(cx+rr(-0.7,0.7),cz+rr(-0.7,0.7),rr(0.26,0.40));
-    /* A hedge is a maze wall before it is a plant. This low-poly mass sits
-       buried inside the grown bushes and is what actually guarantees you
-       cannot see through the wall, whatever the branches happen to do. */
     tint.setRGB(rr(0.70,1.10)*autumn[0],rr(0.76,1.12)*autumn[1],rr(0.68,1.05)*autumn[2]);
-    core.add(cx,gy0+0.92,cz,0,rr(0,6.28),0,1.16,1.02,1.16,tint.clone());
-    /* Faces and corners as they were before the coverage work.
-
-       Everything between here and the crown was rebuilt three times trying
-       to close the sight-line holes -- two blobs per face, then a thicket
-       species to fill what one plant missed, then a grown plant on every
-       face and every corner with a spray of leaf cards under it. Each pass
-       measured better on the ray survey and each one read worse to play: a
-       hedge line packed edge to edge has no silhouette left, and the gap in
-       the foliage is a good part of what made a corridor look like a
-       corridor rather than a painted one.
-
-       So this is the original arrangement, restored on purpose: one thing
-       per open face, about half of them a grown bush and the rest a blob,
-       dropped anywhere along the face; one blob at each exposed corner;
-       leaves scattered over the whole tile rather than lined up on its
-       edges. The gap between where the foliage ends and where collision
-       stops you comes back with it, and is accepted.
-
-       What does not come back is the 80-face blob at arm's length. These go
-       through `edge`, which is the 320-face one. */
+    core.add(cx,gy0+0.92,cz,0,rr(0,6.28),0,HEX_r*0.95,1.02,HEX_r*0.95,tint.clone());
     for(const f of faces){
-      const out=rr(0.82,1.06), side=rr(-0.78,0.78);
-      const fx=cx+(f[0]?f[0]*out:side), fz=cz+(f[1]?f[1]*out:side);
+      const out=rr(0.85,1.06), side=rr(-0.45,0.45)*HEX_R;
+      const tx_dir=-f[1], tz_dir=f[0];
+      const fx=cx+f[0]*HEX_r*out+tx_dir*side, fz=cz+f[1]*HEX_r*out+tz_dir*side;
       const fs=rr(0.78,1.08), fy=fs*rr(0.90,1.22);
       tint.setRGB(rr(0.72,1.18)*autumn[0],rr(0.78,1.14)*autumn[1],rr(0.7,1.1)*autumn[2]);
-      /* A grown bush is expensive, so they are scattered rather than lining
-         every face: roughly half the faces get one, the rest get the mass.
-         Spacing them out also stops the hedge looking stamped from a single
-         repeated plant. */
       if(RNG()<0.48){
         const spf=RNG()<0.72?sp0:(sp0+1+(RNG()<0.5?0:1))%3;
         placeBush(fx,fz,fs,fy,spf,tint.clone());
@@ -4003,21 +3995,22 @@ function buildHedges(){
       if(RNG()<0.5)baseDress(fx,fz,fs*rr(0.26,0.40));
     }
 
-    // Corners too: standing at a bend, the tile that blocks you is the
-    // diagonal one, and without this its corner is bare ground.
-    for(const d of [[1,1],[1,-1],[-1,1],[-1,-1]]){
-      if(isSolid(gx+d[0],gy)&&isSolid(gx,gy+d[1]))continue;   // buried inside the wall
-      if(isSolid(gx+d[0],gy+d[1]))continue;                   // neighbour fills it
-      const kx=cx+d[0]*rr(0.74,0.98), kz=cz+d[1]*rr(0.74,0.98);
-      const ks=rr(0.60,0.86), ky=ks*rr(0.88,1.14);
-      tint.setRGB(rr(0.72,1.18)*autumn[0],rr(0.78,1.14)*autumn[1],rr(0.7,1.1)*autumn[2]);
-      edge.add(kx,groundH(kx,kz)+ky*rr(0.5,0.75),kz,
-               rr(0,6.28),rr(0,6.28),rr(0,6.28),
-               ks*rr(0.98,1.2),ky,ks*rr(0.98,1.2),tint.clone());
+    // 6 hexagonal corners
+    for(let k=0;k<6;k++){
+      const n1=nbrs[k], n2=nbrs[(k+1)%6];
+      const o1=(n1[0]<0||n1[1]<0||n1[0]>=G||n1[1]>=G||!isSolid(n1[0],n1[1]));
+      const o2=(n2[0]<0||n2[1]<0||n2[0]>=G||n2[1]>=G||!isSolid(n2[0],n2[1]));
+      if(o1&&o2){
+        const vang=Math.PI/6+k*Math.PI/3;
+        const kx=cx+Math.cos(vang)*HEX_R*0.95, kz=cz+Math.sin(vang)*HEX_R*0.95;
+        const ks=rr(0.60,0.86), ky=ks*rr(0.88,1.14);
+        tint.setRGB(rr(0.72,1.18)*autumn[0],rr(0.78,1.14)*autumn[1],rr(0.7,1.1)*autumn[2]);
+        edge.add(kx,groundH(kx,kz)+ky*rr(0.5,0.75),kz,
+                 rr(0,6.28),rr(0,6.28),rr(0,6.28),
+                 ks*rr(0.98,1.2),ky,ks*rr(0.98,1.2),tint.clone());
+      }
     }
 
-    // top layer so the hedge reads as one mass ~2.6m tall -- this is the part
-    // that meets the sky, so it gets the alpha-cut silhouette
     tint.setRGB(rr(0.8,1.2),rr(0.85,1.2),rr(0.75,1.05));
     crown.add(cx+rr(-0.4,0.4),gy0+rr(1.75,2.1),cz+rr(-0.4,0.4),rr(0,6.28),rr(0,6.28),rr(0,6.28),
               rr(0.92,1.3),rr(0.62,0.9),rr(0.92,1.3),tint.clone());
@@ -4111,7 +4104,7 @@ function buildClutter(){
   const openTiles=[];
   for(let gy=1;gy<G-1;gy++)for(let gx=1;gx<G-1;gx++)if(!solid[gi(gx,gy)])openTiles.push([gx,gy]);
   for(const [gx,gy] of openTiles){
-    const cx=tileX(gx),cz=tileZ(gy);
+    const cx=tileX(gx,gy),cz=tileZ(gy,gx);
     // a touch thicker than it was: grass is 24 triangles an instance
     // against a bush's six hundred, so this is the cheap half of the trade
     const n=Math.max(1,Math.round(ri(9,13)*biomeDensity(cx,cz,'grass')));
@@ -8338,19 +8331,7 @@ if(Math.abs(MAX_WADEABLE_DEPTH*0.62-(WADE_MAX-0.01))>0.002)
   console.warn('wade limits have drifted:',MAX_WADEABLE_DEPTH*0.62,'vs',WADE_MAX-0.01);
 function blocked(x,z){
   if(waterDepth(x,z)>WADE_MAX)return true;
-  const gx=worldToGX(x),gz=worldToGZ(z);
-  for(let j=-1;j<=1;j++)for(let i=-1;i<=1;i++){
-    const tx=gx+i,tz=gz+j;
-    if(tx>=G)continue;                   // east of the grid is open meadow, not wall
-    let sld=isSolid(tx,tz);
-    if(tx===EXIT_GX&&tz===EXIT_GY)sld=gateLocked?1:0;
-    if(!sld)continue;
-    const cx=tileX(tx),cz=tileZ(tz),h=T/2;
-    const nx=clamp(x,cx-h,cx+h), nz=clamp(z,cz-h,cz+h);
-    const dx=x-nx,dz=z-nz;
-    if(dx*dx+dz*dz<RADIUS*RADIUS)return true;
-  }
-  return false;
+  return blockedDry(x,z);
 }
 /* -- Leaf rafts ----------------------------------------------------
    Flooding the waterway cuts the board into four quarters. Measured from the
@@ -8363,12 +8344,7 @@ function blocked(x,z){
    somewhere useless: the leaves sit at fixed moorings, spaced along both
    arms and out in the pool, and they drift back to their mooring the moment
    nobody is aboard. Wherever you meet the bank there is a leaf within a few
-   strides, and nothing you can do strands you.
-
-   Boarding is walking onto it. Deep water is a wall, with two holes cut in
-   it: a step of water beside an unoccupied leaf, so you can get on from the
-   bank; and, once aboard, the whole channel, so the waterway becomes a road.
-   Step off onto any shore and the hole closes behind you. */
+   strides, and nothing you can do strands you. */
 const RAFT={ r:1.15, moorPull:0.55, deck:0.055, board:1.30, bobAmp:0.035 };
 /* How high the deck of a given leaf is right now, bob and all. The mesh was
    drawn on this and the player stood on the same number WITHOUT the bob, so
@@ -8411,17 +8387,20 @@ function raftAt(x,z,r){
 /* blocked() with the water clause taken out, so the player's version below
    can make its own decision about water without testing the hedges twice. */
 function blockedDry(x,z){
-  const gx=worldToGX(x),gz=worldToGZ(z);
-  for(let j=-1;j<=1;j++)for(let i=-1;i<=1;i++){
-    const tx=gx+i,tz=gz+j;
+  const {gx,gy}=worldToHex(x,z);
+  const odd=gy&1;
+  const candidates=[
+    [gx,gy],[gx+1,gy],[gx-1,gy],
+    [odd?gx+1:gx,gy+1],[odd?gx:gx-1,gy+1],
+    [odd?gx+1:gx,gy-1],[odd?gx:gx-1,gy-1]
+  ];
+  for(const [tx,tz] of candidates){
     if(tx>=G)continue;
     let sld=isSolid(tx,tz);
     if(tx===EXIT_GX&&tz===EXIT_GY)sld=gateLocked?1:0;
     if(!sld)continue;
-    const cx=tileX(tx),cz=tileZ(tz),h=T/2;
-    const nx=clamp(x,cx-h,cx+h), nz=clamp(z,cz-h,cz+h);
-    const dx=x-nx,dz=z-nz;
-    if(dx*dx+dz*dz<RADIUS*RADIUS)return true;
+    const cx=tileX(tx,tz),cz=tileZ(tz,tx);
+    if(sdHexagon(x-cx,z-cz,HEX_r)<RADIUS)return true;
   }
   return false;
 }
@@ -8629,28 +8608,47 @@ function setPips(id,pct){
 buildPips();
 
 /* minimap ------------------------------------------------------- */
+function drawHex(ctx,cx,cy,rad,fill,stroke){
+  ctx.beginPath();
+  for(let i=0;i<6;i++){
+    const a=(Math.PI/3)*i+Math.PI/6;
+    const px=cx+rad*Math.cos(a), py=cy+rad*Math.sin(a);
+    if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+  }
+  ctx.closePath();
+  if(fill){ ctx.fillStyle=fill; ctx.fill(); }
+  if(stroke){ ctx.strokeStyle=stroke; ctx.stroke(); }
+}
+
 const mapC=$('minimap');
 function drawMap(){
-  const ctx=el.map,S=mapC.width,cell=S/G;
+  const ctx=el.map,S=mapC.width;
   ctx.clearRect(0,0,S,S);
   ctx.fillStyle='rgba(8,14,7,0.55)';ctx.fillRect(0,0,S,S);
+
+  const mapX=wx=>(wx+HALFW)/(2*HALFW)*S;
+  const mapZ=wz=>(wz+HALFH)/(2*HALFH)*S;
+  const rad=(HEX_R/(2*HALFW))*S*1.05;
+
   for(let y=0;y<G;y++)for(let x=0;x<G;x++){
     if(!seen[gi(x,y)])continue;
     const s=solid[gi(x,y)];
-    ctx.fillStyle=s?'rgba(44,66,32,0.95)':'rgba(190,200,165,0.62)';
-    ctx.fillRect(x*cell,y*cell,cell+0.6,cell+0.6);
+    const hx=mapX(tileX(x,y)), hy=mapZ(tileZ(y,x));
+    const fill=s?'rgba(44,66,32,0.95)':'rgba(190,200,165,0.62)';
+    const stroke=s?'rgba(28,44,20,0.5)':'rgba(140,150,120,0.3)';
+    drawHex(ctx,hx,hy,rad,fill,stroke);
   }
   // items you've laid eyes on
   for(const it of items){
     if(it.collected||!it.seen)continue;
-    const mx=(it.x+HALF)/T*cell,my=(it.z+HALF)/T*cell;
+    const mx=mapX(it.x),my=mapZ(it.z);
     ctx.fillStyle=it.type==='stone'?'#ffcb52':(it.type==='lantern'?'#ffe9a8':
                   (it.type==='berry'?'#e0526d':'#7fe6ff'));
     ctx.beginPath();ctx.arc(mx,my,it.type==='stone'?4.5:3,0,6.283);ctx.fill();
   }
   // gate
   if(!gateLocked){
-    const mx=(GATE_X+HALF)/T*cell,my=(GATE_Z+HALF)/T*cell;
+    const mx=mapX(GATE_X),my=mapZ(GATE_Z);
     ctx.fillStyle='#fff0a0';ctx.beginPath();ctx.arc(mx,my,5.5,0,6.283);ctx.fill();
     ctx.strokeStyle='rgba(255,240,160,0.6)';ctx.lineWidth=2;
     ctx.beginPath();ctx.arc(mx,my,9,0,6.283);ctx.stroke();
@@ -8658,11 +8656,11 @@ function drawMap(){
   // crows
   for(const c of crows){
     if(c.state!=='hunt'&&c.state!=='attack')continue;
-    const mx=(c.mesh.position.x+HALF)/T*cell,my=(c.mesh.position.z+HALF)/T*cell;
+    const mx=mapX(c.mesh.position.x),my=mapZ(c.mesh.position.z);
     ctx.fillStyle='#ff5a4a';ctx.beginPath();ctx.arc(mx,my,4,0,6.283);ctx.fill();
   }
   // player
-  const px=(P.pos.x+HALF)/T*cell,py=(P.pos.z+HALF)/T*cell;
+  const px=mapX(P.pos.x),py=mapZ(P.pos.z);
   ctx.save();ctx.translate(px,py);ctx.rotate(-P.yaw);
   ctx.fillStyle='#e8c56a';
   ctx.beginPath();ctx.moveTo(0,-9);ctx.lineTo(6.5,7.5);ctx.lineTo(0,4);ctx.lineTo(-6.5,7.5);
@@ -8899,8 +8897,8 @@ function losClear(ax,az,bx,bz){
   const steps=Math.ceil(d/0.5);
   for(let i=1;i<steps;i++){
     const t=i/steps;
-    const gx=worldToGX(ax+dx*t),gz=worldToGZ(az+dz*t);
-    if(isSolid(gx,gz))return false;
+    const {gx,gy}=worldToHex(ax+dx*t,az+dz*t);
+    if(isSolid(gx,gy))return false;
   }
   return true;
 }
@@ -9355,11 +9353,14 @@ function update(dt){
   lanternHeld.visible=lanternLit;
 
   /* ---- explored tiles ---- */
-  const pgx=worldToGX(P.pos.x),pgz=worldToGZ(P.pos.z);
-  for(let j=-2;j<=2;j++)for(let i=-2;i<=2;i++){
+  const {gx:pgx,gy:pgz}=worldToHex(P.pos.x,P.pos.z);
+  const q0=pgx-((pgz-(pgz&1))/2|0), r0=pgz;
+  for(let j=-3;j<=3;j++)for(let i=-3;i<=3;i++){
     const tx=pgx+i,tz=pgz+j;
     if(tx<0||tz<0||tx>=G||tz>=G)continue;
-    if(i*i+j*j<=5)seen[gi(tx,tz)]=1;
+    const q1=tx-((tz-(tz&1))/2|0), r1=tz;
+    const dq=q1-q0, dr=r1-r0;
+    if(Math.max(Math.abs(dq),Math.abs(dr),Math.abs(dq+dr))<=2)seen[gi(tx,tz)]=1;
   }
 
   /* ---- items ---- */
@@ -9430,7 +9431,7 @@ function update(dt){
   if(gateBeam)gateBeam.material.opacity=gateLocked?0:(0.13+Math.sin(P.time*1.4)*0.035)*gateOpenAmt;
 
   /* ---- win check ---- */
-  if(!gateLocked&&P.pos.x>HALF+4.5)winGame();
+  if(!gateLocked&&(Math.hypot(P.pos.x-GATE_X,P.pos.z-GATE_Z)<2.4||P.pos.x>GATE_X+0.5))winGame();
 
   /* ---- particles ---- */
   updateLeaves(dt);updateFireflies(dt);updateMotes(dt);updateShafts(dt);
@@ -9873,7 +9874,7 @@ window.__game={
   teleport(x,z){P.pos.x=x;P.pos.z=z;},
   toCell(cx,cy){const p=cellCenter(cx,cy);P.pos.x=p.x;P.pos.z=p.z;},
   toStone(i){const s=items.filter(t=>t.type==='stone')[i||0];if(s){P.pos.x=s.x;P.pos.z=s.z;}},
-  toGate(){P.pos.x=GATE_X-3;P.pos.z=GATE_Z;},
+  toGate(){P.raft=null;P.pos.x=GATE_X-1.2;P.pos.z=GATE_Z;P.pos.y=groundH(P.pos.x,P.pos.z)+0.15;},
   giveStones(){for(const it of items)if(it.type==='stone'&&!it.collected){
       it.collected=true;hideItemMesh(it);P.stones++;}
     openGate();updateHUD();updateObjective();},
@@ -9892,12 +9893,19 @@ function loadFailed(){
   if(t)t.innerHTML='Could not load the 3D library.<br>Check your internet connection and reload.';
 }
 if(window.THREE){
-  startGame(window.THREE);
+  try{
+    startGame(window.THREE);
+  }catch(e){
+    console.error('BOOT ERROR:', e);
+    window.__pageError = e.stack || e.toString();
+  }
 }else{
   /* fall back to the ES-module build on a CDN that allows cross-origin imports */
   try{
     import('https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js')
-      .then(function(m){ startGame(m); })
+      .then(function(m){
+        try{ startGame(m); }catch(e){ console.error('BOOT ERROR:', e); window.__pageError = e.stack || e.toString(); }
+      })
       .catch(loadFailed);
   }catch(e){ loadFailed(); }
 }
