@@ -8511,7 +8511,7 @@ const FOOT_R=0.277*TORTOISE;
        The stow is a place under the dome, not a scaling of the stance: see
        the retraction in update() for why the stance itself cannot serve. */
     g.userData.homeX=x;g.userData.homeY=LEG_Y;g.userData.homeZ=z;
-    g.userData.stowX=side*(front?0.180:0.170);g.userData.stowZ=front?0.300:0.380;
+    g.userData.stowX=side*0.105;g.userData.stowZ=front?0.175:0.400;
     bodyRig.add(g);legs.push(g);
   }
   /* --- tail ---
@@ -10159,7 +10159,7 @@ function update(dt){
      beak must not be drawn -- they sat 17 cm from the lens as a dark blob --
      and the lantern's glow sprite must not either, or it floods the whole
      view from 27 cm away. Its light stays on. */
-  const tuckedIn=P.hideAmt>0.55&&!P.tpBody;
+  const tuckedIn=P.hideAmt>0.55;
   if(head)head.visible=!tuckedIn;
   if(neck)neck.visible=!tuckedIn;
   if(snout)snout.visible=!tuckedIn;
@@ -10254,19 +10254,19 @@ function update(dt){
     const tk=P.hideAmt;
     g.position.x=lerp(g.userData.homeX,g.userData.stowX,tk);
     g.position.z=lerp(g.userData.homeZ,g.userData.stowZ,tk);
-    g.position.y=g.userData.homeY+Math.max(0,Math.cos(ph))*Math.abs(legV)*0.022-tk*0.065;
-    g.scale.setScalar(1-tk*0.72);
-    g.rotation.z=-g.userData.side*0.65*tk;
+    g.position.y=g.userData.homeY+Math.max(0,Math.cos(ph))*Math.abs(legV)*0.022-tk*0.075;
+    g.scale.setScalar(1-tk*0.45);
+    g.rotation.z=-g.userData.side*0.45*tk;
     g.userData.foot.rotation.x=-g.rotation.x*0.62;   // the sole stays flat to the ground
   }
   // pulling into the shell: head and legs draw in, the world narrows
   const retract=P.hideAmt;
-  head.position.set(HEAD_AT.x,HEAD_AT.y-retract*0.080,HEAD_AT.z+retract*0.500);
-  head.scale.set(HEAD_SCALE.x,HEAD_SCALE.y,HEAD_SCALE.z).multiplyScalar(1-retract*0.72);
-  snout.position.set(SNOUT_AT.x,SNOUT_AT.y-retract*0.080,SNOUT_AT.z+retract*0.540);
-  snout.scale.setScalar(1-retract*0.75);
-  neck.position.set(0,0.256-retract*0.085,NECK_Z+retract*0.360);
-  neck.scale.setScalar(1-retract*0.75);
+  head.position.set(HEAD_AT.x,HEAD_AT.y-retract*0.055,HEAD_AT.z+retract*0.46);
+  head.scale.set(HEAD_SCALE.x,HEAD_SCALE.y,HEAD_SCALE.z).multiplyScalar(1-retract*0.35);
+  snout.position.set(SNOUT_AT.x,SNOUT_AT.y-retract*0.05,SNOUT_AT.z+retract*0.48);
+  snout.scale.setScalar(1-retract*0.4);
+  neck.position.z=NECK_Z+retract*0.13;
+  neck.scale.setScalar(1-retract*0.5);
   /* The head leads the turn. A tortoise looks where it is going, and from
      behind the animal that is most of what tells you it is the tortoise
      turning and not the world. */
