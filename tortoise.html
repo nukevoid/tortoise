@@ -345,6 +345,27 @@ function leafStamp(ctx,px,py,L,W,ang,fill){
   ctx.save();ctx.translate(px,py);ctx.rotate(ang);ctx.fillStyle=fill;
   leafPath(ctx,W,L);ctx.fill();ctx.restore();
 }
+function leafHeightStamp(ctx,px,py,L,W,ang,shade){
+  ctx.save();ctx.translate(px,py);ctx.rotate(ang);
+  // Convex parabolic profile across blade: high in center, sloping to edges
+  const hEdge=clamp(45+shade*55,0,255)|0;
+  const hMid=clamp(135+shade*110,0,255)|0;
+  const g=ctx.createLinearGradient(-W*0.55,0,W*0.55,0);
+  g.addColorStop(0,`rgb(${hEdge},${hEdge},${hEdge})`);
+  g.addColorStop(0.2,`rgb(${hMid*0.86|0},${hMid*0.86|0},${hMid*0.86|0})`);
+  g.addColorStop(0.5,`rgb(${hMid},${hMid},${hMid})`);
+  g.addColorStop(0.8,`rgb(${hMid*0.86|0},${hMid*0.86|0},${hMid*0.86|0})`);
+  g.addColorStop(1,`rgb(${hEdge},${hEdge},${hEdge})`);
+  ctx.fillStyle=g;
+  leafPath(ctx,W,L);ctx.fill();
+  // Raised midrib ridge for distinct leaf spine
+  const hRib=clamp(160+shade*95,0,255)|0;
+  ctx.strokeStyle=`rgb(${hRib},${hRib},${hRib})`;
+  ctx.lineWidth=Math.max(1.1,W*0.13);
+  ctx.lineCap='round';
+  ctx.beginPath();ctx.moveTo(0,L*0.44);ctx.lineTo(0,-L*0.45);ctx.stroke();
+  ctx.restore();
+}
 
 /* The same leaf, drawn as a leaf rather than as a coloured hole in the shape
    of one.
@@ -576,10 +597,12 @@ function makeFoliageTextures(){
       for(const [ox,oy] of [[0,0],[S,0],[-S,0],[0,S],[0,-S]]){
         // only stamp a wrapped copy when the leaf really straddles that edge
         if(x+ox<-L||x+ox>S+L||y+oy<-L||y+oy>S+L)continue;
+        // Cavity drop shadow underneath each leaf for ambient occlusion depth
+        leafStamp(c,x+ox+Math.sin(a)*1.4,y+oy+Math.cos(a)*1.4+1.8,L*1.06,W*1.12,a,'rgba(6,12,4,0.46)');
         leafDetail(c,x+ox,y+oy,L,W,a,base,sh,LY.vein);
-        leafStamp(h,x+ox,y+oy,L,W,a,'rgba('+(120+sh*110|0)+','+(120+sh*110|0)+','+(120+sh*110|0)+',0.75)');
-        // slightly shrunk so neighbouring leaves leave a hairline gap at the rim
-        leafStamp(cv,x+ox,y+oy,L*1.16,W*1.16,a,'#ffffff');
+        leafHeightStamp(h,x+ox,y+oy,L,W,a,sh);
+        // coverage mask for silhouette chewing
+        leafStamp(cv,x+ox,y+oy,L*1.04,W*1.04,a,'#ffffff');
         /* A leaf is a shade waxier than the litter behind it, and the
            young ones most -- a shade, not a sheen.
 
@@ -935,10 +958,14 @@ class IB{                                   // instance builder
    field instead gives genuinely smooth shading, and the extra subdivision then
    buys a rounder silhouette rather than merely smaller facets. */
 function blobDisp(x,y,z){
-  return 1
-    +0.19*Math.sin(x*3.1+1.2)*Math.cos(y*2.7-0.4)
-    +0.15*Math.sin(z*3.7+2.1)*Math.cos(x*2.3+1.1)
-    +0.10*Math.sin(y*4.6-0.8);
+  // Multi-lobed foliage clusters: 6-8 organic puff mounds around the crown/bush
+  const p1=Math.sin(x*2.8+0.4)*Math.cos(z*2.6+0.8);
+  const p2=Math.sin(y*3.2-0.5)*Math.cos(x*2.2-0.7);
+  const p3=Math.sin(z*3.0+1.1)*Math.cos(y*2.5+0.3);
+  const rawPuff=p1*0.48+p2*0.42+p3*0.42;
+  const puff=Math.sign(rawPuff)*Math.pow(Math.abs(rawPuff),1.35)*0.28;
+  const micro=0.05*Math.sin(x*5.2+y*4.8+z*5.0);
+  return 1.0+puff+micro;
 }
 const _bd=new THREE.Vector3(),_bt1=new THREE.Vector3(),_bt2=new THREE.Vector3(),
       _bp0=new THREE.Vector3(),_bpa=new THREE.Vector3(),_bpb=new THREE.Vector3(),
@@ -1331,6 +1358,26 @@ function patchFoliage(mat,amp,trans,rimCut,far,gb,triplanar){
            float rZ = texture2D(roughnessMap, _uvZ).g;
            roughnessFactor *= (rX * _bf.x + rY * _bf.y + rZ * _bf.z);
          #endif`);
+      sh.fragmentShader=sh.fragmentShader.replace('#include <normal_fragment_maps>',
+        `#if defined( USE_NORMALMAP ) && !defined( OBJECTSPACE_NORMALMAP )
+           vec3 tX = texture2D(normalMap, _uvX).xyz * 2.0 - 1.0;
+           vec3 tY = texture2D(normalMap, _uvY).xyz * 2.0 - 1.0;
+           vec3 tZ = texture2D(normalMap, _uvZ).xyz * 2.0 - 1.0;
+           tX.xy *= normalScale;
+           tY.xy *= normalScale;
+           tZ.xy *= normalScale;
+           vec3 vtn = normalize(vTriNorm);
+           float sx = vtn.x >= 0.0 ? 1.0 : -1.0;
+           float sy = vtn.y >= 0.0 ? 1.0 : -1.0;
+           float sz = vtn.z >= 0.0 ? 1.0 : -1.0;
+           vec3 nX = vec3(tX.z * sx, tX.y, tX.x);
+           vec3 nY = vec3(tY.x, tY.z * sy, tY.y);
+           vec3 nZ = vec3(tZ.x, tZ.y, tZ.z * sz);
+           vec3 triWorldNormal = normalize(nX * _bf.x + nY * _bf.y + nZ * _bf.z);
+           normal = normalize((viewMatrix * vec4(triWorldNormal, 0.0)).xyz);
+         #else
+           #include <normal_fragment_maps>
+         #endif`);
       if(rimCut){
         sh.fragmentShader=sh.fragmentShader.replace('#include <alphamap_fragment>',
           `#ifdef USE_ALPHAMAP
@@ -1341,7 +1388,7 @@ function patchFoliage(mat,amp,trans,rimCut,far,gb,triplanar){
            #endif
            {
              float ndv = abs(dot(normalize(vNormal), normalize(vViewPosition)));
-             diffuseColor.a = mix(diffuseColor.a, 1.0, smoothstep(0.22, 0.62, ndv));
+             diffuseColor.a = mix(diffuseColor.a, 1.0, smoothstep(0.18, 0.50, ndv));
            }`);
       }else{
         sh.fragmentShader=sh.fragmentShader.replace('#include <alphamap_fragment>',
@@ -1364,7 +1411,7 @@ function patchFoliage(mat,amp,trans,rimCut,far,gb,triplanar){
         `#include <alphamap_fragment>
          {
            float ndv = abs(dot(normalize(vNormal), normalize(vViewPosition)));
-           diffuseColor.a = mix(diffuseColor.a, 1.0, smoothstep(0.22, 0.62, ndv));
+           diffuseColor.a = mix(diffuseColor.a, 1.0, smoothstep(0.18, 0.50, ndv));
          }`);
     }
     if(trans>0){
@@ -1377,9 +1424,10 @@ function patchFoliage(mat,amp,trans,rimCut,far,gb,triplanar){
            vec3 V = normalize( vViewPosition );
            vec3 L = normalize( directionalLights[ 0 ].direction );
            float wrap = clamp( dot( -V, L ) * 0.5 + 0.5, 0.0, 1.0 );
-           float back = pow( clamp( dot( V, -L ), 0.0, 1.0 ), 2.5 );
+           float back = pow( clamp( dot( V, -L ), 0.0, 1.0 ), 2.2 );
+           vec3 scatterColor = diffuseColor.rgb * vec3(1.15, 1.25, 0.70);
            reflectedLight.indirectDiffuse += directionalLights[ 0 ].color *
-                 ( back * 1.65 + wrap * 0.18 ) * uTrans * diffuseColor.rgb;
+                 ( back * 1.85 + wrap * 0.22 ) * uTrans * scatterColor;
          }
          #endif`);
     }
@@ -3540,8 +3588,8 @@ const matBushWood=matBark.clone();
 const matBushLeaf=matLeafCard.clone();
 patchFoliage(matBushWood,0.14,0,false,DISSOLVE);      // branches
 patchFoliage(matBushLeaf,0.14,0.80,false,DISSOLVE);
-patchFoliage(matFoliage,0.045,0.30);
-patchFoliage(matFoliageCut,0.045,0.30,true);
+patchFoliage(matFoliage,0.045,0.30,false,0,null,true);
+patchFoliage(matFoliageCut,0.045,0.30,true,0,null,true);
 /* The crowns get a little more -- they are up where the air moves -- but
    not much: the trunk under them does not sway, so a crown that swung would
    come off its own tree. */
