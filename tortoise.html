@@ -985,6 +985,19 @@ function rockGeo(){
   return g;
 }
 
+/* Small woodland debris: fallen twigs and bark shards with natural crook */
+function debrisGeo(){
+  const g=new THREE.CylinderGeometry(0.012,0.020,0.36,4,2);
+  g.rotateZ(Math.PI*0.5);
+  const p=g.attributes.position;
+  for(let i=0;i<p.count;i++){
+    const x=p.getX(i), y=p.getY(i), z=p.getZ(i);
+    p.setXYZ(i, x, y*0.55 + 0.018*Math.sin(x*9.0), z + 0.022*Math.cos(x*8.0));
+  }
+  g.computeVertexNormals();
+  return g;
+}
+
 /* A leaf is never a flat card in nature: it cups across its width and droops
    along its length, which is what lets it catch a highlight and cast a curved
    shadow. Pivot sits at the stem end so instances can be rotated from the base. */
@@ -1323,6 +1336,27 @@ function patchFoliage(mat,amp,trans,rimCut,far,gb){
     +'_'+(gb?gb.drop+':'+gb.lift+':'+gb.band:'n');
 }
 const applyWind=(m,a)=>patchFoliage(m,a,0);
+
+/* Range fade for micro ground detail (small rocks, debris): only shows in
+   small range around the camera, collapsed smoothly to zero beyond uFar.
+   No discard, early-Z preserved. */
+function patchRangeFade(mat,far,band){
+  mat.onBeforeCompile=sh=>{
+    sh.uniforms.uFar={value:far||8.5};
+    sh.uniforms.uFarBand={value:band||2.5};
+    sh.vertexShader='uniform float uFar;uniform float uFarBand;\n'+
+      sh.vertexShader.replace('#include <begin_vertex>',
+        `#include <begin_vertex>
+         #ifdef USE_INSTANCING
+           vec3 wp = instanceMatrix[3].xyz;
+         #else
+           vec3 wp = modelMatrix[3].xyz;
+         #endif
+         float camD = distance(wp, cameraPosition);
+         transformed *= 1.0 - smoothstep(uFar - uFarBand, uFar, camD);`);
+  };
+  mat.customProgramCacheKey=()=>'rf_'+(far||8.5)+'_'+(band||2.5);
+}
 
 /* ═══════════════════════════════════════════════════════════════
    3. RENDERER / SCENE / LIGHTS / SKY
@@ -3366,6 +3400,7 @@ const GEO_BLOB=blobGeo(2);
 const GEO_BLOB_HIDDEN=blobGeo(1);
 const GEO_BLOB_SHADOW=GEO_BLOB_HIDDEN;   // old name, buried uses only
 const GEO_ROCK=rockGeo();
+const GEO_DEBRIS=debrisGeo();
 const GEO_GRASS=grassTuftGeo();
 
 /* Alpha-testing every leaf blob costs ~18 ms here because the hedge fills the
@@ -3949,7 +3984,7 @@ const matLily=new THREE.MeshStandardMaterial({
 patchFoliage(matLily,0.04,0.85,false,DISSOLVE);
 
 function buildClutter(){
-  const grass=new IB(),rock=new IB(),fern=new IB(),flower=new IB(),shroom=new IB(),stem=new IB(),fstem=new IB();
+  const grass=new IB(),rock=new IB(),smallRock=new IB(),debris=new IB(),fern=new IB(),flower=new IB(),shroom=new IB(),stem=new IB(),fstem=new IB();
   const bigLeaf=new IB(),stalk=new IB();
   // a broad-leaved plant: a stalk with big drooping blades you crawl beneath
   const leafTint=new THREE.Color();
@@ -3988,6 +4023,23 @@ function buildClutter(){
       const rt=new THREE.Color().setRGB(rr(0.7,1.25),rr(0.72,1.2),rr(0.68,1.15));
       const px=cx+rr(-1,1), pz=cz+rr(-1,1);
       rock.addQ(px,groundH(px,pz)-sc*0.34,pz,slopeQuat(px,pz,rr(0,6.28),1),sc,sc*0.8,sc,rt);}
+    // small rocks and debris: show only in small range around the camera
+    const nPebbles=ri(2,4);
+    for(let i=0;i<nPebbles;i++){
+      const px=cx+rr(-1.25,1.25), pz=cz+rr(-1.25,1.25);
+      if(inWater(px,pz)||waterDepth(px,pz)>0.02)continue;
+      const sc=rr(0.035,0.08);
+      const col=new THREE.Color().setRGB(rr(0.44,0.70),rr(0.42,0.66),rr(0.38,0.58));
+      smallRock.addQ(px,groundH(px,pz)-sc*0.28,pz,slopeQuat(px,pz,rr(0,6.28),0.9),sc,sc*0.7,sc,col);
+    }
+    const nDebris=ri(2,3);
+    for(let i=0;i<nDebris;i++){
+      const px=cx+rr(-1.20,1.20), pz=cz+rr(-1.20,1.20);
+      if(inWater(px,pz)||waterDepth(px,pz)>0.02)continue;
+      const sc=rr(0.45,0.95);
+      const col=new THREE.Color().setRGB(rr(0.30,0.50),rr(0.24,0.38),rr(0.18,0.28));
+      debris.addQ(px,groundH(px,pz)+0.008,pz,slopeQuat(px,pz,rr(0,6.28),0.9),sc,sc,sc,col);
+    }
     if(RNG()<0.26){const sc=rr(0.5,0.92);
       const px=cx+rr(-1.1,1.1), pz=cz+rr(-1.1,1.1), y0=groundH(px,pz)-0.04;
       const spin=rr(0,6.28);
@@ -4062,11 +4114,36 @@ function buildClutter(){
     fern.addQ(px,groundH(px,pz)-0.04,pz,slopeQuat(px,pz,rr(0,6.28),0.5),sc,sc,sc,null);
     baseDress(px,pz,0.12*sc);
   }
+  for(let i=0;i<70;i++){
+    const t=Math.pow(RNG(),0.6);
+    const px=HALF+2+t*27, pz=GATE_Z+rr(-24,24)*(0.5+t*0.9);
+    if(!meadowOK(px,pz))continue;
+    const sc=rr(0.035,0.075);
+    const col=new THREE.Color().setRGB(rr(0.44,0.70),rr(0.42,0.66),rr(0.38,0.58));
+    smallRock.addQ(px,groundH(px,pz)-sc*0.28,pz,slopeQuat(px,pz,rr(0,6.28),0.9),sc,sc*0.7,sc,col);
+    if(RNG()<0.65){
+      const dsc=rr(0.4,0.85);
+      const dcol=new THREE.Color().setRGB(rr(0.30,0.50),rr(0.24,0.38),rr(0.18,0.28));
+      debris.addQ(px+rr(-0.3,0.3),groundH(px,pz)+0.008,pz+rr(-0.3,0.3),slopeQuat(px,pz,rr(0,6.28),0.9),dsc,dsc,dsc,dcol);
+    }
+  }
   const bigLeafGeo=leafGeo(0.60,0.76,5,7,1.05,0.5);
   worldGroup.add(bigLeaf.build(bigLeafGeo,matBigLeaf,true,true));
   worldGroup.add(stalk.build(new THREE.CylinderGeometry(0.7,1,2,5),matStalk,false,true));
   worldGroup.add(grass.build(GEO_GRASS,matGrass,false,true));
   worldGroup.add(rock.build(GEO_ROCK,matRock,true,true));
+  const matSmallRock=new THREE.MeshStandardMaterial({
+    color:0x554f46,roughness:0.95,metalness:0.0,flatShading:true
+  });
+  patchRangeFade(matSmallRock,8.5,2.5);
+  worldGroup.add(smallRock.build(GEO_ROCK,matSmallRock,false,true));
+
+  const matDebris=new THREE.MeshStandardMaterial({
+    color:0x3a2c1f,roughness:0.96,metalness:0.0,flatShading:true
+  });
+  patchRangeFade(matDebris,8.5,2.5);
+  worldGroup.add(debris.build(GEO_DEBRIS,matDebris,false,true));
+
   const fernGeo=new THREE.PlaneGeometry(0.9,0.9,4,5);fernGeo.translate(0,0.45,0);
   worldGroup.add(fern.build(fernGeo,matFern,true,true));
   const flowerGeo=new THREE.PlaneGeometry(1,1,3,3);
