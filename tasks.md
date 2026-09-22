@@ -88,3 +88,9 @@ mark done tasks like - [X]
 - [X] add large fish to lake
 - [X] commit all work
 - [X] Implement mob-ai-research.md
+- [X] bug: in shell mode visible head and legs
+- [ ] bug: in 3d person view (V) upper part of legs is seen throught the shell
+- [ ] improvement: in the leaf mode we need to have ability to hide in shell
+- [ ] fix control of swing mechanic when we fliped - it hard to start swing now
+- [ ] Add spawn\ save points (4 on map) . Save progress to cooki
+- [ ] when you die - shell lefts in this place and you can find and get it
