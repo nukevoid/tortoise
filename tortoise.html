@@ -4412,6 +4412,15 @@ function makeWaterMaterial(){
                   dot(p,vec2(419.2,371.9)));
       return fract(sin(q)*43758.5453);
     }
+    float wSmoothNoise(vec2 p){
+      vec2 i=floor(p);
+      vec2 f=fract(p);
+      vec2 u=f*f*(3.0-2.0*f);
+      return mix(mix(dot(wHash3(i+vec2(0.0,0.0)).xy-0.5,f-vec2(0.0,0.0)),
+                     dot(wHash3(i+vec2(1.0,0.0)).xy-0.5,f-vec2(1.0,0.0)),u.x),
+                 mix(dot(wHash3(i+vec2(0.0,1.0)).xy-0.5,f-vec2(0.0,1.0)),
+                     dot(wHash3(i+vec2(1.0,1.0)).xy-0.5,f-vec2(1.0,1.0)),u.x),u.y);
+    }
     /* All of this is in grid units, so one radius serves every scale.
        xy is the surface tilt; z is how disturbed the water is here, which
        is the half that does the work -- see the note at the colour end. */
@@ -4496,18 +4505,34 @@ function makeWaterMaterial(){
             float rn=min(gRain,1.4)*(0.5+0.5*uRain);
             gl_FragColor.rgb+=vec3(0.105,0.118,0.124)*rn;
             a=clamp(a+rn*0.16,0.0,1.0);
-            // Short water-bank transition with organic animated shore foam
-            float shoreLap=sin(uWTime*2.4 + vWPos.x*4.0 + vWPos.z*4.0)*0.006;
-            float foamNoise=sin(vWPos.x*16.0 + vWPos.z*13.0 + uWTime*2.0)*0.35
-                           +sin(vWPos.x*32.0 - vWPos.z*27.0 - uWTime*1.5)*0.25
-                           +sin(vWPos.x*55.0 + vWPos.z*48.0 + uWTime*3.0)*0.18 + 0.45;
-            float foamBand=smoothstep(0.040+shoreLap, 0.004, vDepth) * smoothstep(0.0, 0.006, vDepth);
-            float foam=clamp(foamBand * (foamNoise*1.5 + 0.25), 0.0, 1.0);
-            vec3 foamCol=vec3(0.92, 0.96, 0.98);
-            gl_FragColor.rgb=mix(gl_FragColor.rgb, foamCol, foam*0.88);
-            a=max(a, foam*0.94);
+            // Realistic, anti-aliased organic shore foam with wave lap and cellular froth
+            float camDist=length(cameraPosition-vWPos);
+            float lodFade=clamp(1.0-(camDist-2.0)/18.0,0.0,1.0);
+
+            float lapTime=uWTime*1.5;
+            float shoreWave=sin(lapTime*2.2 - vDepth*45.0)*0.005;
+
+            vec2 foamP=vWPos.xz*2.8 + vec2(sin(lapTime*0.4)*0.25, cos(lapTime*0.35)*0.25);
+            float n1=wSmoothNoise(foamP);
+            float n2=wSmoothNoise(foamP*2.1 + vec2(lapTime*0.18, -lapTime*0.14));
+            float n3=wSmoothNoise(foamP*4.4 - vec2(-lapTime*0.22, lapTime*0.26))*lodFade;
+
+            float foamPattern=(n1*0.52 + n2*0.34 + n3*0.24) + 0.32;
+            float bubbles=smoothstep(0.16, 0.52, foamPattern + shoreWave*20.0);
+
+            float shoreEdge=smoothstep(0.0, 0.012, vDepth);
+            float foamDepth=smoothstep(0.048 + shoreWave, 0.005, vDepth);
+            float foam=foamDepth * bubbles * shoreEdge;
+
+            float frothRim=smoothstep(0.020, 0.004, vDepth) * shoreEdge * (n1*0.4 + 0.6);
+            foam=clamp(max(foam*0.88, frothRim*0.62), 0.0, 1.0);
+
+            vec3 foamCol=mix(vec3(0.88, 0.94, 0.95), vec3(0.96, 0.98, 1.0), n2*0.5 + 0.5);
+            gl_FragColor.rgb=mix(gl_FragColor.rgb, foamCol, foam*0.72);
+            a=mix(a, 0.88, foam*0.68);
+
             // Short smooth transition to transparent onto the bank
-            a*=smoothstep(0.0, 0.025, vDepth);
+            a*=smoothstep(0.0, 0.024, vDepth);
             gl_FragColor.a=clamp(a,0.0,1.0);
           }
          #include <dithering_fragment>`);
