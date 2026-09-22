@@ -7882,6 +7882,14 @@ const SFX={
     noiseHit(0.026,rr(4200,6400),1.6,0.055);
     tone(rr(300,410)-d*230,0.034+d*0.10,'sine',0.018+d*0.05,rr(210,280));
   },
+  splash(vol){
+    const v=vol||1.0;
+    // Water splash: liquid surge with body resonance, droplet spray, and wet plops
+    noiseHit(rr(0.11,0.17),rr(1200,1800),1.1,0.13*v,'bandpass');
+    noiseHit(rr(0.06,0.10),rr(2400,3600),1.5,0.065*v,'bandpass');
+    tone(rr(340,460),0.075,'sine',0.038*v,rr(180,240));
+    tone(rr(520,760),0.045,'sine',0.022*v,rr(280,360),0.04);
+  },
   pickup(){tone(680,0.14,'sine',0.14);tone(1020,0.22,'sine',0.11,null,0.08);},
   stone(){tone(523,0.3,'sine',0.16);tone(784,0.35,'sine',0.14,null,0.1);tone(1046,0.6,'sine',0.13,null,0.2);},
   /* The Hollow tightening, heard rather than read: one drone per stone taken,
@@ -8369,7 +8377,7 @@ function updateRafts(dt){
     if(!afloat)P.raft=null;                                    // ashore
   }else if(state==='play'&&!P.flipped&&afloat){
     const R=raftAt(P.pos.x,P.pos.z,RAFT.r*0.85);
-    if(R)P.raft=R;                                             // aboard
+    if(R){ P.raft=R; SFX.splash(1.2); }                       // aboard
   }
 }
 function buildRafts(){
@@ -8931,10 +8939,14 @@ function update(dt){
   const gaitSpd=Math.hypot(vFwd,omega*FOOT_R);
   P.bob+=gaitSpd*dt*7.6;
   if(gaitSpd>0.25&&Math.floor(P.bob/Math.PI)!==Math.floor(prevBob/Math.PI)){
-    const sf=surfaceAt(P.pos.x,P.pos.z);
-    if(sf==='water')SFX.stepWater(waterDepth(P.pos.x,P.pos.z));
-    else if(sf==='litter')SFX.stepLitter();
-    else SFX.step();
+    if(P.raft){
+      SFX.splash();
+    }else{
+      const sf=surfaceAt(P.pos.x,P.pos.z);
+      if(sf==='water')SFX.stepWater(waterDepth(P.pos.x,P.pos.z));
+      else if(sf==='litter')SFX.stepLitter();
+      else SFX.step();
+    }
   }
   const gait=clamp(spd/(WALK_SPEED*0.98),0,1.3);   // 1.0 at a full walk
   const bobY=Math.sin(P.bob)*0.028*gait;
@@ -9650,7 +9662,7 @@ window.__game={
   RAFTS,WAY,wayDist,wayLevelAt,blockedWorld,waterProbes,bakeWaterProbes,setView,
   mobStrike,attackTick,playerSheltered,makeThreatShadow,placeThreatShadow,
   STAGE,stageFree,stageBusy,shadowReadable,groundFavour,MOB_GROUND,GLOOM,
-  get shafts(){return shaftMesh;},get motes(){return moteMesh;},
+  get shafts(){return shaftMesh;},get motes(){return moteMesh;},SFX,
 
   press(code,down){keys[code]=!!down;},
   look(yaw,pitch){P.yaw=yaw;if(pitch!=null)P.pitch=pitch;},
