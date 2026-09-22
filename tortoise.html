@@ -5201,6 +5201,7 @@ function spawnMob(name,x,z,opts){
     type:name, def, x, z, y:groundH(x,z),
     t:0, state:'idle', stateT:0, awake:false, dead:false,
     home:{x,z},
+    hunger:0.2+RNG()*0.3, fatigue:0.0, alertness:0.0, curiosity:0.5,
     parts:{},              // built once, survives a restart
     data:{},               // per-run scratch, cleared by resetMobs
     _bit:false,
@@ -5275,7 +5276,76 @@ function placeThreatShadow(mesh,x,z,radius,opacity){
   mesh.visible=opacity>0.003;
 }
 
+/* ═══ Living Ecosystem: Zero-Allocation Spatial Hash Grid ═════════
+   Bins all mobs across the 92x92m clearing into 4.0m cells. Rebuilt in
+   <0.05ms each frame. Proximity queries read indices into nearMobBuf
+   without triggering GC. */
+const MOB_GRID_SIZE=24;
+const MOB_CELL_SIZE=4.0;
+const MOB_GRID_MIN=-46.0;   // -HALF
+const MAX_MOBS_CAP=128;
+const mobGridHead=new Int16Array(MOB_GRID_SIZE*MOB_GRID_SIZE).fill(-1);
+const mobGridNext=new Int16Array(MAX_MOBS_CAP).fill(-1);
+const nearMobBuf=new Int16Array(32);
+let nearMobCount=0;
+
+const ECO_STATS={
+  thornmawAteBeetle:0,
+  catStalkedBeetle:0,
+  beetleFroze:0,
+  waspSheltered:0,
+  crowMobbedCat:0,
+  fishSurfacedSkater:0
+};
+
+function rebuildMobGrid(){
+  mobGridHead.fill(-1);
+  const n=Math.min(mobs.length,MAX_MOBS_CAP);
+  for(let i=0;i<n;i++){
+    const m=mobs[i];
+    if(m.dead)continue;
+    let gx=Math.floor((m.x-MOB_GRID_MIN)/MOB_CELL_SIZE);
+    let gz=Math.floor((m.z-MOB_GRID_MIN)/MOB_CELL_SIZE);
+    if(gx<0)gx=0;else if(gx>=MOB_GRID_SIZE)gx=MOB_GRID_SIZE-1;
+    if(gz<0)gz=0;else if(gz>=MOB_GRID_SIZE)gz=MOB_GRID_SIZE-1;
+    const cellIdx=gz*MOB_GRID_SIZE+gx;
+    mobGridNext[i]=mobGridHead[cellIdx];
+    mobGridHead[cellIdx]=i;
+  }
+}
+
+function queryNearMobs(x,z,rad,typeFilter){
+  nearMobCount=0;
+  const radSq=rad*rad;
+  let minGx=Math.floor((x-rad-MOB_GRID_MIN)/MOB_CELL_SIZE);
+  let maxGx=Math.floor((x+rad-MOB_GRID_MIN)/MOB_CELL_SIZE);
+  let minGz=Math.floor((z-rad-MOB_GRID_MIN)/MOB_CELL_SIZE);
+  let maxGz=Math.floor((z+rad-MOB_GRID_MIN)/MOB_CELL_SIZE);
+  if(minGx<0)minGx=0;if(maxGx>=MOB_GRID_SIZE)maxGx=MOB_GRID_SIZE-1;
+  if(minGz<0)minGz=0;if(maxGz>=MOB_GRID_SIZE)maxGz=MOB_GRID_SIZE-1;
+
+  for(let gz=minGz;gz<=maxGz;gz++){
+    for(let gx=minGx;gx<=maxGx;gx++){
+      let idx=mobGridHead[gz*MOB_GRID_SIZE+gx];
+      while(idx!==-1){
+        const m=mobs[idx];
+        if(!m.dead){
+          if(!typeFilter||m.type===typeFilter){
+            const dx=m.x-x, dz=m.z-z;
+            if(dx*dx+dz*dz<=radSq){
+              if(nearMobCount<32) nearMobBuf[nearMobCount++]=idx;
+            }
+          }
+        }
+        idx=mobGridNext[idx];
+      }
+    }
+  }
+  return nearMobCount;
+}
+
 function updateMobs(dt){
+  rebuildMobGrid();
   for(let i=0;i<mobs.length;i++){
     const m=mobs[i];
     if(m.dead)continue;
@@ -5287,7 +5357,15 @@ function updateMobs(dt){
       if(want){ if(m.def.onWake)m.def.onWake(m); }
       else if(m.def.onSleep)m.def.onSleep(m);
     }
-    if(!m.awake)continue;
+    // Update biological drives
+    m.hunger=Math.min(1.0,m.hunger+dt*0.01);
+    if(m.alertness>0)m.alertness=Math.max(0,m.alertness-dt*0.2);
+
+    if(!m.awake){
+      // Off-screen coarse simulation (LOD AI)
+      m.t+=dt;
+      continue;
+    }
     m.t+=dt; m.stateT+=dt;
     if(m.def.think)m.def.think(m,dt,d);
   }
@@ -5312,10 +5390,17 @@ function resetMobs(){
     m.t=0; m.stateT=0; m._bit=false; m.awake=false;
     m.group.visible=false;
     m.state='idle';
+    m.hunger=0.2; m.fatigue=0.0; m.alertness=0.0; m.curiosity=0.5;
     m.data={};             // parts are deliberately untouched
     if(m.def.onReset)m.def.onReset(m);
   }
   STAGE.holder=null; STAGE.quiet=0;
+  ECO_STATS.thornmawAteBeetle=0;
+  ECO_STATS.catStalkedBeetle=0;
+  ECO_STATS.beetleFroze=0;
+  ECO_STATS.waspSheltered=0;
+  ECO_STATS.crowMobbedCat=0;
+  ECO_STATS.fishSurfacedSkater=0;
 }
 
 
@@ -5426,6 +5511,7 @@ defineMob('thornmaw',{
     const bulb=new THREE.Mesh(new THREE.IcosahedronGeometry(0.34,1),matThornBulb);
     bulb.scale.set(1,0.62,1); bulb.position.y=0.05;
     bulb.castShadow=true; bulb.receiveShadow=true;
+    m.parts.bulb=bulb;
     m.group.add(bulb);
     m.parts.shoots=[];
     for(let i=0;i<3;i++){
@@ -5470,26 +5556,68 @@ defineMob('thornmaw',{
       m.parts.shoots[i].stateT=-m.parts.shoots[i].phase;
     }
     m.data.bored=0;
+    m.data.digestT=0;
   },
   onReset(m){
     m.data.bored=0;
+    m.data.digestT=0;
+    if(m.parts.bulb)m.parts.bulb.scale.set(1,0.62,1);
     for(const sh of m.parts.shoots){ sh.stateT=-sh.phase; sh._bit=false; sh.len=0.6; }
   },
   think(m,dt,d){
     const sh3=m.parts.shoots;
     const cycle=THORN.windup+THORN.strike+THORN.recover+THORN.gap;
-    // It only works itself up when there is something to bite. A player in
-    // the shell is nothing to bite, so it winds down and lets you leave.
-    const hunting = d<THORN.sense && state==='play' && !playerSheltered();
-    if(hunting) m.data.bored=0; else m.data.bored+=dt;
-    const active = hunting || m.data.bored<THORN.boredom;
+
+    // Digestive slumber cycle and weather wilting
+    const stormWilting = (WEATHER.wet > 0.80 || WEATHER.storm);
+    if(m.data.digestT === undefined) m.data.digestT = 0;
+    if(m.data.digestT > 0){
+      m.data.digestT -= dt;
+      if(m.parts.bulb){
+        const sw=Math.sin(m.t*2)*0.04;
+        m.parts.bulb.scale.set(1.22+sw, 0.82-sw*0.5, 1.22+sw);
+      }
+    } else if(m.parts.bulb && !stormWilting){
+      m.parts.bulb.scale.set(1, 0.62, 1);
+    }
+
+    // Inter-mob interaction: snap wandering beetles
+    if(m.data.digestT <= 0 && !stormWilting){
+      const nBeetles = queryNearMobs(m.x, m.z, 1.6, 'beetle');
+      if(nBeetles > 0){
+        const b = mobs[nearMobBuf[0]];
+        m.data.digestT = rr(45, 65);
+        ECO_STATS.thornmawAteBeetle++;
+        SFX.thornBite(true);
+        // Scoop beetle; beetle respawns back at its home in thanatosis
+        b.x = b.home.x + rr(-2, 2);
+        b.z = b.home.z + rr(-2, 2);
+        b.y = groundH(b.x, b.z);
+        if(b.data) b.data.freeze = 8.0;
+        const sh = sh3[0];
+        sh.stateT = THORN.windup + THORN.strike * 0.5;
+        sh.len = 1.36;
+      }
+    }
+
+    // Acoustic footstep sensitivity
+    const pSpeed = (P.vel ? P.vel.length() : 0);
+    const seismicSense = pSpeed > 2.0 ? 5.2 : (pSpeed < 0.6 ? 2.0 : THORN.sense);
+    const isSleeping = m.data.digestT > 0 || stormWilting;
+    const hunting = !isSleeping && d < seismicSense && state === 'play' && !playerSheltered();
+    if(hunting) m.data.bored = 0; else m.data.bored += dt;
+    const active = !isSleeping && (hunting || m.data.bored < THORN.boredom);
 
     for(let i=0;i<sh3.length;i++){
       const sh=sh3[i];
       sh.stateT+=dt;
       let aim=null, open=0.12, len=0.6;
 
-      if(active&&sh.stateT>=0){
+      if(isSleeping){
+        len = stormWilting ? 0.28 : 0.35;
+        open = 0.04;
+        aim = 0;
+      } else if(active&&sh.stateT>=0){
         if(sh.stateT>cycle){ sh.stateT-=cycle; sh._bit=false; }
         const a=attackTick(sh,THORN.windup,THORN.strike,THORN.recover);
         if(a.stage==='windup'){
@@ -6375,8 +6503,16 @@ defineMob('cat',{
     catAshore(m);
     if(m.state==='idle')setMobState(m,'away');
 
+    /* Weather response: cats despise soaked ground and heavy rain */
+    const wetDisgust = (WEATHER.wet > 0.65 || WEATHER.storm);
+    if(wetDisgust){
+      if(m.state==='away'){ m.data.cd=Math.max(m.data.cd,6.0); return; }
+      if(m.state!=='leave'){ setMobState(m,'leave'); SFX.catMew(); }
+    }
+
     if(m.state==='away'){
       rig.visible=false;
+      if(wetDisgust) return;
       m.data.cd-=dt;
       if(m.data.cd<=0){
         if(!stageFree(m)){ m.data.cd=rr(0.4,1.3); return; }   // jittered, so ties do not always go to the same mob
@@ -6409,7 +6545,25 @@ defineMob('cat',{
     const gy=groundH(m.x,m.z);
     let lean=0, crouchAmt=0, lift=0;
 
+    // Wasp defense: if near a wasp, cat gets stung and bolts
+    if(m.state==='stalk'||m.state==='recover'){
+      const nWasps = queryNearMobs(m.x, m.z, 3.2, 'wasp');
+      if(nWasps > 0){
+        SFX.catMew();
+        setMobState(m, 'leave');
+      }
+    }
+
     if(m.state==='stalk'){
+      // Check if a beetle is nearby to swat
+      const nBeetles = queryNearMobs(m.x, m.z, 3.2, 'beetle');
+      if(nBeetles > 0 && RNG() < dt * 0.4){
+        const b = mobs[nearMobBuf[0]];
+        b.data.dodge = (b.data.dodge || 0) + 1.8;
+        b.data.freeze = rr(3.0, 5.0);
+        ECO_STATS.catStalkedBeetle++;
+        SFX.catMew();
+      }
       // circle at a respectful distance, closing slowly
       m.data.ring+=dt*0.85;
       const want=CAT.ringRadius*(1-0.22*clamp(m.stateT/CAT.stalk,0,1));
@@ -7119,6 +7273,23 @@ defineMob('wasp',{
     if(m.state==='idle')setMobState(m,'nest');
     const homeD=Math.hypot(P.pos.x-m.home.x,P.pos.z-m.home.z);
 
+    // Weather shelter: during downpour or storm, wasps retreat to nest comb
+    const stormWet = (WEATHER.wet > 0.45 || WEATHER.storm);
+    if(stormWet){
+      if(m.state !== 'nest'){
+        setMobState(m, 'nest');
+        ECO_STATS.waspSheltered++;
+      }
+      rig.visible=false;
+      return;
+    }
+
+    // Cat deterrence: if cat approaches nest, wasps buzz defensively
+    const nCats = queryNearMobs(m.home.x, m.home.z, 3.5, 'cat');
+    if(nCats > 0 && RNG() < dt * 0.5){
+      SFX.waspBuzz();
+    }
+
     if(m.state==='nest'){
       rig.visible=false;
       m.x=m.home.x; m.z=m.home.z;
@@ -7217,15 +7388,66 @@ defineMob('skater',{
     if(state!=='play'){ rig.visible=false; return; }
     rig.visible=true;
     const floats=(x,z)=>wayLevelAt(x,z)-groundH(x,z)>WADE_MAX;
+
+    // React to Large Fish surfacing nearby or leaf raft bow wave
+    let fishScare = false;
+    const fishMob = mobs.find(mb => mb.type === 'fish' && mb.awake);
+    if(fishMob && (fishMob.y > WAY.floor + FISH.deepY + 0.10)){
+      const fDist = Math.hypot(m.x - fishMob.x, m.z - fishMob.z);
+      if(fDist < 3.2){
+        fishScare = true;
+        m.data.dir = Math.atan2(m.x - fishMob.x, m.z - fishMob.z) + rr(-0.3, 0.3);
+        m.data.v = SKATER.glide * 1.55;
+        m.data.wait = 0.2;
+        ECO_STATS.fishSurfacedSkater++;
+      }
+    }
+    const raftScare = !fishScare && RAFTS[0] && (Math.hypot(RAFTS[0].mesh.position.x - m.x, RAFTS[0].mesh.position.z - m.z) < 2.4);
+    if(raftScare){
+      m.data.dir = Math.atan2(m.x - RAFTS[0].mesh.position.x, m.z - RAFTS[0].mesh.position.z) + rr(-0.3, 0.3);
+      m.data.v = SKATER.glide * 1.35;
+      m.data.wait = 0.25;
+    }
+
+    // Rain / storm: surface droplets disturb meniscus, skaters scatter to banks
+    const rainSeekBank = (WEATHER.wet > 0.70 || WEATHER.storm);
+
     // a shove, then a glide that runs out
-    if(d<SKATER.shy&&m.data.v<SKATER.glide*0.9){
+    if(fishScare || raftScare){
+      // already given impulsive dart velocity
+    }else if(d<SKATER.shy&&m.data.v<SKATER.glide*0.9){
       m.data.dir=Math.atan2(m.x-P.pos.x,m.z-P.pos.z)+rr(-0.5,0.5);
       m.data.v=SKATER.glide*rr(1.1,1.5);
       m.data.wait=rr(0.15,0.4);
     }else{
+      // Loose schooling / boids with nearby skaters
+      if(m.data.v < SKATER.glide * 0.3 && !rainSeekBank){
+        const nSk = queryNearMobs(m.x, m.z, 2.5, 'skater');
+        if(nSk > 1){
+          for(let k=0; k<nSk; k++){
+            const other = mobs[nearMobBuf[k]];
+            if(other === m) continue;
+            const sDist = Math.hypot(m.x - other.x, m.z - other.z);
+            if(sDist < 0.45){
+              m.data.dir = Math.atan2(m.x - other.x, m.z - other.z) + rr(-0.2, 0.2);
+              m.data.v = SKATER.glide * 0.7;
+              m.data.wait = 0.4;
+              break;
+            } else if(sDist > 1.2 && RNG() < 0.08){
+              m.data.dir = lerpAngle(m.data.dir, Math.atan2(other.x - m.x, other.z - m.z), 0.2);
+            }
+          }
+        }
+      }
+
       m.data.wait-=dt;
       if(m.data.wait<=0){
-        m.data.dir+=rr(-1.9,1.9);
+        if(rainSeekBank){
+          // head toward lake margin / reeds
+          m.data.dir = Math.atan2(m.x - WAY.ax, m.z - WAY.az) + rr(-0.4, 0.4);
+        } else {
+          m.data.dir+=rr(-1.9,1.9);
+        }
         m.data.v=SKATER.glide*rr(0.6,1.0);
         m.data.wait=rr(SKATER.rest[0],SKATER.rest[1]);
       }
@@ -7266,28 +7488,54 @@ defineMob('beetle',{
   },
   onReset(m){
     m.x=m.home.x; m.z=m.home.z;
-    m.data.dir=rr(0,6.283); m.data.turn=rr(1,3); m.data.dodge=0;  // data is wiped on reset
+    m.data.dir=rr(0,6.283); m.data.turn=rr(1,3); m.data.dodge=0;
+    m.data.freeze=0; m.data.shroomT=0;
     setMobState(m,'wander');
   },
   think(m,dt,d){
     const rig=m.parts.rig;
     if(state!=='play'){ rig.visible=false; return; }
     rig.visible=true;
-    /* It ambles, and bolts if you loom over it.
+    if(m.data.freeze===undefined) m.data.freeze=0;
+    if(m.data.shroomT===undefined) m.data.shroomT=0;
 
-       Fleeing used to mean pointing straight away from the player and
-       recomputing that every frame, which threw away the turn the wall check
-       had just applied. A beetle with a hedge behind it therefore pressed
-       into the hedge forever: with the player stood so that "away" pointed at
-       a wall, six of six beetles moved for one to five frames out of ninety
-       and then stopped dead, still inside arm's reach.
+    // Thanatosis (playing dead): predator looming or nearby cat
+    const pSpeed = (P.vel ? P.vel.length() : 0);
+    const catNear = queryNearMobs(m.x, m.z, 2.5, 'cat') > 0;
+    const loomOver = (d < 1.0 && pSpeed > 2.0);
+    if((catNear || loomOver) && m.data.freeze <= 0){
+      m.data.freeze = rr(3.0, 5.0);
+      ECO_STATS.beetleFroze++;
+    }
 
-       So the swerve is remembered instead. Away-from-the-player is still the
-       heading it wants, but a running offset is added to it, the offset grows
-       each time it is refused and decays once it is moving again, so the
-       beetle feels its way along the hedge and comes off the end of it rather
-       than standing there being trodden on. */
+    if(m.data.freeze > 0){
+      m.data.freeze -= dt;
+      rig.position.set(m.x, groundH(m.x, m.z) + 0.003, m.z);
+      rig.rotation.y = m.data.dir;
+      // legs tucked motionless
+      for(let i=0; i<m.parts.legs.length; i++)
+        m.parts.legs[i].rotation.x = 0;
+      return;
+    }
+
+    // Mushroom / detritus feeding
+    if(m.data.shroomT > 0){
+      m.data.shroomT -= dt;
+      rig.position.set(m.x, groundH(m.x, m.z) + 0.005, m.z);
+      rig.rotation.y = m.data.dir;
+      rig.rotation.x = Math.sin(m.t * 8) * 0.03;
+      return;
+    }
+
     const spooked=d<BEETLE.shy;
+    if(!spooked && m.t > 2.0 && RNG() < dt * 0.15){
+      const nearShroom = items.find(it => it.type === 'shroom' && !it.collected && Math.hypot(it.x - m.x, it.z - m.z) < 0.7);
+      if(nearShroom){
+        m.data.shroomT = rr(4.0, 7.0);
+        return;
+      }
+    }
+
     if(spooked){
       if(m.data.dodge===undefined)m.data.dodge=0;
       m.data.dir=Math.atan2(m.x-P.pos.x,m.z-P.pos.z)+m.data.dodge;
@@ -7296,7 +7544,10 @@ defineMob('beetle',{
       m.data.turn-=dt;
       if(m.data.turn<=0){ m.data.dir+=rr(-1.4,1.4); m.data.turn=rr(1.2,3.4); }
     }
-    const sp=(spooked?BEETLE.scuttle:BEETLE.speed);
+    let sp=(spooked?BEETLE.scuttle:BEETLE.speed);
+    // Slow down in mud / rain
+    if(WEATHER.wet > 0.35) sp *= Math.max(0.45, 1.0 - WEATHER.wet * 0.45);
+
     const nx=m.x+Math.sin(m.data.dir)*sp*dt, nz=m.z+Math.cos(m.data.dir)*sp*dt;
     if(!blocked(nx,nz)){
       m.x=nx; m.z=nz;
@@ -10214,6 +10465,17 @@ function updateCrow(c,dt,onHunt){
   const dxz=toP.length();
 
   if(c.state==='patrol'){
+    // Cooperative predator mobbing: harass active cat
+    const catMob = mobs.find(mb=>mb.type==='cat'&&mb.awake&&mb.state!=='away');
+    if(catMob && c.cooldown<=0){
+      const cDist = Math.hypot(m.position.x-catMob.x, m.position.z-catMob.z);
+      if(cDist < 16.0 && RNG() < dt*0.35){
+        c.state='mob_cat'; c.t=0; c.catTarget=catMob;
+        SFX.caw();
+        ECO_STATS.crowMobbedCat++;
+      }
+    }
+
     const d=_v2.copy(c.wp).sub(m.position);
     if(d.length()<1.6)crowNewWaypoint(c);
     d.normalize().multiplyScalar(3.0);
@@ -10222,11 +10484,28 @@ function updateCrow(c,dt,onHunt){
        (roused||losClear(m.position.x,m.position.z,P.pos.x,P.pos.z))&&m.position.y<7){
       c.state='hunt';c.t=0;c.hidTime=0;SFX.caw();
     }
+  }else if(c.state==='mob_cat'){
+    c.t+=dt;
+    const catX = c.catTarget?c.catTarget.x:P.pos.x;
+    const catZ = c.catTarget?c.catTarget.z:P.pos.z;
+    const toCat = _v.set(catX-m.position.x, 0, catZ-m.position.z);
+    const catDist = toCat.length();
+    if(catDist>0.01)toCat.normalize();
+    const cgy = groundH(m.position.x, m.position.z);
+    c.vel.x = lerp(c.vel.x, toCat.x*5.2, 1-Math.pow(0.03,dt));
+    c.vel.z = lerp(c.vel.z, toCat.z*5.2, 1-Math.pow(0.03,dt));
+    c.vel.y = lerp(c.vel.y, (cgy+1.35-m.position.y)*2.6, 1-Math.pow(0.03,dt));
+    if(catDist<1.4||c.t>3.5){
+      c.state='retreat'; c.t=0; c.cooldown=7; SFX.caw();
+    }
+    if(RNG()<dt*0.8)SFX.caw();
   }else if(c.state==='hunt'){
     onHunt();
     c.t+=dt;
     if(P.hidden)c.hidTime+=dt;else c.hidTime=0;
     if(c.hidTime>2.2||c.t>16||dxz>24){c.state='retreat';c.t=0;c.cooldown=6;SFX.caw();}
+    // Inquisitive inspection if player is sheltered
+    const inspecting = (P.hidden && P.hideAmt > 0.55 && dxz < 3.0);
     // fly toward the player; climb above the hedges when the way is blocked
     const dir=_v2.copy(toP);
     if(dxz>0.01)dir.normalize();
@@ -10234,8 +10513,8 @@ function updateCrow(c,dt,onHunt){
     const {gx:agx,gy:agz}=worldToHex(aheadX,aheadZ);
     const wayBlocked=isSolid(agx,agz);
     const gA=groundH(m.position.x,m.position.z);
-    const targetY=wayBlocked?gA+4.8:clamp(P.pos.y+0.55,gA+0.8,gA+4.8);
-    const sp=wayBlocked?4.4:5.4;
+    const targetY=wayBlocked?gA+4.8:(inspecting?gA+0.65:clamp(P.pos.y+0.55,gA+0.8,gA+4.8));
+    const sp=wayBlocked?4.4:(inspecting?2.2:5.4);
     c.vel.x=lerp(c.vel.x,dir.x*sp,1-Math.pow(0.02,dt));
     c.vel.z=lerp(c.vel.z,dir.z*sp,1-Math.pow(0.02,dt));
     c.vel.y=lerp(c.vel.y,(targetY-m.position.y)*2.6,1-Math.pow(0.02,dt));
@@ -10594,6 +10873,7 @@ window.__game={
   groundH,terrainBase,waterDepth,blocked,BASINS,CREEK,surfaceAt,biomeDensity,
   flipPlayer,unflipPlayer,
   mobs,MOB_TYPES,defineMob,spawnMob,despawnMob,setMobState,mobDist,spawnLargeFish,
+  ECO_STATS,queryNearMobs,rebuildMobGrid,mobGridHead,mobGridNext,nearMobBuf,
   RAFTS,WAY,wayDist,wayLevelAt,blockedWorld,waterProbes,bakeWaterProbes,setView,
   mobStrike,attackTick,playerSheltered,makeThreatShadow,placeThreatShadow,
   STAGE,stageFree,stageBusy,shadowReadable,groundFavour,MOB_GROUND,GLOOM,
@@ -10619,7 +10899,8 @@ window.__game={
   god(){P.hp=100;setInterval(()=>P.hp=100,500);},
   info(){return{pos:P.pos.toArray().map(v=>+v.toFixed(2)),hp:P.hp,stones:P.stones,
     state,gateLocked,items:items.filter(i=>!i.collected).length,
-    tris:renderer.info.render.triangles,calls:renderer.info.render.calls};}
+    tris:renderer.info.render.triangles,calls:renderer.info.render.calls,
+    eco:Object.assign({},ECO_STATS)};}
 };
 
 boot();

@@ -87,4 +87,4 @@ mark done tasks like - [X]
 - [X] do research for more intersting AI for al mobs (don't implement, only research in MD). Thay has to interact and fill like thay life their life
 - [X] add large fish to lake
 - [X] commit all work
-- [ ] Implement mob-ai-research.md
+- [X] Implement mob-ai-research.md
