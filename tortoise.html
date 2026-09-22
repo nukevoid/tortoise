@@ -2285,19 +2285,22 @@ function hexNeighbors(gx,gy){
 }
 
 function sdHexagon(px,pz,r){
-  px=Math.abs(px); pz=Math.abs(pz);
-  const R=r*1.1547005383792515;
-  const d1=px-r;
-  const d2=0.8660254037844386*px+0.5*pz-r;
-  if(d1<=0&&d2<=0) return Math.max(d1,d2);
-  if(pz>R) return Math.hypot(px,pz-R);
-  const cx0=r, cz0=0.5*R;
-  if(px>=r&&pz>=cz0) return Math.hypot(px-cx0,pz-cz0);
-  return Math.max(d1,d2);
+  const kx=-0.8660254037844386, ky=0.5, kz=0.5773502691896257;
+  let p_x=Math.abs(pz), p_y=Math.abs(px);
+  const dot=kx*p_x + ky*p_y;
+  if(dot<0.0){
+    p_x -= 2.0*dot*kx;
+    p_y -= 2.0*dot*ky;
+  }
+  const clamped_x=Math.max(-kz*r, Math.min(kz*r, p_x));
+  p_x -= clamped_x;
+  p_y -= r;
+  const d=Math.hypot(p_x, p_y);
+  return p_y>0 ? d : -d;
 }
 
-const worldToGX=(x,z)=>z!==undefined?worldToHex(x,z).gx:Math.floor((x+HALFW)/COL_STEP);
-const worldToGZ=(z,x)=>x!==undefined?worldToHex(x,z).gy:Math.floor((z+HALFH)/ROW_STEP);
+const worldToGX=(x,z)=>worldToHex(x,z!==undefined?z:0).gx;
+const worldToGZ=(z,x)=>worldToHex(x!==undefined?x:0,z).gy;
 const cellCenter=(cx,cy)=>({x:tileX(2*cx+1,2*cy+1),z:tileZ(2*cy+1,2*cx+1)});
 const isSolid=(gx,gy)=>(gx<0||gy<0||gx>=G||gy>=G)?1:solid[gi(gx,gy)];
 
@@ -3425,7 +3428,7 @@ function wetPools(){
   const AO_R=1;                     // contact shading only — one tile either way
   for(let i=0;i<p.count;i++){
     const wx=p.getX(i), wz=-p.getY(i);
-    const gx=worldToGX(wx), gz=worldToGZ(wz);
+    const {gx, gy: gz}=worldToHex(wx, wz);
     let occ=0, tot=0;
     for(let j=-AO_R;j<=AO_R;j++)for(let k=-AO_R;k<=AO_R;k++){
       const d2=j*j+k*k;
@@ -3979,10 +3982,10 @@ function buildHedges(){
     tint.setRGB(rr(0.70,1.10)*autumn[0],rr(0.76,1.12)*autumn[1],rr(0.68,1.05)*autumn[2]);
     core.add(cx,gy0+0.92,cz,0,rr(0,6.28),0,HEX_r*0.95,1.02,HEX_r*0.95,tint.clone());
     for(const f of faces){
-      const out=rr(0.85,1.06), side=rr(-0.45,0.45)*HEX_R;
+      const out=rr(0.80,0.95), side=rr(-0.40,0.40)*HEX_R;
       const tx_dir=-f[1], tz_dir=f[0];
       const fx=cx+f[0]*HEX_r*out+tx_dir*side, fz=cz+f[1]*HEX_r*out+tz_dir*side;
-      const fs=rr(0.78,1.08), fy=fs*rr(0.90,1.22);
+      const fs=rr(0.72,0.98), fy=fs*rr(0.90,1.20);
       tint.setRGB(rr(0.72,1.18)*autumn[0],rr(0.78,1.14)*autumn[1],rr(0.7,1.1)*autumn[2]);
       if(RNG()<0.48){
         const spf=RNG()<0.72?sp0:(sp0+1+(RNG()<0.5?0:1))%3;
@@ -3990,7 +3993,7 @@ function buildHedges(){
       }else{
         edge.add(fx,groundH(fx,fz)+fy*rr(0.5,0.78),fz,
                  rr(0,6.28),rr(0,6.28),rr(0,6.28),
-                 fs*rr(0.98,1.22),fy,fs*rr(0.98,1.22),tint.clone());
+                 fs*rr(0.95,1.18),fy,fs*rr(0.95,1.18),tint.clone());
       }
       if(RNG()<0.5)baseDress(fx,fz,fs*rr(0.26,0.40));
     }
@@ -4002,12 +4005,12 @@ function buildHedges(){
       const o2=(n2[0]<0||n2[1]<0||n2[0]>=G||n2[1]>=G||!isSolid(n2[0],n2[1]));
       if(o1&&o2){
         const vang=Math.PI/6+k*Math.PI/3;
-        const kx=cx+Math.cos(vang)*HEX_R*0.95, kz=cz+Math.sin(vang)*HEX_R*0.95;
-        const ks=rr(0.60,0.86), ky=ks*rr(0.88,1.14);
+        const kx=cx+Math.cos(vang)*HEX_R*0.88, kz=cz+Math.sin(vang)*HEX_R*0.88;
+        const ks=rr(0.55,0.78), ky=ks*rr(0.88,1.14);
         tint.setRGB(rr(0.72,1.18)*autumn[0],rr(0.78,1.14)*autumn[1],rr(0.7,1.1)*autumn[2]);
         edge.add(kx,groundH(kx,kz)+ky*rr(0.5,0.75),kz,
                  rr(0,6.28),rr(0,6.28),rr(0,6.28),
-                 ks*rr(0.98,1.2),ky,ks*rr(0.98,1.2),tint.clone());
+                 ks*rr(0.95,1.15),ky,ks*rr(0.95,1.15),tint.clone());
       }
     }
 
@@ -4017,20 +4020,20 @@ function buildHedges(){
     // leaf cards for silhouette
     // leaves that stand proud of the mass, catching light against the gloom
     for(let i=0;i<6;i++){
-      const a=rr(0,6.283), rad=rr(1.5,2.05);
+      const a=rr(0,6.283), rad=rr(0.95,1.35);
       tint.setRGB(rr(0.75,1.35),rr(0.82,1.3),rr(0.6,1.1));
       const px=cx+Math.cos(a)*rad, pz=cz+Math.sin(a)*rad;
       card.add(px,groundH(px,pz)+rr(0.35,2.35),pz,
                rr(-1.4,1.4),rr(0,6.28),rr(-1.0,1.0),
-               rr(1.0,1.8),rr(1.0,1.8),1,tint.clone());
+               rr(0.9,1.5),rr(0.9,1.5),1,tint.clone());
     }
     for(let i=0;i<7;i++){
-      const a=rr(0,6.283), rad=rr(1.1,1.75);
+      const a=rr(0,6.283), rad=rr(0.85,1.22);
       tint.setRGB(rr(0.62,1.25),rr(0.7,1.2),rr(0.55,1.1));
       const lx=cx+Math.cos(a)*rad, lz=cz+Math.sin(a)*rad;
       card.add(lx,groundH(lx,lz)+rr(0.20,2.28),lz,
                rr(-1.3,1.3),rr(0,6.28),rr(-0.8,0.8),
-               rr(0.7,1.5),rr(0.7,1.5),1,tint.clone());
+               rr(0.7,1.35),rr(0.7,1.35),1,tint.clone());
     }
     // tall trees
     const treeChance=(border?0.30:0.16)*biomeDensity(cx,cz,'tree');
@@ -4344,7 +4347,7 @@ function buildGloom(){
     tint.setRGB(rr(0.35,0.6),rr(0.42,0.62),rr(0.34,0.55));
     canopy.add(x,g0+rr(5.0,7.6),z,rr(0,6.28),rr(0,6.28),rr(0,6.28),sc,sc*0.55,sc,tint.clone());
     if(RNG()<0.35){
-      const gx=worldToGX(x),gy=worldToGZ(z);
+      const {gx,gy}=worldToHex(x,z);
       if(isSolid(gx,gy)){
         const h=rr(6,10), r=rr(0.25,0.4);
         trunk.add(x,g0-0.3+h/2,z,0,rr(0,6.28),0,r,h/2,r,null);
@@ -8395,7 +8398,6 @@ function blockedDry(x,z){
     [odd?gx+1:gx,gy-1],[odd?gx:gx-1,gy-1]
   ];
   for(const [tx,tz] of candidates){
-    if(tx>=G)continue;
     let sld=isSolid(tx,tz);
     if(tx===EXIT_GX&&tz===EXIT_GY)sld=gateLocked?1:0;
     if(!sld)continue;
@@ -8403,6 +8405,33 @@ function blockedDry(x,z){
     if(sdHexagon(x-cx,z-cz,HEX_r)<RADIUS)return true;
   }
   return false;
+}
+
+function hexWallNormal(x,z){
+  const {gx,gy}=worldToHex(x,z);
+  const odd=gy&1;
+  const candidates=[
+    [gx,gy],[gx+1,gy],[gx-1,gy],
+    [odd?gx+1:gx,gy+1],[odd?gx:gx-1,gy+1],
+    [odd?gx+1:gx,gy-1],[odd?gx:gx-1,gy-1]
+  ];
+  let bestD=999, bestCx=0, bestCz=0;
+  for(const [tx,tz] of candidates){
+    let sld=isSolid(tx,tz);
+    if(tx===EXIT_GX&&tz===EXIT_GY)sld=gateLocked?1:0;
+    if(!sld)continue;
+    const cx=tileX(tx,tz),cz=tileZ(tz,tx);
+    const d=sdHexagon(x-cx,z-cz,HEX_r);
+    if(d<bestD){ bestD=d; bestCx=cx; bestCz=cz; }
+  }
+  if(bestD<900){
+    const eps=0.01;
+    const dX=sdHexagon(x+eps-bestCx,z-bestCz,HEX_r)-sdHexagon(x-eps-bestCx,z-bestCz,HEX_r);
+    const dZ=sdHexagon(x-bestCx,z+eps-bestCz,HEX_r)-sdHexagon(x-bestCx,z-eps-bestCz,HEX_r);
+    const len=Math.hypot(dX,dZ);
+    if(len>0.001)return {x:dX/len, z:dZ/len};
+  }
+  return null;
 }
 /* The player's collision. The mobs and every placement routine keep the
    plain blocked(), which still treats all deep water as solid. */
@@ -9166,9 +9195,30 @@ function update(dt){
   P.vel.x=lerp(P.vel.x,wish.x,1-Math.pow(inertiaPow,dt));
   P.vel.z=lerp(P.vel.z,wish.z,1-Math.pow(inertiaPow,dt));
 
-  const nx=P.pos.x+P.vel.x*dt, nz=P.pos.z+P.vel.z*dt;
-  if(!blockedWorld(nx,P.pos.z))P.pos.x=nx;else P.vel.x*=0.2;
-  if(!blockedWorld(P.pos.x,nz))P.pos.z=nz;else P.vel.z*=0.2;
+  const mdx=P.vel.x*dt, mdz=P.vel.z*dt;
+  if(!blockedWorld(P.pos.x+mdx, P.pos.z+mdz)){
+    P.pos.x+=mdx; P.pos.z+=mdz;
+  }else{
+    const norm=hexWallNormal(P.pos.x, P.pos.z);
+    let handled=false;
+    if(norm){
+      const dot=P.vel.x*norm.x + P.vel.z*norm.z;
+      if(dot<0){
+        const slideVx=P.vel.x - dot*norm.x;
+        const slideVz=P.vel.z - dot*norm.z;
+        const sx=slideVx*dt, sz=slideVz*dt;
+        if(!blockedWorld(P.pos.x+sx, P.pos.z+sz)){
+          P.pos.x+=sx; P.pos.z+=sz;
+          P.vel.x=slideVx*0.96; P.vel.z=slideVz*0.96;
+          handled=true;
+        }
+      }
+    }
+    if(!handled){
+      if(!blockedWorld(P.pos.x+mdx, P.pos.z)) P.pos.x+=mdx; else P.vel.x*=0.2;
+      if(!blockedWorld(P.pos.x, P.pos.z+mdz)) P.pos.z+=mdz; else P.vel.z*=0.2;
+    }
+  }
   // world bounds in the meadow
   P.pos.x=clamp(P.pos.x,-HALF+0.4,HALF+60);
   P.pos.z=clamp(P.pos.z,-HALF+0.4,HALF-0.4);
@@ -9612,7 +9662,8 @@ function updateCrow(c,dt,onHunt){
     const dir=_v2.copy(toP);
     if(dxz>0.01)dir.normalize();
     const aheadX=m.position.x+dir.x*1.4, aheadZ=m.position.z+dir.z*1.4;
-    const wayBlocked=isSolid(worldToGX(aheadX),worldToGZ(aheadZ));
+    const {gx:agx,gy:agz}=worldToHex(aheadX,aheadZ);
+    const wayBlocked=isSolid(agx,agz);
     const gA=groundH(m.position.x,m.position.z);
     const targetY=wayBlocked?gA+4.8:clamp(P.pos.y+0.55,gA+0.8,gA+4.8);
     const sp=wayBlocked?4.4:5.4;
@@ -9643,7 +9694,8 @@ function updateCrow(c,dt,onHunt){
   m.position.x=clamp(m.position.x,-HALF+1,HALF-1);
   m.position.z=clamp(m.position.z,-HALF+1,HALF-1);
   // push out of hedges when flying low
-  if(m.position.y<cg+3.4&&isSolid(worldToGX(m.position.x),worldToGZ(m.position.z)))
+  const {gx:cgx,gy:cgz}=worldToHex(m.position.x,m.position.z);
+  if(m.position.y<cg+3.4&&isSolid(cgx,cgz))
     m.position.y=lerp(m.position.y,cg+4.6,1-Math.pow(0.02,dt));
   // face travel direction
   if(c.vel.lengthSq()>0.05){
@@ -9905,7 +9957,12 @@ function placeRiskCaches(){
      berries and three glowcaps are scattered as before, and the six caches
      put back the eleven that were taken out. */
   const standing=mobs.filter(m=>m.type==='thornmaw'||m.type==='wasp')
-    .map(m=>({m,d:dist[worldToGZ(m.home.z)*N+worldToGX(m.home.x)]}))
+    .map(m=>{
+      const {gx,gy}=worldToHex(m.home.x,m.home.z);
+      const cx=Math.floor((gx-1)/2), cy=Math.floor((gy-1)/2);
+      const d=(cx>=0&&cy>=0&&cx<N&&cy<N)?dist[cy*N+cx]:-1;
+      return {m,d};
+    })
     .sort((a,b)=>(a.d<0?1e9:a.d)-(b.d<0?1e9:b.d))    // the ones on the way first
     .slice(0,6).map(o=>o.m);
   if(!standing.length)return 0;
@@ -9972,6 +10029,7 @@ window.__game={
   mobStrike,attackTick,playerSheltered,makeThreatShadow,placeThreatShadow,
   STAGE,stageFree,stageBusy,shadowReadable,groundFavour,MOB_GROUND,GLOOM,
   get shafts(){return shaftMesh;},get motes(){return moteMesh;},SFX,
+  hexWallNormal,sdHexagon,solid,gi,hexNeighbors,isSolid,tileX,tileZ,G,HEX_r,HEX_R,worldToHex,
 
   press(code,down){keys[code]=!!down;},
   look(yaw,pitch){P.yaw=yaw;if(pitch!=null)P.pitch=pitch;},

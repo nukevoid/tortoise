@@ -80,6 +80,6 @@ mark done tasks like - [X]
 - [X] make foam more realistic and not so pixelated
 - [X] change map tiles to hexagonal, adapt current map to new tile system
 - [X] show small part of map in minimap, orient it with rotation of tortoise
-- [ ] test and fix all map colllision \ visual corelation and map tracebility
+- [X] test and fix all map colllision \ visual corelation and map tracebility
 - [ ] turtoise has to move legs when rotates
 -
