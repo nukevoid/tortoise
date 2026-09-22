@@ -69,7 +69,7 @@ mark done tasks like - [X]
 - [X] in V mode when hides in SHell: additional shel apiars around the body - fix it
 - [X] in V mode uppar part of the legs visible thought shell
 - [X] in swing flipped animation rotation has to be oposite to movement
-- [ ] add smooth water - bank intersection
+- [X] add smooth water - bank intersection
 - [ ] add small rocks and debris that shows only in small range 
 - [ ] sunbeam visibility has to depend on weather 
 - [ ] on leaf change sound from steps to water splahes
