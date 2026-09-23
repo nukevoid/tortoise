@@ -92,20 +92,6 @@
   #crosshair{position:absolute;left:50%;top:50%;width:6px;height:6px;margin:-3px 0 0 -3px;
     border-radius:50%;background:rgba(255,255,255,.55);box-shadow:0 0 6px rgba(0,0,0,.8);opacity:.6}
 
-  /* How much longer you can hold your breath in there. It lives under the
-     reticle rather than in the corner because it only matters in the second
-     you are deciding whether to stay in, and it is hidden whenever it is
-     full and you are out -- a meter that is always on screen stops being
-     read. */
-  /* the shell has no clock any more; kept only so the rule is visible in
-     one place if it is ever wanted back */
-  #breath{display:none;position:absolute;left:50%;top:50%;width:104px;height:5px;
-    margin:18px 0 0 -52px;border-radius:3px;background:rgba(255,255,255,.16);
-    border:1px solid rgba(0,0,0,.45);box-sizing:border-box;
-    box-shadow:0 0 6px rgba(0,0,0,.55);opacity:0;transition:opacity .22s ease}
-  #breath>i{display:block;height:100%;width:100%;border-radius:2px;
-    background:linear-gradient(90deg,#cbb98a,#efe3bd);transition:width .08s linear}
-  #breath.low>i{background:linear-gradient(90deg,#b4472e,#e08152)}
 
   #mapwrap{position:absolute;right:18px;top:16px;padding:8px}
   #minimap{display:block;border-radius:8px;image-rendering:auto}
@@ -1450,7 +1436,6 @@ function patchFoliage(mat,amp,trans,rimCut,far,gb,triplanar){
   mat.customProgramCacheKey=()=>'fol'+amp+'_'+trans+'_'+(rimCut?1:0)+'_'+(far||0)
     +'_'+(gb?gb.drop+':'+gb.lift+':'+gb.band:'n')+'_'+(triplanar?1:0);
 }
-const applyWind=(m,a)=>patchFoliage(m,a,0);
 
 /* Range fade for micro ground detail (small rocks, debris): only shows in
    small range around the camera, collapsed smoothly to zero beyond uFar.
@@ -2321,8 +2306,6 @@ function sdHexagon(px,pz,r){
   return p_y>0 ? d : -d;
 }
 
-const worldToGX=(x,z)=>worldToHex(x,z!==undefined?z:0).gx;
-const worldToGZ=(z,x)=>worldToHex(x!==undefined?x:0,z).gy;
 const cellCenter=(cx,cy)=>({x:tileX(2*cx+1,2*cy+1),z:tileZ(2*cy+1,2*cx+1)});
 const isSolid=(gx,gy)=>(gx<0||gy<0||gx>=G||gy>=G)?1:solid[gi(gx,gy)];
 
@@ -3727,7 +3710,6 @@ function buildGroundDressing(){
 const worldGroup=new THREE.Group();scene.add(worldGroup);
 
 const treeBases=[];
-const _twUp=new THREE.Vector3(0,1,0), _twDir=new THREE.Vector3(), _twQ=new THREE.Quaternion();
 
 /* ═══ Bushes, grown rather than stacked ════════════════════════════
    The old hedge was a pile of displaced spheres, and it read as one. These
@@ -3963,7 +3945,6 @@ function buildHedges(){
   const proto=buildBushSpecies();
   const woodIB=[new IB(),new IB(),new IB(),new IB()],
         leafIB=[new IB(),new IB(),new IB(),new IB()];
-  const THICKET=3;
   /* Two instancers for the same shape, because half of them are buried.
 
      `core` is the mass inside the tile: never seen, only there to guarantee
@@ -3987,13 +3968,6 @@ function buildHedges(){
     const y=groundH(x,z)-0.05-(sink||0), rot=rr(0,6.283);
     woodIB[sp].add(x,y,z,0,rot,0,sc,syy,sc,null);
     leafIB[sp].add(x,y,z,0,rot,0,sc,syy,sc,tc);
-  };
-  /* ...and one that lies a plant along a given direction rather than
-     turning it at random, which is what a gap-filler has to do. */
-  const placeAlong=(x,z,sx,sy,sz,yaw,sp,tc)=>{
-    const y=groundH(x,z)-0.05;
-    woodIB[sp].add(x,y,z,0,yaw,0,sx,sy,sz,null);
-    leafIB[sp].add(x,y,z,0,yaw,0,sx,sy,sz,tc);
   };
   for(let gy=0;gy<G;gy++)for(let gx=0;gx<G;gx++){
     if(!solid[gi(gx,gy)])continue;
@@ -5387,9 +5361,6 @@ function despawnMob(m){
   if(m.group.parent)m.group.parent.remove(m.group);
   const i=mobs.indexOf(m);
   if(i>=0)mobs.splice(i,1);
-}
-function clearMobs(){
-  for(const m of mobs.slice()) despawnMob(m);
 }
 /* Restart puts every mob back where it started rather than rebuilding them:
    the meshes are the expensive part and none of them move home. */
@@ -6925,15 +6896,6 @@ function flipRollOffset(){
   const k=clamp(P.flipRightT/FLIP.rightTime,0,1);
   return -FLIP.shellR*P.flipDir*FLIP.tipAngle*(1-k*k*(3-2*k));
 }
-function flipLift(){
-  /* A body rolling on a round dome keeps its centre the same height above
-     the ground; it was dipping as it leaned, which is what a hinge does, not
-     a roll. A tortoise's back is a shallow dome rather than a true circle,
-     so a little of the dip is kept. */
-  if(P.flipPhase!=='right')return FLIP.lift*(1-0.06*P.flipAngle*P.flipAngle);
-  const k=clamp(P.flipRightT/FLIP.rightTime,0,1);
-  return FLIP.lift*(1-k)+Math.sin(k*Math.PI)*FLIP.hop;
-}
 
 
 /* ═══ Weather ══════════════════════════════════════════════════════
@@ -8431,14 +8393,6 @@ const FOOT_R=0.277*TORTOISE;
   shellMesh.position.set(0,0.165,0.30);
   shellMesh.castShadow=true;shellMesh.receiveShadow=true;
   bodyRig.add(shellMesh);
-  // scutes — a ring of plates plus a central row, so it reads as a tortoise
-  const plate=new THREE.SphereGeometry(1,10,8);
-  const addScute=(x,y,z,sx,sy,sz,ry)=>{
-    const m=new THREE.Mesh(plate,scuteMat);
-    m.position.set(x,y,z);m.scale.set(sx,sy,sz);m.rotation.y=ry||0;
-    m.castShadow=true;bodyRig.add(m);
-  };
-  // the texture carries the plates; no extra bumps needed
   // plastron rim
   const rim=new THREE.Mesh(new THREE.TorusGeometry(0.30,0.030,8,30),scuteMat);
   rim.rotation.x=Math.PI/2;rim.position.set(0,0.10,0.30);rim.scale.set(1,1.2,1);

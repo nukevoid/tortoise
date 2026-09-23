@@ -97,5 +97,5 @@ mark done tasks like - [X]
 - [X] Add spawn\ save points (4 on map) . Save progress to cooki
 - [X] when you die - shell lefts in this place and you can find and get it
 - [X] separate danger indication from demage indication
-- [ ] cleanup unused and old code
+- [X] cleanup unused and old code
 
