@@ -98,4 +98,5 @@ mark done tasks like - [X]
 - [X] when you die - shell lefts in this place and you can find and get it
 - [X] separate danger indication from demage indication
 - [X] cleanup unused and old code
+- [X] make spawnpoint small egg nests
 

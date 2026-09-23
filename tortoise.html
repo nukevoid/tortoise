@@ -9535,24 +9535,40 @@ function drawMap(){
     ctx.stroke();
   }
 
-  // save points
+  // save points (egg nests)
   for(const sp of SAVE_POINTS){
     const dx=sp.x-P.pos.x, dz=sp.z-P.pos.z;
     if(dx*dx+dz*dz>R_DRAW_SQ)continue;
     const isAct=(activeSavePointId===sp.id);
     const discovered=sp.discovered||isAct;
-    const rad=(isAct ? 6.0 : 4.2)/scale;
     ctx.save();
     ctx.translate(sp.x,sp.z);
-    ctx.rotate(Math.PI/4);
-    ctx.fillStyle=isAct ? '#ffd700' : (discovered ? '#4ade80' : '#475569');
-    ctx.fillRect(-rad*0.5,-rad*0.5,rad,rad);
-    ctx.strokeStyle=isAct ? '#ffffff' : (discovered ? '#166534' : '#1e293b');
-    ctx.lineWidth=1.3/scale;
-    ctx.strokeRect(-rad*0.5,-rad*0.5,rad,rad);
+
+    // Nest rim & bowl
+    const nestR=(isAct ? 5.2 : 3.8)/scale;
+    ctx.beginPath();
+    ctx.arc(0,0,nestR,0,6.283);
+    ctx.fillStyle=isAct ? 'rgba(60, 42, 24, 0.85)' : (discovered ? 'rgba(40, 52, 30, 0.8)' : 'rgba(30, 41, 59, 0.7)');
+    ctx.fill();
+    ctx.strokeStyle=isAct ? '#ffd700' : (discovered ? '#4ade80' : '#64748b');
+    ctx.lineWidth=(isAct ? 1.6 : 1.2)/scale;
+    ctx.stroke();
+
+    // Central oval egg
+    const eggRx=(isAct ? 1.8 : 1.3)/scale;
+    const eggRy=(isAct ? 2.5 : 1.8)/scale;
+    ctx.beginPath();
+    ctx.ellipse(0,0,eggRx,eggRy,0.25,0,6.283);
+    ctx.fillStyle=isAct ? '#fff6d6' : (discovered ? '#f5eee2' : '#94a3b8');
+    ctx.fill();
+    ctx.strokeStyle=isAct ? '#d97706' : (discovered ? '#166534' : '#334155');
+    ctx.lineWidth=0.9/scale;
+    ctx.stroke();
+
+    // Active pulse ring
     if(isAct){
       ctx.beginPath();
-      ctx.arc(0,0,(7.5+1.5*Math.sin(P.time*4.0))/scale,0,6.283);
+      ctx.arc(0,0,(7.5+1.8*Math.sin(P.time*3.5))/scale,0,6.283);
       ctx.strokeStyle='rgba(255,215,0,0.65)';
       ctx.lineWidth=1.4/scale;
       ctx.stroke();
@@ -9757,13 +9773,13 @@ $('dead').addEventListener('click',restart);
 $('win').addEventListener('click',restart);
 
 /* ═══════════════════════════════════════════════════════════════
-   12b. SAVE POINTS & SANCTUARIES
+   12b. SAVE POINTS & EGG NESTS
    ═══════════════════════════════════════════════════════════════ */
 const SAVE_POINTS = [
-  { id: 0, name: 'Southern Glade', cell: [1, 0], x: -33.8, z: -32.65, yaw: -Math.PI / 2, discovered: false },
-  { id: 1, name: 'North-West Thicket', cell: [2, 11], x: -26.65, z: 16.89, yaw: 0, discovered: false },
-  { id: 2, name: 'Lake Haven', cell: [10, 7], x: 14.95, z: -1.13, yaw: -Math.PI / 2, discovered: false },
-  { id: 3, name: 'Sun Gate Approach', cell: [14, 14], x: 35.75, z: 30.4, yaw: -Math.PI * 0.35, discovered: false }
+  { id: 0, name: 'Southern Glade Nest', cell: [1, 0], x: -33.8, z: -32.65, yaw: -Math.PI / 2, discovered: false },
+  { id: 1, name: 'North-West Thicket Nest', cell: [2, 11], x: -26.65, z: 16.89, yaw: 0, discovered: false },
+  { id: 2, name: 'Lake Haven Nest', cell: [10, 7], x: 14.95, z: -1.13, yaw: -Math.PI / 2, discovered: false },
+  { id: 3, name: 'Sun Gate Nest', cell: [14, 14], x: 35.75, z: 30.4, yaw: -Math.PI * 0.35, discovered: false }
 ];
 
 let activeSavePointId = null;
@@ -9774,86 +9790,112 @@ function buildSavePoints(){
   savePointGroup = new THREE.Group();
   scene.add(savePointGroup);
 
-  const daisGeo = new THREE.CylinderGeometry(1.6, 1.8, 0.14, 24);
-  const runeGeo = new THREE.RingGeometry(0.7, 1.3, 24);
-  runeGeo.rotateX(-Math.PI / 2);
-  const pedGeo = new THREE.CylinderGeometry(0.32, 0.42, 0.52, 8);
-  const gemGeo = new THREE.OctahedronGeometry(0.22, 0);
-  const haloGeo = new THREE.RingGeometry(1.35, 1.55, 32);
+  // Shared geometries for nest hollow, rim, and clutch
+  const scrapeGeo = new THREE.CylinderGeometry(0.70, 0.78, 0.04, 24);
+  const rimGeo = new THREE.TorusGeometry(0.70, 0.09, 8, 28);
+  rimGeo.rotateX(Math.PI / 2);
+  const mossGeo = new THREE.TorusGeometry(0.60, 0.05, 6, 24);
+  mossGeo.rotateX(Math.PI / 2);
+  const eggGeo = new THREE.SphereGeometry(0.10, 16, 12);
+  const haloGeo = new THREE.RingGeometry(0.85, 1.35, 32);
   haloGeo.rotateX(-Math.PI / 2);
 
-  const matDais = new THREE.MeshStandardMaterial({
-    color: 0x3e4538,
-    roughness: 0.92,
-    metalness: 0.08
+  const matScrape = new THREE.MeshStandardMaterial({
+    color: 0x3d2e1e,
+    roughness: 0.95,
+    metalness: 0.04
   });
-  const matPed = new THREE.MeshStandardMaterial({
-    color: 0x485040,
-    roughness: 0.88,
-    metalness: 0.10
+  const matRim = new THREE.MeshStandardMaterial({
+    color: 0x4a3826,
+    roughness: 0.90,
+    metalness: 0.06
   });
+
+  const eggConfigs = [
+    { x: 0.00, z: 0.00, y: 0.040, rot: [0.10, 0.20, 0.05] },       // central egg
+    { x: -0.13, z: 0.07, y: 0.032, rot: [-0.35, 0.50, 0.35] },     // front-left
+    { x: 0.14, z: 0.05, y: 0.032, rot: [0.25, -0.40, -0.30] },    // front-right
+    { x: -0.05, z: -0.14, y: 0.026, rot: [-0.42, 0.30, -0.18] },  // back-left
+    { x: 0.11, z: -0.09, y: 0.029, rot: [0.32, -0.55, 0.28] }     // back-right
+  ];
 
   for(const sp of SAVE_POINTS){
     const gy = groundH(sp.x, sp.z);
     const g = new THREE.Group();
     g.position.set(sp.x, gy, sp.z);
 
-    const dais = new THREE.Mesh(daisGeo, matDais);
-    dais.position.y = 0.06;
-    dais.receiveShadow = true;
-    g.add(dais);
+    // Nest hollow / scrape: shallow depression in rich loam
+    const scrape = new THREE.Mesh(scrapeGeo, matScrape);
+    scrape.position.y = 0.02;
+    scrape.receiveShadow = true;
+    g.add(scrape);
 
+    // Woven twig & bark circular rim around hollow
+    const rim = new THREE.Mesh(rimGeo, matRim);
+    rim.scale.set(1.0, 0.45, 1.0);
+    rim.position.y = 0.04;
+    rim.castShadow = true;
+    rim.receiveShadow = true;
+    g.add(rim);
+
+    // Soft moss / lichen bedding lining inner hollow
     const matRune = new THREE.MeshStandardMaterial({
-      color: 0x4a7882,
-      emissive: 0x1d3a44,
-      emissiveIntensity: 0.45,
-      roughness: 0.5,
-      transparent: true,
-      opacity: 0.85,
-      side: THREE.DoubleSide
+      color: 0x3e4a28,
+      roughness: 0.92,
+      metalness: 0.02
     });
-    const rune = new THREE.Mesh(runeGeo, matRune);
-    rune.position.y = 0.135;
+    const rune = new THREE.Mesh(mossGeo, matRune);
+    rune.scale.set(1.0, 0.45, 1.0);
+    rune.position.y = 0.025;
+    rune.receiveShadow = true;
     g.add(rune);
 
-    const ped = new THREE.Mesh(pedGeo, matPed);
-    ped.position.y = 0.33;
-    ped.castShadow = true;
-    ped.receiveShadow = true;
-    g.add(ped);
-
-    const matGem = new THREE.MeshStandardMaterial({
-      color: 0x5cd6c0,
-      emissive: 0x226655,
-      emissiveIntensity: 0.7,
-      roughness: 0.3,
-      metalness: 0.2
+    // Egg Clutch: warm ivory tortoise eggs nestled together
+    const matEgg = new THREE.MeshStandardMaterial({
+      color: 0xf5eee2,
+      emissive: 0x3d2b15,
+      emissiveIntensity: 0.35,
+      roughness: 0.52,
+      metalness: 0.04
     });
-    const gem = new THREE.Mesh(gemGeo, matGem);
-    gem.position.y = 0.82;
-    gem.castShadow = true;
-    g.add(gem);
 
+    const clutch = new THREE.Group();
+    clutch.position.y = 0.04;
+
+    for(let i = 0; i < eggConfigs.length; i++){
+      const cfg = eggConfigs[i];
+      const egg = new THREE.Mesh(eggGeo, matEgg);
+      egg.scale.set(0.92, 1.28, 0.92);
+      egg.position.set(cfg.x, cfg.y, cfg.z);
+      egg.rotation.set(cfg.rot[0], cfg.rot[1], cfg.rot[2]);
+      egg.castShadow = true;
+      egg.receiveShadow = true;
+      clutch.add(egg);
+    }
+    g.add(clutch);
+
+    // Warm ground aura ring
     const matHalo = new THREE.MeshBasicMaterial({
-      color: 0x4488aa,
+      color: 0xaa7733,
       transparent: true,
-      opacity: 0.25,
+      opacity: 0.14,
       side: THREE.DoubleSide,
       blending: THREE.AdditiveBlending
     });
     const halo = new THREE.Mesh(haloGeo, matHalo);
-    halo.position.y = 0.145;
+    halo.position.y = 0.015;
     g.add(halo);
 
-    const light = new THREE.PointLight(0x55aacc, 0.6, 6.0, 1.8);
-    light.position.set(0, 0.85, 0);
+    // Warm amber PointLight nestled within the clutch
+    const light = new THREE.PointLight(0xffaa33, 0.5, 6.0, 1.8);
+    light.position.set(0, 0.16, 0);
     g.add(light);
 
-    baseDress(sp.x, sp.z, 0.28, true);
+    baseDress(sp.x, sp.z, 0.35, true);
 
     sp.meshGroup = g;
-    sp.gem = gem;
-    sp.matGem = matGem;
+    sp.gem = clutch;
+    sp.matGem = matEgg;
     sp.rune = rune;
     sp.matRune = matRune;
     sp.halo = halo;
@@ -9872,31 +9914,39 @@ function updateSavePointVisuals(){
     if(!sp.matGem) continue;
     const isAct = (activeSavePointId === sp.id);
     if(isAct){
-      sp.matGem.color.setHex(0xffe680);
-      sp.matGem.emissive.setHex(0xffaa22);
-      sp.matGem.emissiveIntensity = 2.2;
+      sp.matGem.color.setHex(0xfff3db);
+      sp.matGem.emissive.setHex(0xffa228);
+      sp.matGem.emissiveIntensity = 2.0;
 
-      sp.matRune.color.setHex(0xffd573);
-      sp.matRune.emissive.setHex(0xcc8811);
-      sp.matRune.emissiveIntensity = 1.6;
+      if(sp.matRune){
+        sp.matRune.color.setHex(0x566e38);
+        sp.matRune.emissive.setHex(0x283812);
+        sp.matRune.emissiveIntensity = 0.4;
+      }
 
-      sp.matHalo.color.setHex(0xffbb33);
-      sp.light.color.setHex(0xffaa33);
-      sp.light.intensity = 2.4;
-      sp.light.distance = 9.0;
+      if(sp.matHalo) sp.matHalo.color.setHex(0xffaa33);
+      if(sp.light){
+        sp.light.color.setHex(0xffaa33);
+        sp.light.intensity = 2.2;
+        sp.light.distance = 8.0;
+      }
     }else{
-      sp.matGem.color.setHex(0x5cd6c0);
-      sp.matGem.emissive.setHex(0x226655);
-      sp.matGem.emissiveIntensity = 0.6;
+      sp.matGem.color.setHex(0xf5eee2);
+      sp.matGem.emissive.setHex(0x3d2b15);
+      sp.matGem.emissiveIntensity = 0.35;
 
-      sp.matRune.color.setHex(0x4a7882);
-      sp.matRune.emissive.setHex(0x1d3a44);
-      sp.matRune.emissiveIntensity = 0.45;
+      if(sp.matRune){
+        sp.matRune.color.setHex(0x3e4a28);
+        sp.matRune.emissive.setHex(0x000000);
+        sp.matRune.emissiveIntensity = 0.0;
+      }
 
-      sp.matHalo.color.setHex(0x4488aa);
-      sp.light.color.setHex(0x55aacc);
-      sp.light.intensity = 0.6;
-      sp.light.distance = 6.0;
+      if(sp.matHalo) sp.matHalo.color.setHex(0xaa7733);
+      if(sp.light){
+        sp.light.color.setHex(0xffaa33);
+        sp.light.intensity = 0.5;
+        sp.light.distance = 5.0;
+      }
     }
   }
 }
@@ -9906,20 +9956,23 @@ function updateSavePoints(dt){
     if(!sp.gem) continue;
     const isAct = (activeSavePointId === sp.id);
 
-    sp.gem.rotation.y += dt * (isAct ? 1.6 : 0.6);
-    sp.gem.rotation.x = Math.sin(P.time * 1.2 + sp.id) * 0.12;
-    sp.gem.position.y = 0.82 + Math.sin(P.time * (isAct ? 2.4 : 1.3) + sp.id) * 0.05;
+    // Warmth pulse on the active eggs
+    if(sp.matGem){
+      sp.matGem.emissiveIntensity = isAct
+        ? (2.0 + 0.4 * Math.sin(P.time * 2.5))
+        : 0.35;
+    }
 
     if(sp.matHalo){
       sp.matHalo.opacity = isAct
-        ? (0.45 + 0.25 * Math.sin(P.time * 3.2))
-        : (0.16 + 0.08 * Math.sin(P.time * 1.5 + sp.id));
+        ? (0.35 + 0.15 * Math.sin(P.time * 2.5))
+        : (0.12 + 0.04 * Math.sin(P.time * 1.2 + sp.id));
     }
 
     if(sp.light){
       sp.light.intensity = isAct
-        ? (2.2 + 0.3 * Math.sin(P.time * 3.0))
-        : 0.6;
+        ? (2.2 + 0.35 * Math.sin(P.time * 2.5))
+        : 0.5;
     }
 
     const d = Math.hypot(sp.x - P.pos.x, sp.z - P.pos.z);
@@ -9943,7 +9996,7 @@ function activateSavePoint(sp, silent){
   saveGame(sp.id);
   if(!silent){
     SFX.savePoint();
-    toast('Sanctuary stone awakened — journey saved.', 3.5);
+    toast('Warm egg nest claimed — journey saved.', 3.5);
   }
 }
 
