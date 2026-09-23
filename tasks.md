@@ -96,6 +96,6 @@ mark done tasks like - [X]
 - [X] fix control of swing mechanic when we fliped - it hard to start swing now
 - [X] Add spawn\ save points (4 on map) . Save progress to cooki
 - [X] when you die - shell lefts in this place and you can find and get it
-- [ ] separate danger indication from demage indication
+- [X] separate danger indication from demage indication
 - [ ] cleanup unused and old code
 

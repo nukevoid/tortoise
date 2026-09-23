@@ -6,7 +6,7 @@
 <title>Shellbound — A Tortoise's Tale</title>
 <style>
   :root{
-    --gold:#e8c56a; --green:#8fbe62; --ink:#0d120b;
+    --gold:#e8c56a; --green:#8fbe62; --ink:#0d120b; --warn:#d48448;
     --panel:rgba(14,22,12,0.62); --edge:rgba(232,197,106,0.28);
   }
   *{box-sizing:border-box}
@@ -18,10 +18,12 @@
   /* ---------- vignette + damage ---------- */
   #vignette{position:absolute;inset:0;pointer-events:none;
     background:radial-gradient(ellipse at center,rgba(0,0,0,0) 45%,rgba(0,0,0,0.55) 100%)}
-  #damage{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .35s ease;
-    background:radial-gradient(ellipse at center,rgba(150,10,10,0) 35%,rgba(160,12,12,0.75) 100%)}
+  #damage{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .22s ease;
+    background:radial-gradient(ellipse at center,rgba(220,20,20,0) 30%,rgba(210,18,18,0.45) 70%,rgba(180,10,10,0.85) 100%);
+    box-shadow:inset 0 0 60px rgba(220,20,20,0.5)}
   #hunted{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .4s ease;
-    background:radial-gradient(ellipse at center,rgba(90,0,0,0) 50%,rgba(120,0,0,0.5) 100%)}
+    background:radial-gradient(ellipse at center,rgba(0,0,0,0) 55%,rgba(212,132,72,0.35) 85%,rgba(180,85,15,0.70) 100%);
+    box-shadow:inset 0 0 50px rgba(212,132,72,0.45)}
   #shellview{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .25s ease;
     background:radial-gradient(ellipse at 50% 60%,rgba(0,0,0,0) 18%,rgba(0,0,0,0.92) 62%)}
 
@@ -39,6 +41,14 @@
     background:rgba(255,255,255,.05);transition:all .3s}
   .stone.got{background:radial-gradient(circle at 35% 30%,#fff3c4,#e8a13a);
     box-shadow:0 0 10px #e8a13a,0 0 22px rgba(232,161,58,.55);border-color:#ffe08a}
+  #dangerbadge{display:none;align-items:center;gap:7px;margin-top:9px;padding:4px 9px;border-radius:6px;
+    font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:#f6ad55;
+    background:rgba(212,132,72,0.18);border:1px solid rgba(212,132,72,0.45);
+    box-shadow:0 0 10px rgba(212,132,72,0.2)}
+  #dangerbadge.on{display:flex}
+  #dangerbadge .warn-dot{width:7px;height:7px;border-radius:50%;background:#e88a38;
+    box-shadow:0 0 8px #e88a38;animation:dangerPulse 1s ease-in-out infinite}
+  @keyframes dangerPulse{0%,100%{opacity:.5;transform:scale(0.85)}50%{opacity:1;transform:scale(1.2)}}
 
   #bars{position:absolute;left:18px;bottom:18px;padding:12px 14px;width:214px}
   /* Health and stamina are counted in things, not in percentages: five
@@ -161,6 +171,7 @@
       <div class="t">Objective</div>
       <div class="d" id="objtext">Find the three Sunstones hidden in the Hollow.</div>
       <div id="stones"><span class="stone"></span><span class="stone"></span><span class="stone"></span></div>
+      <div id="dangerbadge"><span class="warn-dot"></span><span class="warn-text">DANGER: PREDATOR NEARBY</span></div>
     </div>
 
     <div id="mapwrap" class="panel">
@@ -9425,7 +9436,7 @@ const el={
   hud:$('hud'),obj:$('objtext'),stones:$('stones').children,
   hp:$('hp').firstElementChild,sp:$('sp').firstElementChild,
   prompt:$('prompt'),toast:$('toast'),fps:$('fps'),
-  dmg:$('damage'),hunted:$('hunted'),shellview:$('shellview'),viewbtn:$('viewbtn'),
+  dmg:$('damage'),hunted:$('hunted'),dangerBadge:$('dangerbadge'),shellview:$('shellview'),viewbtn:$('viewbtn'),
   slots:document.querySelectorAll('.slot'),
   map:$('minimap').getContext('2d')
 };
@@ -10235,8 +10246,8 @@ function openGate(){
 function hurt(dmg,reason){
   if(P.hp<=0)return;
   P.hp=clamp(P.hp-dmg,0,100);P.lastHurt=0;
-  el.dmg.style.opacity=String(clamp(0.35+dmg/50,0,1));
-  setTimeout(()=>{el.dmg.style.opacity='0';},110);
+  el.dmg.style.opacity=String(clamp(0.4+dmg/40,0,1));
+  setTimeout(()=>{el.dmg.style.opacity='0';},120);
   SFX.hurt();updateHUD();
   if(P.hp<=0)die(reason);
 }
@@ -10868,11 +10879,20 @@ function update(dt){
     }
   }
 
-  /* ---- crows ---- */
-  let anyHunting=false;
-  for(const c of crows)updateCrow(c,dt,()=>{anyHunting=true;});
-  el.hunted.style.opacity=anyHunting&&!P.hidden?String(0.45+Math.sin(P.time*7)*0.2):'0';
-  if(anyHunting&&!huntedHintShown){
+  /* ---- crows & predators hunting ---- */
+  let crowHunting=false;
+  for(const c of crows)updateCrow(c,dt,()=>{crowHunting=true;});
+  let mobHunting=false;
+  for(const m of mobs){
+    if(!m.awake)continue;
+    if(m.type==='cat' && (m.state==='stalk'||m.state==='crouch'||m.state==='pounce') && mobDist(m)<CAT.noticeRange) mobHunting=true;
+    if(m.type==='heron' && (m.state==='strike'||m.state==='seize') && mobDist(m)<18) mobHunting=true;
+  }
+  const anyHunting=crowHunting||mobHunting;
+  const huntedActive=anyHunting&&!P.hidden;
+  el.hunted.style.opacity=huntedActive?String(0.55+Math.sin(P.time*6)*0.2):'0';
+  if(el.dangerBadge)el.dangerBadge.classList.toggle('on',huntedActive);
+  if(crowHunting&&!huntedHintShown){
     huntedHintShown=true;
     toast('A crow has seen you — <b>hold SPACE</b> to pull into your shell!',4);
   }
@@ -11382,6 +11402,7 @@ window.__game={
   saveGame,loadSave,clearSave,activateSavePoint,
   toSavePoint(i){ const sp=SAVE_POINTS[i||0]; if(sp){ P.pos.x=sp.x; P.pos.z=sp.z; P.pos.y=groundH(sp.x,sp.z)+EYE; } },
   die(reason){ die(reason||'thornmaw'); },
+  hurt(dmg,reason){ hurt(dmg||20,reason); },
   get deathShell(){ return deathShell; },
   hideDeathShell,droppedShellGroup,
   resetPlayer,
