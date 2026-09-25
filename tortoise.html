@@ -107,6 +107,91 @@
   #viewbtn:hover{opacity:1}
   #viewbtn.on{opacity:.95;background:rgba(232,197,106,.16)}
 
+  /* ---------- touch ----------
+     Dormant until the page sees a finger: body.touch is set by the first
+     touch, or up front on a coarse-pointer device. The left part of the
+     screen is a floating stick that appears under the thumb, the rest is
+     drag-to-look, and the buttons sit where the right thumb rests. */
+  #touch,.keys.touchkeys{display:none}
+  body.touch{touch-action:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+  body.touch .keys.donly{display:none}
+  body.touch .keys.touchkeys{display:grid}
+  body.touch #touch{display:block;position:absolute;inset:0;pointer-events:none}
+  body.touch #hud.on #touch{pointer-events:auto}
+  #stick{position:absolute;width:128px;height:128px;margin:-64px 0 0 -64px;border-radius:50%;
+    border:1.5px solid rgba(232,197,106,.35);background:rgba(10,16,8,.28);opacity:0;transition:opacity .15s;
+    pointer-events:none}
+  #stick.on{opacity:1}
+  #stick i{position:absolute;left:50%;top:50%;width:54px;height:54px;margin:-27px 0 0 -27px;border-radius:50%;
+    background:radial-gradient(circle at 40% 35%,rgba(243,230,196,.55),rgba(232,197,106,.25));
+    border:1px solid rgba(232,197,106,.6)}
+  #stick.run{border-color:rgba(166,213,100,.8);box-shadow:0 0 18px rgba(166,213,100,.35)}
+  #stickhint{position:absolute;left:calc(22px + env(safe-area-inset-left));bottom:calc(22px + env(safe-area-inset-bottom));
+    width:110px;height:110px;border-radius:50%;border:1.5px dashed rgba(232,197,106,.22);
+    display:flex;align-items:center;justify-content:center;font-size:10px;letter-spacing:.14em;
+    text-transform:uppercase;color:rgba(232,197,106,.5);pointer-events:none;transition:opacity .2s}
+  #tbtns{position:absolute;right:calc(14px + env(safe-area-inset-right));bottom:calc(14px + env(safe-area-inset-bottom));
+    width:196px;height:196px;pointer-events:none;transform-origin:100% 100%}
+  .tb{position:absolute;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    background:rgba(14,22,12,.55);border:1.5px solid rgba(232,197,106,.4);color:#f3e6c4;
+    font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;pointer-events:auto;
+    backdrop-filter:blur(4px);transition:transform .08s,background .08s,opacity .2s}
+  .tb b{font-size:22px;line-height:1.05;font-weight:400;letter-spacing:0}
+  .tb.down{transform:scale(.92);background:rgba(232,197,106,.3)}
+  .tb.off{opacity:.3}
+  .tb.hot{border-color:#ffe08a;box-shadow:0 0 16px rgba(232,197,106,.5)}
+  #tb-shell{right:0;bottom:0;width:92px;height:92px}
+  #tb-shell b{font-size:30px}
+  #tb-use{right:104px;bottom:4px;width:70px;height:70px}
+  #tb-grab{right:8px;bottom:104px;width:70px;height:70px}
+  #tb-lamp{right:98px;bottom:92px;width:56px;height:56px}
+  #tb-pause{position:absolute;left:50%;transform:translateX(-50%);top:calc(10px + env(safe-area-inset-top));
+    padding:6px 16px;font-size:12px;letter-spacing:.2em;color:var(--gold);border:1px solid var(--edge);
+    border-radius:999px;background:rgba(10,16,8,.55);pointer-events:auto}
+  body.touch #viewbtn{pointer-events:auto;opacity:.85;padding:7px 14px}
+  body.touch #hotbar{pointer-events:auto}
+  body.touch .slot .k{display:none}
+  body.touch #fps{display:none}
+  /* a tablet has the room for bigger targets */
+  body.touch:not(.compact) #tbtns{transform:scale(1.2)}
+  body.touch:not(.compact) #stick{transform:scale(1.15)}
+  /* the stick's corner is taken, so the bars go under the objective; the
+     script sets their top from the objective's height (layoutHUD) */
+  body.touch #bars,body.compact #bars{bottom:auto}
+
+  /* ---------- small screens ----------
+     body.compact is set from the viewport size (layoutHUD): a phone either
+     way up, or a desktop window made small. The HUD shrinks and moves in. */
+  body.compact #objective{left:calc(10px + env(safe-area-inset-left));top:calc(10px + env(safe-area-inset-top));
+    max-width:min(250px,40vw);padding:7px 10px}
+  body.compact #objective .t{font-size:10px}
+  body.compact #objective .d{font-size:12px}
+  body.compact #mapwrap{right:calc(10px + env(safe-area-inset-right));top:calc(10px + env(safe-area-inset-top));padding:5px}
+  body.compact #minimap{width:112px!important;height:112px!important}
+  body.compact #mapwrap .cap{display:none}
+  body.compact #viewbtn{right:calc(10px + env(safe-area-inset-right));top:calc(140px + env(safe-area-inset-top))}
+  body.compact #bars{left:calc(10px + env(safe-area-inset-left));width:auto;padding:7px 10px}
+  body.compact .pip{width:15px;height:14px}
+  body.compact #hotbar{bottom:calc(12px + env(safe-area-inset-bottom));gap:8px}
+  body.compact .slot{width:50px;height:50px}
+  body.compact .slot .ic{font-size:20px}
+  body.compact #prompt{bottom:calc(76px + env(safe-area-inset-bottom));font-size:13px;white-space:normal;
+    max-width:min(420px,calc(100vw - 440px));text-align:center}
+  body.compact #toast{bottom:calc(120px + env(safe-area-inset-bottom));font-size:13.5px;width:max-content;max-width:min(520px,60vw)}
+  body.compact #dangerbadge{font-size:9px;padding:3px 7px}
+  /* upright phone: the thumbs take the whole bottom edge, so the hotbar,
+     prompt and toast go up above them */
+  @media (orientation:portrait){
+    body.touch.compact #hotbar{bottom:calc(236px + env(safe-area-inset-bottom))}
+    body.touch.compact #prompt{bottom:calc(296px + env(safe-area-inset-bottom));max-width:86vw}
+    body.touch.compact #toast{bottom:calc(344px + env(safe-area-inset-bottom));max-width:86vw}
+    body.touch.compact #objective{max-width:calc(100vw - 150px)}
+    /* the objective reaches across the middle, so pause goes under 1st/3rd */
+    body.touch.compact #tb-pause{left:auto;transform:none;right:calc(10px + env(safe-area-inset-right));
+      top:calc(180px + env(safe-area-inset-top))}
+  }
+
+
   /* ---------- overlays ---------- */
   .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
     flex-direction:column;text-align:center;pointer-events:auto;
@@ -125,6 +210,9 @@
   .cta{margin-top:26px;font-size:14px;letter-spacing:.24em;text-transform:uppercase;
     border:1px solid var(--edge);border-radius:999px;padding:13px 30px;background:rgba(232,197,106,.08);
     animation:pulse 2.4s ease-in-out infinite;cursor:pointer}
+  .startrow{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;padding:0 16px}
+  .cta.alt{animation:none;opacity:.7;background:transparent}
+  .cta.alt:hover{opacity:1}
   @keyframes pulse{0%,100%{opacity:.72;box-shadow:0 0 0 rgba(232,197,106,0)}
     50%{opacity:1;box-shadow:0 0 26px rgba(232,197,106,.22)}}
   .stat{display:flex;gap:28px;margin-top:18px;font-size:13px;opacity:.9}
@@ -139,6 +227,22 @@
   #loadtext{margin-top:12px;font-size:11px;letter-spacing:.22em;text-transform:uppercase;opacity:.6}
   .spin{font-size:46px;animation:bobbing 2s ease-in-out infinite}
   @keyframes bobbing{0%,100%{transform:translateY(0) rotate(-3deg)}50%{transform:translateY(-8px) rotate(3deg)}}
+  /* overlays scroll rather than clip when the screen is short */
+  .overlay{justify-content:safe center;overflow-y:auto;padding:max(24px,env(safe-area-inset-top)) 0 32px}
+  body.touch .overlay{touch-action:pan-y}
+  body.compact .credit{position:static;margin-top:18px}
+  body.compact .keys{padding:0 16px}
+  body.compact .keys div:nth-child(odd){white-space:normal}
+  @media (max-height:520px){
+    .overlay h1{font-size:34px}
+    .overlay p{font-size:13px;margin:10px 0}
+    .keys{margin:10px auto 4px;font-size:12.5px;gap:4px 14px}
+    /* two pairs to a row: the list is half as tall and a phone held
+       sideways fits the whole menu without scrolling */
+    body.compact .keys{grid-template-columns:auto auto auto auto;max-width:none;font-size:12px}
+    .overlay .sub{margin-top:4px}
+    .cta{margin-top:12px}
+  }
 </style>
 </head>
 <body>
@@ -151,6 +255,17 @@
   <div id="damage"></div>
 
   <div id="hud">
+    <div id="touch">
+      <div id="stickhint">Move</div>
+      <div id="stick"><i></i></div>
+      <div id="tbtns">
+        <div class="tb" id="tb-shell"><b>🐢</b>Shell</div>
+        <div class="tb" id="tb-use"><b>✋</b>Use</div>
+        <div class="tb off" id="tb-grab"><b>🤲</b>Grab</div>
+        <div class="tb off" id="tb-lamp"><b>🏮</b></div>
+      </div>
+      <div id="tb-pause">❚❚</div>
+    </div>
     <div id="crosshair"></div>
 
     <div id="objective" class="panel">
@@ -190,7 +305,15 @@
     <p>You are a small tortoise lost in the Hollow — a maze of old hedges, roots and leaning trees.
        Three <b style="color:#e8c56a">Sunstones</b> keep the Sun Gate shut. Find them, and the forest will let you go.
        Mind the crows: when they dive, pull into your shell.</p>
-    <div class="keys">
+    <div class="keys touchkeys">
+      <div>Left thumb</div><div>Crawl and turn — push to the rim to scurry</div>
+      <div>Drag on the right</div><div>Look around</div>
+      <div>🐢 Shell (hold)</div><div>Hide in shell — crows can't hurt you</div>
+      <div>🤲 Grab</div><div>Pick up what's in front of you</div>
+      <div>Slots · ✋ Use</div><div>Pick an item, tap it again to use it</div>
+      <div>🏮 · 1st/3rd</div><div>Lantern · camera view</div>
+    </div>
+    <div class="keys donly">
       <div>W S</div><div>Crawl forward and back</div>
       <div>A D</div><div>Turn</div>
       <div>Mouse</div><div>Look around</div>
@@ -202,7 +325,10 @@
       <div>V</div><div>First person / third person</div>
       <div>Esc · M · R</div><div>Pause · Mute · Restart</div>
     </div>
-    <div class="cta" id="startbtn">Click to begin</div>
+    <div class="startrow">
+      <div class="cta" id="startbtn">Play full screen</div>
+      <div class="cta alt" id="windowbtn">Play in a window</div>
+    </div>
     <div class="credit">Built with Three.js — demo level: The Hollow</div>
   </div>
 
@@ -877,6 +1003,9 @@ const _m4=new THREE.Matrix4(),_q=new THREE.Quaternion(),_e=new THREE.Euler(),
 
 /* Set below the IB class so it can be tuned in one place; see build(). */
 const CHUNK_M=28;
+/* ?dchunk=N overrides it, and ?dchunk=0 turns it off, for measuring */
+const DISSOLVE_CHUNK_M=(()=>{const q=new URLSearchParams(location.search).get('dchunk');
+  return q===null?12:+q;})();
 class IB{                                   // instance builder
   constructor(){this.a=[];}
   add(x,y,z,rx,ry,rz,sx,sy,sz,col){this.a.push([x,y,z,rx,ry,rz,sx,sy,sz,col||null]);}
@@ -910,7 +1039,13 @@ class IB{                                   // instance builder
        for CPU time and lands inside the noise.
 
        So 28 stays, and it stays on purpose. */
-    const CH=chunk||CHUNK_M;
+    /* ...except for the layers that dissolve with distance. Everything in
+       them past the dissolve distance is already invisible, and the smaller
+       the bucket the more of it the dissolve cull (15a) can hand back:
+       a 28 m bucket straddling the 15 m line is drawn whole. */
+    const farU=mat.userData&&mat.userData.farU;
+    const CH=(farU&&farU.value>0&&DISSOLVE_CHUNK_M)
+      ? Math.min(chunk||CHUNK_M,DISSOLVE_CHUNK_M) : (chunk||CHUNK_M);
     const buckets=new Map();
     for(let i=0;i<this.a.length;i++){
       const it=this.a[i];
@@ -939,6 +1074,7 @@ class IB{                                   // instance builder
       m.castShadow=!!cast;m.receiveShadow=recv!==false;
       m.frustumCulled=true;
       m.computeBoundingSphere();
+      m.userData.ibStatic=true;             // placed once and never moved; see 15a
       return m;
     };
     for(const arr of buckets.values()){
@@ -992,7 +1128,56 @@ function blobGeo(detail){
   }
   p.needsUpdate=true;
   g.setAttribute('normal',new THREE.BufferAttribute(nrm,3));
-  return g;
+  return indexGeo(g);
+}
+/* The icosahedron comes back as a triangle soup: every face has its own
+   three corners, so the 320-face blob is 960 vertices of which 183 are
+   different, and the vertex shader ran on each of them. The normals here
+   are a function of position, so the copies agree bit for bit and can be
+   shared; where they differ -- the uv seam -- they stay apart. The picture
+   is the same: a readback diff came in under the film grain's own
+   frame-to-frame noise. 320 faces: 960 -> 183 vertices; 180: 540 -> 101.
+
+   On the start-glade view, all hedges and canopies at once, 3/3:
+     0.31 MPix   14.6 -> 9.5 ms
+     1.93 MPix   24.6 -> 19.7 ms
+   The shadow pass draws the same blobs and gets the same cut. The soup is
+   kept on userData so setBlobSoup can put it back for an A/B. */
+function indexGeo(g){
+  const names=Object.keys(g.attributes);
+  const n=g.attributes.position.count;
+  const map=new Map(), keep=[], idx=new Uint32Array(n);
+  for(let i=0;i<n;i++){
+    let k='';
+    for(const nm of names){
+      const a=g.attributes[nm], s0=i*a.itemSize;
+      for(let c=0;c<a.itemSize;c++)k+=a.array[s0+c]+',';
+    }
+    let j=map.get(k);
+    if(j===undefined){j=keep.length;keep.push(i);map.set(k,j);}
+    idx[i]=j;
+  }
+  const out=new THREE.BufferGeometry();
+  for(const nm of names){
+    const a=g.attributes[nm];
+    const arr=new a.array.constructor(keep.length*a.itemSize);
+    for(let d=0;d<keep.length;d++)
+      for(let c=0;c<a.itemSize;c++)arr[d*a.itemSize+c]=a.array[keep[d]*a.itemSize+c];
+    out.setAttribute(nm,new THREE.BufferAttribute(arr,a.itemSize,a.normalized));
+  }
+  // a plain BufferAttribute: a Float32 one would quietly turn the indices into floats
+  out.setIndex(new THREE.BufferAttribute(idx,1));
+  out.computeBoundingSphere();
+  out.userData.soup=g;
+  return out;
+}
+function setBlobSoup(on){
+  scene.traverse(o=>{
+    if(!o.isMesh||!o.geometry)return;
+    const G=o.geometry;
+    if(on&&G.userData.soup){o.userData.indexed=G;o.geometry=G.userData.soup;}
+    else if(!on&&o.userData.indexed){o.geometry=o.userData.indexed;o.userData.indexed=null;}
+  });
 }
 
 function rockGeo(){
@@ -1239,12 +1424,16 @@ function patchGroundBlend(mat,gb){
 
 function patchFoliage(mat,amp,trans,rimCut,far,gb,triplanar){
   amp=amp||0; trans=trans||0;
+  /* One uniform object per material, kept on it: the dissolve cull reads
+     it to know when a chunk has shrunk to nothing, and the phone tier
+     shortens it. See 15a. */
+  const farU=mat.userData.farU={value:far||0};
   mat.onBeforeCompile=sh=>{
     sh.uniforms.uTime=windU;
     sh.uniforms.uGust=gustU;
     sh.uniforms.uAmp={value:amp};
     sh.uniforms.uWindDir=windDirU;
-    sh.uniforms.uFar={value:far||0};      // 0 = never dissolve
+    sh.uniforms.uFar=farU;                // 0 = never dissolve
     sh.uniforms.uFarBand={value:far?5.0:3.0};   // the metres it takes to shrink away
     sh.vertexShader='uniform float uTime;uniform float uAmp;uniform float uGust;uniform vec2 uWindDir;' + '\n' + sh.vertexShader.replace(
       '#include <begin_vertex>',
@@ -1441,8 +1630,9 @@ function patchFoliage(mat,amp,trans,rimCut,far,gb,triplanar){
    small range around the camera, collapsed smoothly to zero beyond uFar.
    No discard, early-Z preserved. */
 function patchRangeFade(mat,far,band){
+  const farU=mat.userData.farU={value:far||8.5};
   mat.onBeforeCompile=sh=>{
-    sh.uniforms.uFar={value:far||8.5};
+    sh.uniforms.uFar=farU;
     sh.uniforms.uFarBand={value:band||2.5};
     sh.vertexShader='uniform float uFar;uniform float uFarBand;\n'+
       sh.vertexShader.replace('#include <begin_vertex>',
@@ -2046,10 +2236,12 @@ function profReport(){
       cpuMed:_pq(h.cpu,0.5), cpuP95:_pq(h.cpu,0.95),
       gpuMed:_pq(h.gpu,0.5), gpuP95:_pq(h.gpu,0.95), n:h.gpu.length||h.cpu.length});
   }
-  /* 'scene' and 'scene+shdw' are the same pass on alternate frames, never
+  /* 'scene' and 'scene+shdw' are the same pass on different frames, never
      both in one frame, so a straight sum of the rows would invent a frame
-     that never happens. The average frame carries half of each. */
-  const half=n=>n==='scene'||n==='scene+shdw'?0.5:1;
+     that never happens. The average frame carries each in proportion to
+     how often the shadow map is redrawn: half and half, or 2:1 on a phone. */
+  const every=SHADOW.every;
+  const half=n=>n==='scene+shdw'?1/every:n==='scene'?1-1/every:1;
   const gpuTotal=rows.reduce((t,r)=>t+half(r.pass)*(r.gpuMed||0),0);
   const cpuTotal=rows.reduce((t,r)=>t+half(r.pass)*(r.cpuMed||0),0);
   // share is of the average frame, so the two scene rows are halved here too
@@ -2172,12 +2364,151 @@ function profToggle(){
   toast(PROF.overlay?'Profiler on (F2)':'Profiler off',1.2);
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   15a. LIGHT POOL, DISSOLVE CULL, PHONE TIER
+   ═══════════════════════════════════════════════════════════════
+   Light pool. three.js lights every fragment of every lit material with
+   every point light in the scene, whatever its range: the 18 in the Hollow
+   (sunstones, glowcaps, the jar, the nests, the fill on the tortoise) reach
+   3-8 m and most of them are 50 m away, and all of them were paid for on
+   every pixel -- 9.1 ms of a 30 ms frame at 1.93 MPix, three alternations.
+
+   Worse, the count is compiled into every lit shader, so a light appearing
+   or vanishing recompiles all of them. Hiding one glowcap light took one
+   frame 10.8 s. Pickups dodged it by zeroing the intensity instead, which
+   kept paying for the light; the dropped shell did not, so the first death
+   of every session changed 18 to 19 and froze.
+
+   So the scene has exactly K real lights, always there, and the emitters
+   are records that borrow them. Every PointLight made anywhere is moved to
+   a layer the camera does not see -- it still carries its position, colour
+   and intensity, and all the code that pulses or dims it keeps working --
+   and each frame the K nearest live ones lend their values to the pool.
+   A pool light changing hands fades out and back in rather than popping. */
+const LPOOL={on:true, K:4, fade:0.3, reach:30, slots:[], emit:[], t:0, ready:false};
+const HIDDEN_LAYER=31;
+const _lpV=new THREE.Vector3(), _lpC=new THREE.Vector3();
+function initLightPool(){
+  scene.traverse(o=>{ if(o.isPointLight&&!o.userData.pool)LPOOL.emit.push(o); });
+  for(const o of LPOOL.emit)o.layers.set(HIDDEN_LAYER);
+  for(let i=0;i<LPOOL.K;i++){
+    const l=new THREE.PointLight(0xffffff,0,1,2);
+    l.userData.pool=true;
+    scene.add(l);
+    LPOOL.slots.push({l,owner:null,w:0});
+  }
+  LPOOL.ready=true;
+}
+function emitterLive(o){
+  if(!(o.intensity>0))return false;
+  for(let p=o;p;p=p.parent)if(!p.visible)return false;
+  return true;
+}
+function updateLightPool(){
+  if(!LPOOL.ready||!LPOOL.on)return;
+  const now=performance.now();
+  const dt=Math.min(0.1,(now-LPOOL.t)/1000); LPOOL.t=now;
+  camera.getWorldPosition(_lpC);
+  // nearest first, counted from the edge of each light's reach
+  const cand=[];
+  for(const o of LPOOL.emit){
+    if(!emitterLive(o))continue;
+    o.getWorldPosition(_lpV);
+    const score=_lpV.distanceTo(_lpC)-(o.distance||10);
+    if(score<LPOOL.reach)cand.push({o,score});
+  }
+  cand.sort((a,b)=>a.score-b.score);
+  const want=cand.slice(0,LPOOL.K).map(c=>c.o);
+  const step=dt/LPOOL.fade;
+  for(const s of LPOOL.slots){
+    if(!s.owner)continue;
+    if(want.includes(s.owner))s.w=Math.min(1,s.w+step);
+    else if((s.w-=step)<=0){s.owner=null;s.w=0;}
+  }
+  for(const o of want){
+    if(LPOOL.slots.some(s=>s.owner===o))continue;
+    const free=LPOOL.slots.find(s=>!s.owner);
+    if(!free)break;                         // one is still fading out; next frame
+    free.owner=o; free.w=0;
+  }
+  for(const s of LPOOL.slots){
+    const l=s.l;
+    if(!s.owner){l.intensity=0;continue;}
+    s.owner.getWorldPosition(l.position);
+    l.color.copy(s.owner.color);
+    l.distance=s.owner.distance; l.decay=s.owner.decay;
+    l.intensity=s.owner.intensity*s.w;
+  }
+}
+/* The old way back, for measuring against: every emitter lit, pool dark.
+   Changing the count recompiles every lit shader, so expect a long frame. */
+function setLightPool(on){
+  LPOOL.on=!!on;
+  for(const o of LPOOL.emit)o.layers.set(on?HIDDEN_LAYER:0);
+  if(!on)for(const s of LPOOL.slots){s.l.intensity=0;s.owner=null;s.w=0;}
+}
+
+/* Dissolve cull. Grass, the branched bushes and the ground litter shrink
+   to nothing past their dissolve distance -- in the vertex shader, so a
+   chunk that has shrunk away is still submitted and every one of its
+   vertices still runs. From the first corridor that was 122 meshes and
+   1.1 M triangles drawn at zero size, and hiding them measured -2.3 ms at
+   a phone's pixel count (3/3 alternations). A chunk whose bounding sphere
+   is entirely past the distance is taken off layer 0, which drops it from
+   the shadow pass as well -- where it was casting shadows of grass that
+   was not there. Only IB chunks: they never move, so the sphere stays true. */
+const DCULL={on:true, recs:[]};
+function initDissolveCull(){
+  scene.traverse(o=>{
+    if(!o.isInstancedMesh||!o.userData.ibStatic)return;
+    const farU=o.material&&o.material.userData&&o.material.userData.farU;
+    if(!farU||!(farU.value>0))return;
+    if(!o.boundingSphere)o.computeBoundingSphere();
+    o.updateWorldMatrix(true,false);
+    const c=o.boundingSphere.center.clone().applyMatrix4(o.matrixWorld);
+    const r=o.boundingSphere.radius*o.matrixWorld.getMaxScaleOnAxis();
+    DCULL.recs.push({o,c,r,farU,culled:false});
+  });
+}
+function updateDissolveCull(){
+  camera.getWorldPosition(_lpC);
+  for(const d of DCULL.recs){
+    const out=DCULL.on&&d.c.distanceTo(_lpC)-d.r>d.farU.value;
+    if(out===d.culled)continue;
+    d.culled=out;
+    if(out)d.o.layers.disable(0); else d.o.layers.enable(0);
+  }
+}
+
+/* Phone tier. At a phone's pixel count the frame is mostly vertices, so
+   the cut that matters is drawing the geometry fewer times: the shadow map,
+   a second pass over it, is redrawn every third frame instead of every
+   second -- the texel snapping in the sun rig is what keeps a slower
+   cadence from swimming. -0.4 ms at 0.31 MPix on the Iris Xe, 3/3.
+   Adaptive resolution is on as well: on a phone a steady frame is worth
+   more than the last bit of sharpness.
+
+   Pulling the dissolve distance in from 15 m to 10.5 m was tried and cut
+   13k of 1.55M triangles, nothing measurable: what is left in front of the
+   camera is hedge and canopy, which do not dissolve. Half of it is the
+   320-face hedge blobs -- 5.4 ms of a 10 ms frame at phone resolution. */
+const PHONE={on:false, shadowEvery:3};
+const SHADOW={every:2};
+function applyPhoneTier(on){
+  on=!!on;
+  if(on===PHONE.on)return;
+  PHONE.on=on;
+  SHADOW.every=on?PHONE.shadowEvery:2;
+  POST.adaptive=on;
+}
+
 let shadowTick=0;
-const SHADOW_EVERY=2;
 function renderFrame(){
-  // re-render the shadow map on alternate frames only
+  updateLightPool();
+  updateDissolveCull();
+  // re-render the shadow map on alternate frames only (every third on a phone)
   shadowTick++;
-  renderer.shadowMap.needsUpdate=(shadowTick%SHADOW_EVERY)===0;
+  renderer.shadowMap.needsUpdate=(shadowTick%SHADOW.every)===0;
   if(!POST.on||!rtScene){renderer.setRenderTarget(null);renderer.render(scene,camera);return;}
   /* The shadow map is redrawn on alternate frames, so it is timed as its
      own pass -- averaged into the scene it would read as a cost that comes
@@ -5915,7 +6246,7 @@ defineMob('heron',{
         SFX.heronCall();
         if(!heronHintShown){
           heronHintShown=true;
-          toast('A shadow slides over the path — <b>HOLD SPACE</b>, and do not move!',4.2);
+          toast(`A shadow slides over the path — <b>${hint('HOLD SPACE','HOLD SHELL')}</b>, and do not move!`,4.2);
         }
       }
       return;
@@ -6784,7 +7115,8 @@ function flipPlayer(){
   P.hidden=false;
   P.vel.set(0,0,0);
   SFX.flipOver();
-  toast('On your back! Rock with <b>A</b> and <b>D</b> — <b>in time with the swing</b>.',4.8);
+  toast(hint('On your back! Rock with <b>A</b> and <b>D</b> — <b>in time with the swing</b>.',
+             'On your back! Rock the stick <b>left and right</b> — <b>in time with the swing</b>.'),4.8);
   return true;
 }
 function unflipPlayer(){
@@ -9096,6 +9428,9 @@ const P={
 };
 let state='loading';                // loading | menu | play | pause | dead | win
 const keys={};
+/* set once a finger has touched the page; see 12a. TOUCH CONTROLS */
+let TOUCH=false;
+const hint=(desk,touch)=>TOUCH?touch:desk;
 let gateOpenAmt=0;
 
 function resetPlayer(){
@@ -9749,6 +10084,8 @@ function startPlay(){
   state='play';show('menu',false);show('pause',false);
   el.hud.classList.add('on');
   clock.getDelta();                       // drop the paused time
+  if(wantFull)goFullscreen();
+  if(TOUCH)return;
   lock();
   setTimeout(()=>{
     if(state==='play'&&!isLocked())
@@ -9758,6 +10095,7 @@ function startPlay(){
 function pauseGame(){
   if(state!=='play')return;
   state='pause';show('pause',true);
+  touchRelease();
   if(isLocked())document.exitPointerLock();
 }
 document.addEventListener('pointerlockchange',()=>{
@@ -9765,12 +10103,198 @@ document.addEventListener('pointerlockchange',()=>{
   wasLocked=isLocked();
 });
 let wasLocked=false;
-$('startbtn').addEventListener('click',e=>{e.stopPropagation();initAudio();startPlay();});
-$('menu').addEventListener('click',()=>{initAudio();startPlay();});
+/* The menu asks full screen or not; resuming from a pause keeps the answer,
+   so an Esc that took the page out of full screen is undone on the way back. */
+let wantFull=false;
+$('startbtn').addEventListener('click',e=>{e.stopPropagation();wantFull=true;initAudio();startPlay();});
+$('windowbtn').addEventListener('click',e=>{e.stopPropagation();wantFull=false;initAudio();startPlay();});
 $('pause').addEventListener('click',()=>startPlay());
-$('app').addEventListener('click',()=>{if(state==='play'&&!isLocked())lock();});
+$('app').addEventListener('click',()=>{if(state==='play'&&!isLocked()&&!TOUCH)lock();});
 $('dead').addEventListener('click',restart);
 $('win').addEventListener('click',restart);
+
+/* ═══════════════════════════════════════════════════════════════
+   12a. TOUCH CONTROLS & SCREEN SIZE
+   ═══════════════════════════════════════════════════════════════
+   A phone drives the same `keys` table the keyboard does, so everything
+   downstream -- the turn ramp, the flip's press edges, the sprint's stamina
+   rules -- works unchanged. The stick is digital for that reason: past a
+   threshold it holds W/S/A/D, and pushed to the rim it holds Shift as well.
+   Rocking out of a flip is the stick swung left and right, which gives the
+   flip the fresh press edges it listens for.
+
+   The layer is pointer events throughout, one finger per pointerId, so the
+   stick, a look drag and a held button can all be down at once. Cancelling
+   the pointerdown stops the browser synthesising mouse events, which keeps
+   the desktop mousedown-to-use handler from firing on every tap. */
+const TC={stick:null,look:null,sx:0,sy:0,held:new Set()};
+const tEl={layer:$('touch'),stick:$('stick'),knob:$('stick').firstElementChild,hint:$('stickhint'),
+  grab:$('tb-grab'),lamp:$('tb-lamp')};
+const STICK_R=52;
+function enableTouch(){
+  if(TOUCH)return;
+  TOUCH=true;
+  document.body.classList.add('touch');
+  $('resumebtn').textContent='Tap to resume';
+  $('retrybtn').textContent='Tap to wake again';
+  $('againbtn').textContent='Tap to wander again';
+  layoutHUD();
+  if(LPOOL.ready)applyPhoneTier(true);
+}
+
+/* Full screen, and on a phone landscape too -- both best-effort: iOS
+   Safari offers neither to a page, and the game still plays inside the
+   browser chrome there. The pointer is asked for again once full screen
+   lands, since some browsers drop a lock taken during the switch. */
+function goFullscreen(){
+  const d=document.documentElement;
+  const req=d.requestFullscreen||d.webkitRequestFullscreen;
+  if(document.fullscreenElement||document.webkitFullscreenElement||!req)return;
+  let p;
+  try{p=req.call(d,{navigationUI:'hide'});}catch(e){return;}
+  if(!p||!p.then)return;
+  p.then(()=>{
+    if(TOUCH){
+      try{const o=screen.orientation;if(o&&o.lock)o.lock('landscape').catch(()=>{});}catch(e){}
+    }else if(state==='play'&&!isLocked())lock();
+  }).catch(()=>{});
+}
+function tKey(code,on){
+  if(on)TC.held.add(code);else TC.held.delete(code);
+  keys[code]=on;
+}
+function setStick(dx,dy){
+  const d=Math.hypot(dx,dy), k=d>STICK_R?STICK_R/d:1;
+  const x=dx*k/STICK_R, y=-dy*k/STICK_R;   // +y is forward
+  tEl.knob.style.transform=`translate(${dx*k}px,${dy*k}px)`;
+  /* A diagonal counts on both axes, but crawling ahead with a slightly
+     crooked thumb should not also turn: the side threshold is higher. */
+  tKey('KeyW',y>0.3);
+  tKey('KeyS',y<-0.3);
+  tKey('KeyA',x<-0.42);
+  tKey('KeyD',x>0.42);
+  const run=y>0.3&&d>=STICK_R*0.98;
+  tKey('ShiftLeft',run);
+  tEl.stick.classList.toggle('run',run);
+}
+function stickEnd(){
+  TC.stick=null;
+  tEl.stick.classList.remove('on','run');
+  tEl.hint.style.opacity='';
+  for(const c of ['KeyW','KeyS','KeyA','KeyD','ShiftLeft'])tKey(c,false);
+}
+/* Whatever the fingers are holding lets go when the game stops listening:
+   a pause, the tab going away, a death screen landing on a held button. */
+function touchRelease(){
+  for(const c of [...TC.held])keys[c]=false;
+  TC.held.clear();
+  TC.stick=TC.look=null;
+  tEl.stick.classList.remove('on','run');
+  tEl.hint.style.opacity='';
+  document.querySelectorAll('.tb.down').forEach(b=>b.classList.remove('down'));
+}
+tEl.layer.addEventListener('pointerdown',e=>{
+  if(e.target!==tEl.layer||state!=='play')return;
+  e.preventDefault();
+  if(TC.stick===null&&e.clientX<innerWidth*0.42){
+    TC.stick=e.pointerId;TC.sx=e.clientX;TC.sy=e.clientY;
+    tEl.stick.style.left=e.clientX+'px';tEl.stick.style.top=e.clientY+'px';
+    tEl.stick.classList.add('on');tEl.hint.style.opacity='0';
+    setStick(0,0);
+  }else if(TC.look===null){
+    TC.look={id:e.pointerId,x:e.clientX,y:e.clientY};
+  }else return;
+  try{tEl.layer.setPointerCapture(e.pointerId);}catch(err){}
+});
+tEl.layer.addEventListener('pointermove',e=>{
+  if(e.pointerId===TC.stick){setStick(e.clientX-TC.sx,e.clientY-TC.sy);return;}
+  const L=TC.look;
+  if(!L||e.pointerId!==L.id)return;
+  const dx=e.clientX-L.x, dy=e.clientY-L.y;
+  L.x=e.clientX;L.y=e.clientY;
+  // on your back looking around is not part of it -- see the mousemove handler
+  if(state!=='play'||P.flipped)return;
+  const s=0.0055;
+  P.yaw-=dx*s;
+  P.pitch=clamp(P.pitch-dy*s,-1.25,1.05);
+});
+function touchUp(e){
+  if(e.pointerId===TC.stick)stickEnd();
+  else if(TC.look&&e.pointerId===TC.look.id)TC.look=null;
+}
+tEl.layer.addEventListener('pointerup',touchUp);
+tEl.layer.addEventListener('pointercancel',touchUp);
+
+/* A button either holds a key while pressed (the shell) or fires once on
+   the press. On the press, not the release: a crow does not wait. */
+function touchButton(id,{hold,tap}){
+  const b=$(id);
+  const up=()=>{
+    b.classList.remove('down');
+    if(hold)tKey(hold,false);
+  };
+  b.addEventListener('pointerdown',e=>{
+    e.preventDefault();e.stopPropagation();
+    if(state!=='play')return;
+    b.classList.add('down');
+    try{b.setPointerCapture(e.pointerId);}catch(err){}
+    if(hold)tKey(hold,true);
+    if(tap)tap();
+  });
+  b.addEventListener('pointerup',up);
+  b.addEventListener('pointercancel',up);
+}
+touchButton('tb-shell',{hold:'Space'});
+touchButton('tb-use',{tap:()=>useItem()});
+touchButton('tb-grab',{tap:()=>tryPickup()});
+touchButton('tb-lamp',{tap:()=>toggleLantern()});
+$('tb-pause').addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();pauseGame();});
+/* the prompt is the other thing to reach for when something is in front of you */
+el.prompt.addEventListener('pointerdown',e=>{
+  if(!TOUCH||state!=='play')return;
+  e.preventDefault();e.stopPropagation();tryPickup();
+});
+/* Hotbar: tap a slot to pick it, tap the picked one again to use it. */
+el.slots.forEach((s,i)=>s.addEventListener('pointerdown',e=>{
+  if(!TOUCH||state!=='play')return;
+  e.preventDefault();e.stopPropagation();
+  if(P.slot===i)useItem();
+  else{P.slot=i;updateHotbar();}
+}));
+el.viewbtn.addEventListener('pointerdown',e=>{if(TOUCH)e.stopPropagation();});
+addEventListener('blur',touchRelease);
+document.addEventListener('visibilitychange',()=>{if(document.hidden)touchRelease();});
+/* called from the frame loop: grab and lantern say whether they would do
+   anything right now */
+function updateTouchHUD(){
+  if(!TOUCH)return;
+  tEl.grab.classList.toggle('off',!nearItem);
+  tEl.grab.classList.toggle('hot',!!nearItem);
+  tEl.lamp.classList.toggle('off',!P.hasLantern);
+  el.prompt.style.pointerEvents=nearItem?'auto':'none';
+}
+
+/* Screen size. Compact is a phone either way up, or a small desktop window:
+   anything under 820 wide or 600 on the short side. With touch or compact
+   the bars leave the bottom-left corner for the space under the objective
+   panel, whose height changes with its text and the danger badge -- so the
+   bars follow it rather than sitting at a guessed offset. */
+const objEl=$('objective'), barsEl=$('bars');
+function layoutHUD(){
+  const compact=innerWidth<820||Math.min(innerWidth,innerHeight)<600;
+  document.body.classList.toggle('compact',compact);
+  if(TOUCH||compact)barsEl.style.top=(objEl.offsetTop+objEl.offsetHeight+8)+'px';
+  else barsEl.style.top='';
+}
+addEventListener('resize',layoutHUD);
+if(window.ResizeObserver)new ResizeObserver(layoutHUD).observe(objEl);
+layoutHUD();
+/* Last, not next to enableTouch: on a phone this runs enableTouch during
+   boot, which calls layoutHUD, and objEl/barsEl above must exist by then.
+   Up by enableTouch it threw a ReferenceError that stopped the game from
+   loading on every touch-first device while desktops never saw it. */
+if(matchMedia('(pointer:coarse)').matches)enableTouch();
+addEventListener('touchstart',enableTouch,{passive:true,capture:true});
 
 /* ═══════════════════════════════════════════════════════════════
    12b. SAVE POINTS & EGG NESTS
@@ -9785,7 +10309,53 @@ const SAVE_POINTS = [
 let activeSavePointId = null;
 let savePointGroup = null;
 
+/* A nest is where you wake after dying, so it has to be somewhere nothing
+   can reach you. The coordinates above were picked by hand and never
+   checked against what the level puts around them: the North-West Thicket
+   nest sat 0.2m from a thorn patch, so every respawn there started at 11
+   damage a second, and the Sun Gate nest was 6.9m from a wasp nest -- out
+   of its wake radius by a step, and well inside the 11m it chases you.
+
+   The margins are the danger's own reach plus room to get your bearings:
+   a thorn patch's radius, a thorn-maw's sense range, a wasp's leash. */
+const NEST_CLEAR={thorn:2.5, thornmaw:THORN.sense+2.5, wasp:WASP.leash+1.0};
+function nestDanger(x,z){
+  if(waterDepth(x,z)>0.01)return 'water';
+  if(blocked(x,z))return 'blocked';
+  for(const h of hazards)
+    if(Math.hypot(h.x-x,h.z-z)<h.r+NEST_CLEAR.thorn)return 'thorns';
+  for(const m of mobs){
+    const lim=m.type==='thornmaw'?NEST_CLEAR.thornmaw:m.type==='wasp'?NEST_CLEAR.wasp:0;
+    if(lim&&Math.hypot(m.home.x-x,m.home.z-z)<lim)return m.type;
+  }
+  return null;
+}
+/* A nest in danger moves to the nearest open cell centre that is not, and
+   keeps its name and heading. Nearest, so it stays in the part of the map
+   it is named after; and never on top of another nest. */
+function settleSavePoints(){
+  for(const sp of SAVE_POINTS){
+    if(sp.home0)Object.assign(sp,sp.home0);       // a rebuild starts from the design
+    else sp.home0={x:sp.x,z:sp.z};
+    const why=nestDanger(sp.x,sp.z);
+    sp.moved=null;
+    if(!why)continue;
+    let best=null,bd=1e9;
+    for(const c of openCells){
+      const p=cellCenter(c[0],c[1]);
+      const d=Math.hypot(p.x-sp.x,p.z-sp.z);
+      if(d>=bd||nestDanger(p.x,p.z))continue;
+      if(SAVE_POINTS.some(o=>o!==sp&&Math.hypot(o.x-p.x,o.z-p.z)<8))continue;
+      best=p;bd=d;
+    }
+    if(!best){console.warn('[nests] no safe spot for',sp.name,'('+why+')');continue;}
+    sp.moved={why,by:+bd.toFixed(1)};
+    sp.x=+best.x.toFixed(2);sp.z=+best.z.toFixed(2);
+  }
+}
+
 function buildSavePoints(){
+  settleSavePoints();
   if(savePointGroup) scene.remove(savePointGroup);
   savePointGroup = new THREE.Group();
   scene.add(savePointGroup);
@@ -10190,12 +10760,15 @@ function tryPickup(){
     if(P.stones>=3)openGate();
     updateObjective();
   }else if(it.type==='berry'){
-    P.berries++;SFX.pickup();toast('Picked up <b>Sunberries</b> — press <b>1</b> then <b>Q</b> to eat',2.8);
+    P.berries++;SFX.pickup();toast(hint('Picked up <b>Sunberries</b> — press <b>1</b> then <b>Q</b> to eat',
+                                'Picked up <b>Sunberries</b> — tap the 🫐 slot twice to eat'),2.8);
   }else if(it.type==='shroom'){
-    P.shrooms++;SFX.pickup();toast('Picked up a <b>Glowcap</b> — press <b>2</b> then <b>Q</b> for a burst of speed',2.8);
+    P.shrooms++;SFX.pickup();toast(hint('Picked up a <b>Glowcap</b> — press <b>2</b> then <b>Q</b> for a burst of speed',
+                                'Picked up a <b>Glowcap</b> — tap the 🍄 slot twice for a burst of speed'),2.8);
   }else if(it.type==='lantern'){
     P.hasLantern=true;P.lanternOn=true;SFX.pickup();
-    toast('Found the <b>Firefly Jar</b> — press <b>F</b> to light your way',3.4);
+    toast(hint('Found the <b>Firefly Jar</b> — press <b>F</b> to light your way',
+               'Found the <b>Firefly Jar</b> — tap <b>🏮</b> to light your way'),3.4);
   }
   updateHUD();updateHotbar();
   if(activeSavePointId !== null) saveGame(activeSavePointId);
@@ -10277,18 +10850,18 @@ function die(reason){
   const retry=$('retrybtn');
   if(retry){
     if(activeSavePointId !== null && SAVE_POINTS[activeSavePointId]){
-      retry.textContent = 'Press R to awaken at ' + SAVE_POINTS[activeSavePointId].name;
+      retry.textContent = hint('Press R','Tap') + ' to awaken at ' + SAVE_POINTS[activeSavePointId].name;
     }else{
-      retry.textContent = 'Press R to wake again';
+      retry.textContent = hint('Press R','Tap') + ' to wake again';
     }
   }
-  state='dead';SFX.die();
+  state='dead';SFX.die();touchRelease();
   document.exitPointerLock();
   show('dead',true);el.hud.classList.remove('on');
 }
 function winGame(){
   hideDeathShell();
-  state='win';SFX.win();
+  state='win';SFX.win();touchRelease();
   document.exitPointerLock();
   const m=Math.floor(P.time/60),s=Math.floor(P.time%60);
   $('wt').textContent=m+':'+String(s).padStart(2,'0');
@@ -10799,7 +11372,7 @@ function update(dt){
   if(Math.abs(envWant-envCur)>0.01){envCur=envWant;setEnvIntensity(envCur);}
   if(gl>0.5&&!gloomHintShown){
     gloomHintShown=true;
-    toast(P.hasLantern?'The Gloom Grove — <b>press F</b> if your lantern is dark'
+    toast(P.hasLantern?'The Gloom Grove — <b>'+hint('press F','tap 🏮')+'</b> if your lantern is dark'
                      :'The <b>Gloom Grove</b>. Too dark to see far… something must light the way.',4.5);
   }
   lanternHeld.visible=lanternLit;
@@ -10834,9 +11407,10 @@ function update(dt){
   }
   if(nearItem){
     const def=ITEM_DEF[nearItem.type];
-    el.prompt.innerHTML=`<b>[E]</b> ${def.hint}`;
+    el.prompt.innerHTML=`<b>${hint('[E]','[GRAB]')}</b> ${def.hint}`;
     el.prompt.style.opacity='1';
   }else el.prompt.style.opacity='0';
+  updateTouchHUD();
 
   /* ---- death shell recovery ---- */
   if(deathShell){
@@ -10881,7 +11455,7 @@ function update(dt){
       if(m.type!=='thornmaw'||!m.awake)continue;
       if(mobDist(m)>THORN.sense+0.9)continue;
       thornHintShown=true;
-      toast('Thorns cannot catch what does not stop — <b>hold SHIFT</b> and go straight through.',4.6);
+      toast(`Thorns cannot catch what does not stop — <b>${hint('hold SHIFT','push the stick to the rim')}</b> and go straight through.`,4.6);
       break;
     }
   }
@@ -10901,7 +11475,7 @@ function update(dt){
   if(el.dangerBadge)el.dangerBadge.classList.toggle('on',huntedActive);
   if(crowHunting&&!huntedHintShown){
     huntedHintShown=true;
-    toast('A crow has seen you — <b>hold SPACE</b> to pull into your shell!',4);
+    toast(`A crow has seen you — <b>${hint('hold SPACE','hold 🐢 SHELL')}</b> to pull into your shell!`,4);
   }
 
   /* ---- gate ---- */
@@ -11160,7 +11734,7 @@ async function boot(){
   setLoad(64,'Hiding the Sunstones…');await frame();
   stage(5);  placeItems();
   stage(6);  buildHazards();
-  stage(7);  buildGate(); ripple=buildWater(); buildRafts(); buildSavePoints();
+  stage(7);  buildGate(); ripple=buildWater(); buildRafts();
   setLoad(74,'Bedding it all into the soil…');await frame();
   stage(8);  buildGroundDressing();
   setLoad(82,'Waking the crows…');await frame();
@@ -11169,6 +11743,11 @@ async function boot(){
   stage(13); spawnWasps(WASP.nests);
   stage(14); spawnBeetles(BEETLE.count);
   stage(17); spawnSkaters(SKATER.count); spawnLargeFish();
+  /* After everything that stays put and bites -- thorns, thorn-maws,
+     wasps -- because the nests check themselves against all of it, and
+     the wasps are only placed at stage 13. Nothing in here draws on RNG,
+     so moving it does not reshuffle the level. */
+  buildSavePoints();
   stage(15); placeRestPockets(5);
   stage(16); placeRiskCaches();
   stage(11);
@@ -11196,8 +11775,16 @@ async function boot(){
     if(save) applySaveData(save);
   }
   camera.position.set(P.pos.x,groundH(P.pos.x,P.pos.z)+EYE,P.pos.z);
+  // before the first compile, so every lit shader is built once, for K lights
+  initLightPool();
+  initDissolveCull();
+  if(TOUCH)applyPhoneTier(true);
   buildTargets();
+  /* compile skips what is hidden, and the dropped shell is hidden until
+     the first death -- which then spent 366 ms building its shaders */
+  droppedShellGroup.visible=true;
   renderer.compile(scene,camera);
+  droppedShellGroup.visible=false;
   renderFrame();
   /* after the first frame, so the shadow map exists: baking the cubes with
      an empty one would fold a lake full of shadow back at the player */
@@ -11360,6 +11947,7 @@ function placeRiskCaches(){
 /* dev hooks (handy for testing) */
 window.__game={
   PROF,profile,profileLayers,profReport,profToggle,
+  LPOOL,setLightPool,DCULL,PHONE,applyPhoneTier,SHADOW,setBlobSoup,
   P,items,crows,keys,hazards,renderer,scene,camera,sun,hemi,AUDIO,POST,BOOT,
   renderFrame,buildTargets,matComposite,
   gust:gustU,gustAt,WIND_DIR,THORN,HERON,GLASS,CAT,FLIP,WEATHER,WASP,BEETLE,SHELL,FISH,
