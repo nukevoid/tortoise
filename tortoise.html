@@ -211,6 +211,30 @@
     border:1px solid var(--edge);border-radius:999px;padding:13px 30px;background:rgba(232,197,106,.08);
     animation:pulse 2.4s ease-in-out infinite;cursor:pointer}
   .startrow{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;padding:0 16px}
+  .startrow.mp{margin-top:-8px}
+  .startrow.mp .cta{font-size:12px;padding:10px 22px;animation:none;opacity:.8}
+  .startrow.mp .cta:hover{opacity:1}
+  /* the multiplayer lobby: a panel over the menu, not a page of its own */
+  #lobby{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    background:rgba(4,7,3,.78);z-index:5}
+  #lobby.hide{display:none}
+  #lobby .box{background:var(--panel);border:1px solid var(--edge);border-radius:14px;padding:22px 26px;
+    width:min(420px,calc(100vw - 32px));text-align:center;box-shadow:0 10px 40px rgba(0,0,0,.6)}
+  #lobby h3{margin:0 0 6px;font-family:Georgia,serif;font-size:22px;color:#f3e6c4;font-weight:400}
+  #lobby .code{font-size:34px;letter-spacing:.3em;color:var(--gold);margin:12px 0 4px;font-weight:600;
+    user-select:text}
+  #lobby .link{font-size:11.5px;opacity:.7;word-break:break-all;user-select:text;margin-bottom:10px}
+  #lobby .status{font-size:13px;opacity:.85;min-height:2.6em;margin:10px 0;line-height:1.4}
+  #lobby .status.ok{color:#a6d564}
+  #lobby .status.bad{color:#f6ad55}
+  #lobby input{font:inherit;font-size:22px;letter-spacing:.25em;text-transform:uppercase;text-align:center;
+    width:10ch;padding:6px 8px;border-radius:8px;border:1px solid var(--edge);background:rgba(0,0,0,.35);
+    color:#f3e6c4;outline:none}
+  #lobby .row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:12px}
+  #lobby .btn{font-size:12px;letter-spacing:.18em;text-transform:uppercase;border:1px solid var(--edge);
+    border-radius:999px;padding:9px 18px;background:rgba(232,197,106,.08);cursor:pointer;color:#efe6d2}
+  #lobby .btn:hover{background:rgba(232,197,106,.18)}
+  #lobby [hidden]{display:none!important}
   .cta.alt{animation:none;opacity:.7;background:transparent}
   .cta.alt:hover{opacity:1}
   @keyframes pulse{0%,100%{opacity:.72;box-shadow:0 0 0 rgba(232,197,106,0)}
@@ -329,13 +353,36 @@
       <div class="cta" id="startbtn">Play full screen</div>
       <div class="cta alt" id="windowbtn">Play in a window</div>
     </div>
+    <div class="startrow mp">
+      <div class="cta alt" id="hostbtn">Host Multiplayer</div>
+      <div class="cta alt" id="joinbtn">Join Multiplayer</div>
+    </div>
     <div class="credit">Built with Three.js — demo level: The Hollow</div>
+    <div id="lobby" class="hide">
+      <div class="box">
+        <h3 id="lobbytitle">Multiplayer</h3>
+        <div id="lobbyhost" hidden>
+          <div style="font-size:12px;opacity:.75">Give your partner this code</div>
+          <div class="code" id="lobbycode">·····</div>
+          <div class="link" id="lobbylink"></div>
+          <div class="row"><div class="btn" id="lobbycopy">Copy link</div></div>
+        </div>
+        <div id="lobbyjoin" hidden>
+          <div style="font-size:12px;opacity:.75;margin-bottom:8px">Enter the code your partner sees</div>
+          <input id="lobbyinput" maxlength="5" autocomplete="off" autocapitalize="characters" spellcheck="false">
+          <div class="row"><div class="btn" id="lobbyconnect">Connect</div></div>
+        </div>
+        <div class="status" id="lobbystatus"></div>
+        <div class="row"><div class="btn" id="lobbystart" hidden>Start game</div><div class="btn" id="lobbyclose">Leave</div></div>
+      </div>
+    </div>
   </div>
 
   <div id="pause" class="overlay hide">
     <h2>Paused</h2>
     <div class="sub">The forest waits</div>
     <div class="cta" id="resumebtn">Click to resume</div>
+    <div class="cta alt" id="leavebtn" style="display:none">Leave shared game</div>
   </div>
 
   <div id="dead" class="overlay hide">
@@ -383,7 +430,7 @@ function mulberry32(a){
   f.reseed=n=>{a=n|0;};
   return f;
 }
-const RNG=mulberry32(0x5EED17);
+let RNG=mulberry32(0x5EED17);          // let: a shared game reseeds it from the host's seed (12c)
 const rr=(a,b)=>a+(b-a)*RNG();
 const ri=(a,b)=>Math.floor(rr(a,b+1));
 const pick=arr=>arr[Math.floor(RNG()*arr.length)];
@@ -5525,10 +5572,14 @@ function spawnMob(name,x,z,opts){
   };
   if(opts)Object.assign(m,opts);
   m.group.position.set(m.x,m.y,m.z);
+  const sceneN=scene.children.length;
   if(def.build)def.build(m);
   m.group.visible=false;
   scene.add(m.group);
   if(def.spawn)def.spawn(m);
+  // what build/spawn put in the scene besides the group -- shadows and the like --
+  // is part of the mob as far as a shared game's snapshots are concerned
+  m.netExtra=scene.children.slice(sceneN).filter(o=>o!==m.group);
   mobs.push(m);
   return m;
 }
@@ -5665,8 +5716,16 @@ function updateMobs(dt){
   for(let i=0;i<mobs.length;i++){
     const m=mobs[i];
     if(m.dead)continue;
-    const d=mobDist(m);
-    const want=d<m.def.activeRange;
+    /* Two players: the mob is awake if either is near it, and thinks about
+       the one it has picked (mpPickTarget), who stays picked while it is in
+       the middle of something. */
+    let tgt=LP, d, wakeD;
+    if(MP.started){
+      const dL=Math.hypot(LP.pos.x-m.x,LP.pos.z-m.z), dR=Math.hypot(MP.rp.pos.x-m.x,MP.rp.pos.z-m.z);
+      tgt=mpPickTarget(m,m.x,m.z,!MP_RETARGET.has(m.state));
+      d=tgt===LP?dL:dR; wakeD=Math.min(dL,dR);
+    }else{ d=mobDist(m); wakeD=d; }
+    const want=wakeD<m.def.activeRange;
     if(want!==m.awake){
       m.awake=want;
       m.group.visible=want;
@@ -5683,7 +5742,7 @@ function updateMobs(dt){
       continue;
     }
     m.t+=dt; m.stateT+=dt;
-    if(m.def.think)m.def.think(m,dt,d);
+    if(m.def.think)mpRunAs(tgt,m,()=>m.def.think(m,dt,d));
   }
 }
 
@@ -5770,7 +5829,7 @@ function stageBusy(m){ return STAGE.holder!==null && STAGE.holder!==m; }
 function updateStage(dt){
   if(STAGE.quiet>0)STAGE.quiet-=dt;
   // and the quiet does not start running down until you are back on your feet
-  if(P.flipped)STAGE.quiet=Math.max(STAGE.quiet,STAGE_GAP*0.8);
+  if(P.flipped||(MP.started&&MP.rp&&MP.rp.flipped))STAGE.quiet=Math.max(STAGE.quiet,STAGE_GAP*0.8);
   // a performer that was despawned or put to sleep must not hold the stage
   if(STAGE.holder&&(STAGE.holder.dead||!STAGE.holder.awake))stageRelease(STAGE.holder);
 }
@@ -7107,6 +7166,8 @@ const FLIP={
 
 function flipPlayer(){
   if(P.flipped||state!=='play')return false;
+  // the partner rolls over on their own screen; flipped until their pose says otherwise
+  if(P!==LP){ P.flipped=true; netSend({t:'flip'}); return true; }
   P.flipped=true; P.flipT=0;
   P.flipAngle=0; P.flipVel=0; P.flipPhase='rock'; P.flipRightT=0; P.flipDir=1;
   P.flipTheta=0; P.flipAmp=0.18; P.flipReload=0;
@@ -7278,6 +7339,7 @@ function triggerLightning(intensity){
   lightningElapsed=0;
   lightningDuration=rr(0.38,0.48);
   lightningIntensity=intensity||rr(0.85,1.0);
+  if(MP.started&&MP.host)netSend({t:'lightning',i:lightningIntensity});
   WEATHER.lightning=evalLightning(0.001,lightningDuration)*lightningIntensity;
   const dist=rr(0.15,0.95);
   const delay=0.25+dist*1.6;
@@ -7293,7 +7355,8 @@ function updateLightning(dt){
   }else{
     WEATHER.lightning=0;
   }
-  if(WEATHER.storm){
+  if(MP.guest){ /* the host's storm; its strikes arrive as events */ }
+  else if(WEATHER.storm){
     lightningTimer-=dt;
     if(lightningTimer<=0){
       if(WEATHER.wet>=0.55){
@@ -9400,7 +9463,7 @@ function thirdPersonCamera(gH,roll,dt){
   const hv=Math.hypot(cx-ox,cz-oz);
   camera.rotation.set(hv>0.02?Math.atan2(oy-cy,hv):camPitch,P.yaw,roll);
 }
-const P={
+let P={
   pos:new THREE.Vector3(),vel:new THREE.Vector3(),
   yaw:0,pitch:0,bob:0,
   turn:0,                          // how far into a turn the keys have leaned
@@ -9426,8 +9489,17 @@ const P={
      glide is not. */
   third:false, tpAmt:0, tpDist:0, tpBody:false
 };
+/* P is a let so that, in a shared game, the host can point it at the other
+   player while a creature thinks about them (see mpRunAs in 12c). LP is
+   always the player at this keyboard. */
+const LP=P;
 let state='loading';                // loading | menu | play | pause | dead | win
 const keys={};
+/* Multiplayer state; the machinery is in 12c. Declared this early because
+   hurt(), toast() and friends consult it. */
+const MP={on:false, host:false, guest:false, started:false, rp:null, huntR:false, huntedMe:false,
+          winFromNet:false, spawn:null};
+const NETCTX={remote:false, src:null};
 /* set once a finger has touched the page; see 12a. TOUCH CONTROLS */
 let TOUCH=false;
 const hint=(desk,touch)=>TOUCH?touch:desk;
@@ -9665,8 +9737,11 @@ function blockedWorld(x,z){
 function updateRafts(dt){
   for(const R of RAFTS){
     R.t+=dt;
-    if(P.raft===R){
-      if(inWaterway(P.pos.x,P.pos.z)){ R.x=P.pos.x; R.z=P.pos.z; }
+    const rider=P.raft===R?P:(MP.started&&MP.host&&MP.rp.raft===R?MP.rp:null);
+    if(rider){
+      if(inWaterway(rider.pos.x,rider.pos.z)){ R.x=rider.pos.x; R.z=rider.pos.z; }
+    }else if(MP.guest&&R.netX!==undefined){
+      R.x=lerp(R.x,R.netX,1-Math.pow(0.0005,dt)); R.z=lerp(R.z,R.netZ,1-Math.pow(0.0005,dt));
     }else{
       R.x=lerp(R.x,R.hx,1-Math.pow(0.22,dt*RAFT.moorPull));
       R.z=lerp(R.z,R.hz,1-Math.pow(0.22,dt*RAFT.moorPull));
@@ -9731,6 +9806,7 @@ const el={
 };
 let toastTimer=0;
 function toast(html,secs){
+  if(P!==LP){ netSend({t:'toast',html,secs}); return; }
   el.toast.innerHTML=html;el.toast.style.opacity='1';toastTimer=secs||3.2;
 }
 function updateHUD(){
@@ -9934,6 +10010,17 @@ function drawMap(){
     }
   }
 
+  // the partner
+  if(MP.started&&MP.rp){
+    const q=MP.rp.pos;
+    ctx.save();
+    ctx.translate(q.x,q.z);
+    ctx.fillStyle=MP.rp.state==='dead'?'rgba(180,60,50,0.9)':'#7fd6ff';
+    ctx.strokeStyle='rgba(0,0,0,0.7)';ctx.lineWidth=1.5/scale;
+    ctx.beginPath();ctx.arc(0,0,5.2/scale,0,6.283);ctx.fill();ctx.stroke();
+    ctx.restore();
+  }
+
   // gate
   if(!gateLocked){
     const dx=GATE_X-P.pos.x, dz=GATE_Z-P.pos.z;
@@ -10029,6 +10116,7 @@ function drawMap(){
    ═══════════════════════════════════════════════════════════════ */
 addEventListener('contextmenu',e=>e.preventDefault());
 addEventListener('keydown',e=>{
+  if(e.target&&e.target.tagName==='INPUT')return;
   if(keys[e.code]!==true)onKeyDown(e);
   keys[e.code]=true;
   if(['Space','Tab','KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown'].includes(e.code))e.preventDefault();
@@ -10095,6 +10183,7 @@ function startPlay(){
 function pauseGame(){
   if(state!=='play')return;
   state='pause';show('pause',true);
+  $('leavebtn').style.display=MP.started?'':'none';
   touchRelease();
   if(isLocked())document.exitPointerLock();
 }
@@ -10108,6 +10197,711 @@ let wasLocked=false;
 let wantFull=false;
 $('startbtn').addEventListener('click',e=>{e.stopPropagation();wantFull=true;initAudio();startPlay();});
 $('windowbtn').addEventListener('click',e=>{e.stopPropagation();wantFull=false;initAudio();startPlay();});
+
+/* ═══════════════════════════════════════════════════════════════
+   12c. MULTIPLAYER (PeerJS)
+   ═══════════════════════════════════════════════════════════════
+   Two players, browser to browser. PeerJS's public server only introduces
+   them; after that the data goes directly between them over WebRTC. The
+   host's id is a fixed prefix plus a five-letter code, so the code is all a
+   partner needs, and ?join=CODE in the address opens the lobby with it.
+   PeerJS is fetched the first time someone opens the lobby.
+
+   Who owns what (multiplayer-plan.md has the reasoning):
+   - The host runs the world: creatures, crows, set pieces, weather, rafts.
+     The seeded RNG is drawn at run time and both players' positions feed
+     every creature's decisions, so two copies cannot be kept in step --
+     one of them has to be the truth.
+   - Each player runs their own tortoise and sends its pose.
+   - The map is not sent at all: it is baked and seeded, so both build the
+     same one. The start of a game reseeds RNG from the host's seed on both
+     sides, so whatever each side still draws for itself (the crows' first
+     perches, say) comes out the same.
+   - The guest does not simulate creatures. It is sent their parts'
+     transforms and shows them, smoothed between snapshots.
+
+   While a creature thinks about the guest, the host points P (and state)
+   at a record of the guest -- mpRunAs -- so the creature code, written for
+   one player, needs no changes. Whatever it does to that record is sent
+   on: hurt(), die(), flipPlayer() and toast() forward themselves, sounds
+   are forwarded by a wrapper, and field changes (a glass trap, the heron's
+   grip, the cat's shove) are diffed and sent as 'pset'. */
+const NET={role:null, peer:null, conn:null, uconn:null, code:null, version:2, rtt:null, ok:false, handlers:{}};
+const NET_PREFIX='shellbound-v1-';
+const NET_ALPHA='ABCDEFGHJKMNPQRSTUVWXYZ23456789';   // nothing to misread: no 0/O, 1/I/L
+const PEERJS_URL='https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.5/peerjs.min.js';
+function netLoadLib(){
+  if(window.Peer)return Promise.resolve();
+  return new Promise((res,rej)=>{
+    const sc=document.createElement('script');
+    sc.src=PEERJS_URL; sc.onload=()=>res();
+    sc.onerror=()=>rej(new Error('Could not load PeerJS - check the internet connection.'));
+    document.head.appendChild(sc);
+  });
+}
+/* Both sides must have built the same Hollow; this is how they know. */
+const LEVEL_HASH=(()=>{const t=JSON.stringify(LEVEL_BAKED);let h=5381;
+  for(let i=0;i<t.length;i++)h=((h<<5)+h+t.charCodeAt(i))|0; return h;})();
+function netCode(){
+  let c=''; for(let i=0;i<5;i++)c+=NET_ALPHA[Math.floor(Math.random()*NET_ALPHA.length)];
+  return c;
+}
+function lobbyStatus(text,kind){
+  const st=$('lobbystatus'); st.textContent=text; st.className='status'+(kind?' '+kind:'');
+}
+function lobbyConnectedText(){
+  const ms=NET.rtt!==null?' ('+NET.rtt+' ms)':'';
+  if(MP.started)return 'Playing together'+ms+'.';
+  return NET.role==='host'?'Your partner is here'+ms+'. Start when you are both ready.'
+                          :'Connected to the host'+ms+'. Waiting for them to start.';
+}
+function lobbyOpen(mode){
+  $('lobby').classList.remove('hide');
+  $('lobbyhost').hidden=mode!=='host';
+  $('lobbyjoin').hidden=mode!=='join';
+  $('lobbystart').hidden=true;
+  $('lobbytitle').textContent=mode==='host'?'Host a game':'Join a game';
+  lobbyStatus('');
+}
+NET.on=(t,fn)=>{NET.handlers[t]=fn;};
+/* Reliable and ordered: events. The unreliable channel carries poses and
+   snapshots, where a late packet is worth less than the next one. */
+function netSend(msg){ if(NET.conn&&NET.conn.open)NET.conn.send(msg); }
+function netSendFast(msg){
+  if(NET.uconn&&NET.uconn.open)NET.uconn.send(msg);
+  else netSend(msg);
+}
+function netLeave(){
+  if(MP.on)mpEnd('');
+  if(NET.uconn){try{NET.uconn.close();}catch(e){}}
+  if(NET.conn){try{NET.conn.close();}catch(e){}}
+  if(NET.peer){try{NET.peer.destroy();}catch(e){}}
+  NET.role=NET.peer=NET.conn=NET.uconn=NET.code=null; NET.rtt=null; NET.ok=false; NET.hadConn=false;
+  $('lobby').classList.add('hide');
+}
+function netOnData(d){
+  if(d instanceof ArrayBuffer){ if(MP.guest)mpApplySnap(new Float32Array(d)); return; }
+  if(ArrayBuffer.isView(d)){ if(MP.guest)mpApplySnap(new Float32Array(d.buffer,d.byteOffset,d.byteLength>>2)); return; }
+  if(!d||typeof d!=='object')return;
+  const h=NET.handlers[d.t];
+  if(h)h(d);
+}
+NET.on('hello',d=>{
+  if(d.v!==NET.version||d.lh!==LEVEL_HASH){
+    NET.ok=false;
+    lobbyStatus('Your partner has a different version of the game. Both of you reload the page.','bad');
+    return;
+  }
+  NET.ok=true;
+  lobbyStatus(lobbyConnectedText(),'ok');
+  $('lobbystart').hidden=NET.role!=='host';
+});
+NET.on('ping',d=>netSendFast({t:'pong',at:d.at}));
+NET.on('pong',d=>{
+  NET.rtt=Math.round(performance.now()-d.at);
+  if(NET.ok&&!$('lobby').classList.contains('hide'))lobbyStatus(lobbyConnectedText(),'ok');
+});
+NET.on('full',()=>lobbyStatus('That game already has two players.','bad'));
+function netAttach(c){
+  NET.conn=c;
+  c.on('open',()=>{
+    NET.hadConn=true;
+    netSend({t:'hello',v:NET.version,lh:LEVEL_HASH,role:NET.role});
+    lobbyStatus('Connected. Checking the game version…','ok');
+    // the guest opens the second, unreliable channel
+    if(NET.role==='guest'){
+      const u=NET.peer.connect(NET_PREFIX+NET.code,{reliable:false,label:'u'});
+      u.on('open',()=>{NET.uconn=u;});
+      u.on('data',netOnData);
+    }
+  });
+  c.on('data',netOnData);
+  c.on('close',()=>{
+    if(NET.conn!==c)return;
+    NET.conn=null; NET.uconn=null; NET.ok=false;
+    $('lobbystart').hidden=true;
+    const wasPlaying=MP.started;
+    if(MP.on)mpEnd(NET.role==='host'?'Your partner left - the Hollow is yours alone again.':'The host left.');
+    if(NET.role==='host'){
+      lobbyStatus('Your partner left. Waiting for someone to join…','bad');
+    }else{
+      lobbyStatus('The host left.','bad');
+      if(!wasPlaying)return;
+      $('lobby').classList.remove('hide');
+    }
+  });
+  c.on('error',e=>lobbyStatus('Connection error: '+(e&&e.message||e),'bad'));
+}
+setInterval(()=>{ if(NET.conn&&NET.conn.open)netSendFast({t:'ping',at:performance.now()}); },2000);
+function netPeerError(e){
+  const t=e&&e.type;
+  // once a host has gone, PeerJS reports its id as unknown; "the host left" already said it
+  if(t==='peer-unavailable'&&NET.hadConn)return;
+  if(t==='peer-unavailable')lobbyStatus('No game with that code. Check it with your partner.','bad');
+  else if(t==='network'||t==='server-error'||t==='socket-error')
+    lobbyStatus('Could not reach the PeerJS server. Check the internet connection.','bad');
+  else if(t==='browser-incompatible')lobbyStatus('This browser cannot do peer-to-peer connections.','bad');
+  else lobbyStatus('Connection problem: '+((e&&e.message)||t||e),'bad');
+}
+async function netHost(){
+  netLeave(); lobbyOpen('host'); lobbyStatus('Starting…');
+  try{ await netLoadLib(); }catch(e){ lobbyStatus(e.message,'bad'); return; }
+  NET.role='host';
+  const tryOpen=(left)=>{
+    NET.code=netCode();
+    const peer=NET.peer=new Peer(NET_PREFIX+NET.code);
+    peer.on('open',()=>{
+      $('lobbycode').textContent=NET.code;
+      const link=location.origin+location.pathname+'?join='+NET.code;
+      $('lobbylink').textContent=link; $('lobbylink').dataset.link=link;
+      lobbyStatus('Waiting for your partner to join…');
+    });
+    peer.on('connection',c=>{
+      if(c.label==='u'){                   // the partner's second channel
+        if(NET.conn&&c.peer===NET.conn.peer){ c.on('open',()=>{NET.uconn=c;}); c.on('data',netOnData); }
+        else c.close();
+        return;
+      }
+      if(NET.conn&&NET.conn.open){           // two players, no more
+        c.on('open',()=>{ c.send({t:'full'}); setTimeout(()=>c.close(),300); });
+        return;
+      }
+      netAttach(c);
+    });
+    peer.on('error',e=>{
+      // someone else already holds this code: take another one
+      if(e&&e.type==='unavailable-id'&&left>0){ peer.destroy(); tryOpen(left-1); }
+      else netPeerError(e);
+    });
+  };
+  tryOpen(3);
+}
+async function netJoin(code){
+  code=String(code||'').trim().toUpperCase();
+  if(!/^[A-Z0-9]{5}$/.test(code)){ lobbyStatus('The code is five letters or digits.','bad'); return; }
+  if(NET.peer)netLeave();
+  lobbyOpen('join'); $('lobbyinput').value=code; lobbyStatus('Connecting…');
+  try{ await netLoadLib(); }catch(e){ lobbyStatus(e.message,'bad'); return; }
+  NET.role='guest'; NET.code=code;
+  const peer=NET.peer=new Peer();
+  peer.on('open',()=>netAttach(peer.connect(NET_PREFIX+code,{reliable:true})));
+  peer.on('error',netPeerError);
+}
+$('hostbtn').addEventListener('click',e=>{e.stopPropagation();initAudio();netHost();});
+$('joinbtn').addEventListener('click',e=>{
+  e.stopPropagation(); initAudio(); if(NET.peer)netLeave();
+  lobbyOpen('join'); $('lobbyinput').value=''; $('lobbyinput').focus();
+});
+$('lobbyconnect').addEventListener('click',e=>{e.stopPropagation();initAudio();netJoin($('lobbyinput').value);});
+$('lobbyinput').addEventListener('keydown',e=>{ if(e.key==='Enter'){initAudio();netJoin($('lobbyinput').value);} });
+$('lobbyclose').addEventListener('click',e=>{e.stopPropagation();netLeave();});
+$('lobbystart').addEventListener('click',e=>{
+  e.stopPropagation();
+  if(NET.role!=='host'||!NET.ok)return;
+  const seed=(Math.random()*4294967296)>>>0;
+  netSend({t:'start',seed});
+  mpBegin(true,seed);
+});
+$('lobbycopy').addEventListener('click',e=>{
+  e.stopPropagation();
+  const link=$('lobbylink').dataset.link; if(!link)return;
+  const done=()=>lobbyStatus('Link copied. Waiting for your partner to join…');
+  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(link).then(done,()=>{});
+});
+$('lobby').addEventListener('click',e=>e.stopPropagation());
+/* Leaving mid-game: the guest goes back to a world of its own, the host
+   carries on in this one alone. */
+$('leavebtn').addEventListener('click',e=>{
+  e.stopPropagation();
+  const wasHost=NET.role==='host';
+  netLeave();
+  show('pause',false);
+  if(wasHost){ state='menu'; show('menu',true); el.hud.classList.remove('on'); }
+});
+{ const j=new URLSearchParams(location.search).get('join'); if(j)netJoin(j); }
+
+/* ─── the shared game ─────────────────────────────────────────── */
+const MP_RETARGET=new Set(['idle','wait','away','nest','wander','skate','cruise','leave','patrol']);
+const MP_POSE_MS=50, MP_SNAP_MS=66, MP_INTERP_MS=100, MP_FULL_EVERY=30;
+let mpLastPose=0, mpLastSnap=0, mpSnapSeq=0, mpWorker=null, mpSfxOrig=null;
+const mpLerping=new Set();
+const mpAv={rig:null, nodes:null, tag:null, prev:null, cur:null};
+
+function mpMakeRemote(){
+  return {pos:new THREE.Vector3(), vel:new THREE.Vector3(), yaw:0, pitch:0,
+    hidden:false, hideAmt:0, raft:null, flipped:false, flipAngle:0, flipTheta:0, flipAmp:0,
+    flipPhase:'rock', flipRightT:0, flipDir:1, tumble:0, trap:null, caught:false,
+    hp:100, time:0, state:'menu', lantern:false, stones:0};
+}
+function mpAlive(pl){ return pl===LP ? state==='play' : (MP.started&&pl.state==='play'); }
+/* Nearest living player, unless the creature is mid-act and has one. */
+function mpPickTarget(obj,x,z,sticky){
+  if(!MP.started)return LP;
+  const cur=obj.tgt;
+  if(sticky&&cur&&mpAlive(cur))return cur;
+  const R=MP.rp, aL=mpAlive(LP), aR=mpAlive(R);
+  let t=LP;
+  if(aR&&!aL)t=R;
+  else if(aR&&aL){
+    const dL=Math.hypot(LP.pos.x-x,LP.pos.z-z), dR=Math.hypot(R.pos.x-x,R.pos.z-z);
+    // a little hysteresis, so a creature between the two does not dither
+    if(cur===R)t=dL<dR-1.5?LP:R; else t=dR<dL-1.5?R:LP;
+  }
+  obj.tgt=t;
+  return t;
+}
+/* Run fn with P (and state) pointed at tgt. For the remote player, send on
+   whatever fn changed about them. src is where it happened, for sound. */
+function mpRunAs(tgt,src,fn){
+  if(!MP.started||tgt===LP){
+    NETCTX.src=src;
+    try{ return fn(); }finally{ NETCTX.src=null; }
+  }
+  const R=tgt, sp=P, ss=state;
+  const b0={trap:R.trap, caught:!!R.caught, tumble:R.tumble||0, vx:R.vel.x, vz:R.vel.z};
+  P=R; state=R.state; NETCTX.remote=true; NETCTX.src=src;
+  try{ return fn(); }
+  finally{
+    P=sp; state=ss; NETCTX.remote=false; NETCTX.src=null;
+    const ps={t:'pset'}; let any=false;
+    if(R.trap!==b0.trap){ ps.trap=R.trap?{x:R.trap.x,z:R.trap.z,r:R.trap.r}:null; any=true; }
+    if(!!R.caught!==b0.caught){ ps.caught=!!R.caught; any=true; }
+    if((R.tumble||0)>b0.tumble+1e-6){ ps.tumble=R.tumble; any=true; }
+    const dvx=R.vel.x-b0.vx, dvz=R.vel.z-b0.vz;
+    if(Math.abs(dvx)+Math.abs(dvz)>1e-4){ ps.dv=[dvx,dvz]; any=true; }
+    if(R.caught){ ps.pos=[R.pos.x,R.pos.y,R.pos.z]; any=true; }
+    if(any)netSend(ps);
+  }
+}
+/* The host's share of a frame that is not the local player: set pieces,
+   creatures, crows. Returns whether a crow is hunting the local player. */
+function stepHostWorld(dt){
+  updateStage(dt);
+  updateMobs(dt);
+  let crowLP=false;
+  MP.huntR=false;
+  for(const c of crows){
+    const cp=c.mesh.position;
+    const tgt=mpPickTarget(c,cp.x,cp.z,c.state!=='patrol');
+    mpRunAs(tgt,cp,()=>updateCrow(c,dt,()=>{ if(tgt===LP)crowLP=true; else MP.huntR=true; }));
+  }
+  if(MP.started){
+    const R=MP.rp;
+    for(const m of mobs){
+      if(!m.awake)continue;
+      const dR=Math.hypot(R.pos.x-m.x,R.pos.z-m.z);
+      if(m.type==='cat'&&(m.state==='stalk'||m.state==='crouch'||m.state==='pounce')&&dR<CAT.noticeRange)MP.huntR=true;
+      if(m.type==='heron'&&(m.state==='strike'||m.state==='seize')&&dR<18)MP.huntR=true;
+    }
+  }
+  return crowLP;
+}
+/* A host who is not playing -- dead, paused, in the menu -- still runs the world. */
+function mpHostIdleStep(dt){
+  updateWeather(dt);
+  updateRafts(dt);
+  stepHostWorld(dt);
+}
+function mpGuestWeather(dt){
+  updateLightning(dt);
+  updateRain(dt);
+}
+
+/* Sound from creature code goes to whoever it concerns, and to the other
+   player too if they are within earshot of where it happened. */
+function mpWrapSfx(){
+  if(mpSfxOrig)return;
+  mpSfxOrig={};
+  for(const k of Object.keys(SFX)){
+    const f=SFX[k]; if(typeof f!=='function')continue;
+    mpSfxOrig[k]=f;
+    SFX[k]=function(...a){
+      const src=NETCTX.src, R=MP.rp;
+      const near=(pl)=>src&&pl&&Math.hypot(pl.pos.x-src.x,pl.pos.z-src.z)<14;
+      if(NETCTX.remote){
+        netSend({t:'sfx',k,a});
+        if(near(LP))return f.apply(SFX,a);
+        return;
+      }
+      if(MP.started&&near(R))netSend({t:'sfx',k,a});
+      return f.apply(SFX,a);
+    };
+  }
+}
+function mpUnwrapSfx(){
+  if(!mpSfxOrig)return;
+  for(const k of Object.keys(mpSfxOrig))SFX[k]=mpSfxOrig[k];
+  mpSfxOrig=null;
+}
+
+/* Every object that makes up a creature or a crow, in an order both sides
+   agree on: the mob list and each build are identical on both. */
+function mpCollectObjs(){
+  mobs.forEach((m,i)=>{
+    m.nid=i;
+    if(m.netObjs)return;
+    const list=[];
+    m.group.traverse(o=>list.push(o));
+    for(const x of (m.netExtra||[]))x.traverse(o=>list.push(o));
+    m.netObjs=list;
+  });
+  crows.forEach(c=>{
+    if(c.netObjs)return;
+    const list=[]; c.mesh.traverse(o=>list.push(o)); c.netObjs=list;
+  });
+}
+function mpMatOf(o){ const m=o.material; return m&&!Array.isArray(m)?m:null; }
+/* 13 numbers: visible, position, quaternion, scale, opacity, emissive. */
+function mpReadObj(o,out,k){
+  const m=mpMatOf(o);
+  out[k]=o.visible?1:0;
+  out[k+1]=o.position.x; out[k+2]=o.position.y; out[k+3]=o.position.z;
+  out[k+4]=o.quaternion.x; out[k+5]=o.quaternion.y; out[k+6]=o.quaternion.z; out[k+7]=o.quaternion.w;
+  out[k+8]=o.scale.x; out[k+9]=o.scale.y; out[k+10]=o.scale.z;
+  out[k+11]=m&&m.opacity!==undefined?m.opacity:1;
+  out[k+12]=m&&m.emissiveIntensity!==undefined?m.emissiveIntensity:0;
+}
+const _mpTmp=new Float32Array(13);
+function mpChanged(o){
+  mpReadObj(o,_mpTmp,0);
+  let last=o.userData.mpLast;
+  if(!last){ last=o.userData.mpLast=new Float32Array(13); last[0]=-1; }
+  let ch=false;
+  for(let i=0;i<13;i++)if(Math.abs(_mpTmp[i]-last[i])>(i===0?0.5:1e-4)){ch=true;break;}
+  if(ch)last.set(_mpTmp);
+  return ch;
+}
+
+/* Host -> guest, 15 times a second, over the unreliable channel. A flat
+   Float32Array: kind 1 is the world (weather, danger, rafts), kind 2 a
+   creature, kind 3 a crow. Only parts that moved are sent, with everything
+   once every two seconds so a lost packet heals. Packets stay under ~12 KB. */
+const mpRelevant=new Set();
+function mpSendSnap(){
+  const R=MP.rp;
+  const full=(mpSnapSeq++%MP_FULL_EVERY)===0;
+  let buf=[];
+  const flush=()=>{ if(buf.length){ netSendFast(new Float32Array(buf).buffer); buf=[]; } };
+  buf.push(1, mpSnapSeq, WEATHER.want, WEATHER.wet, WEATHER.storm?1:0, MP.huntR?1:0, RAFTS.length);
+  for(const r of RAFTS)buf.push(r.x,r.z);
+  for(const m of mobs){
+    const range=m.def.activeRange;
+    const rel=m.awake&&(range===Infinity||Math.hypot(R.pos.x-m.x,R.pos.z-m.z)<range+4);
+    if(!rel){
+      if(mpRelevant.has(m)){ mpRelevant.delete(m); netSend({t:'mhide',n:m.nid}); }
+      continue;
+    }
+    const fresh=!mpRelevant.has(m);
+    if(fresh){ mpRelevant.add(m); for(const o of m.netObjs)o.userData.mpLast=null; }
+    const head=buf.length;
+    buf.push(2, m.nid, m.x, m.z, 1, 0);
+    let n=0;
+    m.netObjs.forEach((o,i)=>{
+      if(!mpChanged(o)&&!full&&!fresh)return;
+      buf.push(i); for(let k=0;k<13;k++)buf.push(o.userData.mpLast[k]); n++;
+    });
+    if(n===0&&!full&&!fresh){ buf.length=head; continue; }
+    buf[head+5]=n;
+    if(buf.length>3000)flush();
+  }
+  crows.forEach((c,ci)=>{
+    const head=buf.length;
+    buf.push(3, ci, 0);
+    let n=0;
+    c.netObjs.forEach((o,i)=>{
+      if(!mpChanged(o)&&!full)return;
+      buf.push(i); for(let k=0;k<13;k++)buf.push(o.userData.mpLast[k]); n++;
+    });
+    if(n===0){ buf.length=head; return; }
+    buf[head+2]=n;
+  });
+  flush();
+}
+function mpTarget(o,f,k){
+  let b=o.userData.mpB;
+  if(!b)b=o.userData.mpB={from:new Float32Array(13),to:new Float32Array(13),t0:0};
+  mpReadObj(o,b.from,0);
+  for(let i=0;i<13;i++)b.to[i]=f[k+i];
+  b.t0=performance.now();
+  o.visible=b.to[0]>0.5;
+  mpLerping.add(o);
+}
+function mpApplySnap(f){
+  let k=0;
+  while(k<f.length){
+    const kind=f[k];
+    if(kind===1){
+      WEATHER.want=f[k+2]; WEATHER.wet=f[k+3]; WEATHER.storm=f[k+4]>0.5; MP.huntedMe=f[k+5]>0.5;
+      const n=f[k+6]; k+=7;
+      for(let i=0;i<n;i++){ const r=RAFTS[i]; if(r){r.netX=f[k];r.netZ=f[k+1];} k+=2; }
+    }else if(kind===2){
+      const m=mobs[f[k+1]]; const n=f[k+5];
+      if(m){ m.x=f[k+2]; m.z=f[k+3]; m.awake=true; }
+      k+=6;
+      for(let i=0;i<n;i++){
+        const o=m&&m.netObjs[f[k]];
+        if(o)mpTarget(o,f,k+1);
+        k+=14;
+      }
+    }else if(kind===3){
+      const c=crows[f[k+1]]; const n=f[k+2]; k+=3;
+      for(let i=0;i<n;i++){
+        const o=c&&c.netObjs[f[k]];
+        if(o)mpTarget(o,f,k+1);
+        k+=14;
+      }
+    }else break;                            // not ours: drop the rest
+  }
+}
+const _mpQa=new THREE.Quaternion(), _mpQb=new THREE.Quaternion();
+function mpGuestLerp(){
+  const now=performance.now();
+  for(const o of mpLerping){
+    const b=o.userData.mpB, a=Math.min(1,(now-b.t0)/MP_SNAP_MS);
+    const F=b.from, T=b.to;
+    o.position.set(F[1]+(T[1]-F[1])*a, F[2]+(T[2]-F[2])*a, F[3]+(T[3]-F[3])*a);
+    _mpQa.set(F[4],F[5],F[6],F[7]); _mpQb.set(T[4],T[5],T[6],T[7]);
+    o.quaternion.copy(_mpQa).slerp(_mpQb,a);
+    o.scale.set(F[8]+(T[8]-F[8])*a, F[9]+(T[9]-F[9])*a, F[10]+(T[10]-F[10])*a);
+    const m=mpMatOf(o);
+    if(m){
+      if(m.opacity!==undefined)m.opacity=F[11]+(T[11]-F[11])*a;
+      if(m.emissiveIntensity!==undefined)m.emissiveIntensity=F[12]+(T[12]-F[12])*a;
+    }
+    if(a>=1)mpLerping.delete(o);
+  }
+}
+
+/* ─── the partner's tortoise ─────────────────────────────────────
+   A clone of this player's own rig, so it is the same animal, driven by
+   the handful of nodes the gait moves: the rig itself, four legs and
+   their feet, the head, snout and neck. */
+function mpRigNodes(){ return [bodyRig,...legs,...legs.map(g=>g.userData.foot),head,snout,neck]; }
+function mpBuildAvatar(){
+  if(mpAv.rig){ mpAv.rig.visible=true; mpAv.tag.visible=true; return; }
+  const src=[]; bodyRig.traverse(o=>src.push(o));
+  const rig=bodyRig.clone(true);
+  const dst=[]; rig.traverse(o=>dst.push(o));
+  const at=o=>dst[src.indexOf(o)];
+  for(const o of dst)o.visible=true;
+  if(shellRoof){at(shellRoof).visible=false;at(shellFloor).visible=false;}   // the inside, for the lens only
+  mpAv.nodes=mpRigNodes().map(at);
+  mpAv.head=[at(head),at(snout),at(neck)];
+  mpAv.lantern=lanternHeld?at(lanternHeld):null;
+  scene.add(rig); mpAv.rig=rig;
+  // a name above the shell, so the partner is findable in a hedge
+  const cv=document.createElement('canvas'); cv.width=256; cv.height=64;
+  const cx=cv.getContext('2d');
+  cx.font='600 34px "Segoe UI",system-ui,sans-serif'; cx.textAlign='center'; cx.textBaseline='middle';
+  cx.fillStyle='rgba(10,16,8,0.55)'; cx.fillRect(28,6,200,52);
+  cx.fillStyle='#bfe9ff'; cx.fillText('Partner',128,33);
+  const tex=new THREE.CanvasTexture(cv); tex.colorSpace=THREE.SRGBColorSpace;
+  const tag=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,depthWrite:false}));
+  tag.scale.set(0.42,0.105,1); tag.renderOrder=3;
+  scene.add(tag); mpAv.tag=tag;
+}
+function mpPosePacket(){
+  const r=[];
+  for(const o of mpRigNodes()){
+    r.push(+o.position.x.toFixed(4),+o.position.y.toFixed(4),+o.position.z.toFixed(4),
+           +o.quaternion.x.toFixed(4),+o.quaternion.y.toFixed(4),+o.quaternion.z.toFixed(4),+o.quaternion.w.toFixed(4),
+           +o.scale.x.toFixed(3),+o.scale.y.toFixed(3),+o.scale.z.toFixed(3));
+  }
+  return {t:'pose', s:state, p:[P.pos.x,P.pos.y,P.pos.z], v:[P.vel.x,P.vel.z], y:P.yaw,
+          h:P.hidden?1:0, ha:+P.hideAmt.toFixed(3), f:P.flipped?1:0, fa:+(P.flipAngle||0).toFixed(3),
+          tb:+(P.tumble||0).toFixed(3), rf:RAFTS.indexOf(P.raft), tm:+P.time.toFixed(2),
+          ln:(P.hasLantern&&P.lanternOn)?1:0, hp:Math.round(P.hp), r};
+}
+NET.on('pose',d=>{
+  const R=MP.rp; if(!R)return;
+  R.state=d.s; R.pos.set(d.p[0],d.p[1],d.p[2]); R.vel.set(d.v[0],0,d.v[1]); R.yaw=d.y;
+  R.hidden=!!d.h; R.hideAmt=d.ha; R.flipped=!!d.f; R.flipAngle=d.fa; R.tumble=d.tb;
+  R.raft=d.rf>=0?RAFTS[d.rf]:null; R.time=d.tm; R.lantern=!!d.ln; R.hp=d.hp;
+  mpAv.prev=mpAv.cur; mpAv.cur={t:performance.now(),r:d.r};
+});
+function mpAvatarFrame(){
+  if(!mpAv.rig||!mpAv.cur)return;
+  const alive=MP.rp.state==='play'||MP.rp.state==='pause';
+  mpAv.rig.visible=alive; mpAv.tag.visible=alive;
+  if(!alive)return;
+  const A=mpAv.prev, B=mpAv.cur;
+  const tNow=performance.now()-MP_INTERP_MS;
+  let a=1;
+  if(A&&B.t>A.t)a=Math.min(1,Math.max(0,(tNow-A.t)/(B.t-A.t)));
+  const ra=A?A.r:B.r, rb=B.r;
+  mpAv.nodes.forEach((o,i)=>{
+    const k=i*10;
+    o.position.set(ra[k]+(rb[k]-ra[k])*a, ra[k+1]+(rb[k+1]-ra[k+1])*a, ra[k+2]+(rb[k+2]-ra[k+2])*a);
+    _mpQa.set(ra[k+3],ra[k+4],ra[k+5],ra[k+6]); _mpQb.set(rb[k+3],rb[k+4],rb[k+5],rb[k+6]);
+    o.quaternion.copy(_mpQa).slerp(_mpQb,a);
+    o.scale.set(ra[k+7]+(rb[k+7]-ra[k+7])*a, ra[k+8]+(rb[k+8]-ra[k+8])*a, ra[k+9]+(rb[k+9]-ra[k+9])*a);
+  });
+  const tucked=MP.rp.hideAmt>0.55;
+  for(const o of mpAv.head)o.visible=!tucked;
+  if(mpAv.lantern)mpAv.lantern.visible=MP.rp.lantern&&!tucked;
+  const rp=mpAv.nodes[0].position;
+  mpAv.tag.position.set(rp.x,rp.y+0.52,rp.z);
+}
+
+/* Once a frame, and from the background ticker while the host's tab is hidden. */
+function mpFrame(dt){
+  if(!MP.started)return;
+  const now=performance.now();
+  if(now-mpLastPose>=MP_POSE_MS){ mpLastPose=now; netSendFast(mpPosePacket()); }
+  if(MP.host&&now-mpLastSnap>=MP_SNAP_MS){ mpLastSnap=now; mpSendSnap(); }
+  if(MP.guest)mpGuestLerp();
+  mpAvatarFrame();
+}
+
+/* ─── events ─────────────────────────────────────────────────── */
+NET.on('start',d=>{
+  if(NET.role!=='guest')return;
+  if(state==='loading'){ MP.pendingStart=d.seed; lobbyStatus('The host started - joining as soon as this copy has loaded…','ok'); return; }
+  mpBegin(false,d.seed);
+});
+NET.on('hurt',d=>{
+  if(!MP.guest)return;
+  // the host saw a pose up to ~100 ms old; if the shell was already shut here, it missed
+  if(playerSheltered())return;
+  hurt(d.dmg,d.reason);
+});
+NET.on('die',d=>{ if(MP.guest&&state==='play'){ P.caught=false; die(d.reason); } });
+NET.on('flip',()=>{ if(MP.guest)flipPlayer(); });
+NET.on('toast',d=>{ if(MP.guest)toast(d.html,d.secs); });
+NET.on('sfx',d=>{ const f=SFX[d.k]; if(typeof f==='function'){ try{ f.apply(SFX,d.a||[]); }catch(e){} } });
+NET.on('pset',d=>{
+  if(!MP.guest)return;
+  if('trap' in d)P.trap=d.trap;
+  if('caught' in d)P.caught=d.caught;
+  if(d.tumble)P.tumble=Math.max(P.tumble||0,d.tumble);
+  if(d.dv){P.vel.x+=d.dv[0];P.vel.z+=d.dv[1];}
+  if(d.pos)P.pos.set(d.pos[0],d.pos[1],d.pos[2]);
+});
+NET.on('lightning',d=>{ if(MP.guest)triggerLightning(d.i); });
+NET.on('mhide',d=>{
+  const m=mobs[d.n]; if(!m||!MP.guest)return;
+  m.awake=false;
+  for(const o of m.netObjs){ if(o===m.group||(m.netExtra||[]).includes(o)){o.visible=false;} mpLerping.delete(o); }
+});
+NET.on('pick',d=>{
+  if(!MP.host)return;
+  const it=items[d.id];
+  if(!it||it.collected)return;          // someone was quicker
+  collectItem(it,false);
+  netSend({t:'picked',id:d.id,by:'guest'});
+});
+NET.on('picked',d=>{
+  if(!MP.guest)return;
+  const it=items[d.id];
+  if(!it||it.collected)return;
+  it.pending=false;
+  collectItem(it,d.by==='guest');
+});
+NET.on('win',()=>{
+  if(!MP.started||state==='win')return;
+  MP.winFromNet=true;
+  try{ winGame(); }finally{ MP.winFromNet=false; }
+});
+
+/* A worker's timer is not throttled like a hidden page's, so while the
+   host's tab is in the background the world still turns for the guest. */
+function mpStartWorker(){
+  if(mpWorker)return;
+  try{
+    const url=URL.createObjectURL(new Blob(['setInterval(()=>postMessage(0),33);'],{type:'text/javascript'}));
+    mpWorker=new Worker(url);
+    mpWorker.onmessage=()=>{
+      if(!document.hidden||!MP.started||!MP.host)return;
+      const dt=Math.min(clock.getDelta(),0.05);
+      if(state==='play')update(dt); else mpHostIdleStep(dt);
+      mpFrame(dt);
+    };
+  }catch(e){ mpWorker=null; }
+}
+
+function mpBegin(isHost,seed){
+  MP.on=true; MP.host=isHost; MP.guest=!isHost; MP.started=true;
+  if(!MP.rp)MP.rp=mpMakeRemote();
+  Object.assign(MP.rp,{state:'menu',trap:null,caught:false,tumble:0,flipped:false,raft:null,hp:100});
+  mpCollectObjs();
+  mpRelevant.clear(); mpLerping.clear(); mpSnapSeq=0;
+  for(const m of mobs)m.tgt=null;
+  for(const c of crows)c.tgt=null;
+  // the same seed on both sides: whatever each still draws for itself agrees
+  RNG=mulberry32(seed>>>0);
+  show('dead',false); show('win',false);
+  resetPlayer(); hideDeathShell();
+  activeSavePointId=null;
+  if(!isHost){
+    // start beside the host rather than inside them
+    const rx=Math.cos(P.yaw), rz=-Math.sin(P.yaw);
+    for(const off of [0.9,-0.9,0.5]){
+      if(!blockedWorld(P.pos.x+rx*off,P.pos.z+rz*off)){P.pos.x+=rx*off;P.pos.z+=rz*off;break;}
+    }
+    // the guest runs no creatures: they are shown as the host sends them
+    for(const m of mobs){ m.awake=false; m.group.visible=false; for(const x of (m.netExtra||[]))x.visible=false; }
+  }
+  MP.spawn={x:P.pos.x,z:P.pos.z,yaw:P.yaw};
+  mpBuildAvatar(); mpAv.prev=mpAv.cur=null;
+  if(isHost){ mpWrapSfx(); mpStartWorker(); }
+  $('lobby').classList.add('hide');
+  if(state==='pause'||state==='menu'){ /* startPlay takes it from here */ }
+  else state='menu';
+  startPlay();
+  toast(isHost?'Your partner is in the Hollow with you. <b>Find the three Sunstones.</b>'
+              :'You are in the host\'s Hollow. <b>Find the three Sunstones together.</b>',4.5);
+}
+/* back to one player: the host keeps the world, the guest starts afresh */
+function mpEnd(msg){
+  const wasGuest=MP.guest;
+  MP.on=false; MP.started=false; MP.host=false; MP.guest=false;
+  mpUnwrapSfx();
+  if(mpWorker){ mpWorker.terminate(); mpWorker=null; }
+  if(mpAv.rig){ mpAv.rig.visible=false; mpAv.tag.visible=false; }
+  mpLerping.clear();
+  P.trap=null; P.caught=false;
+  if(wasGuest){
+    for(const m of mobs)m.awake=false;       // wake/sleep runs again from scratch
+    for(const r of RAFTS){ delete r.netX; delete r.netZ; }
+    show('dead',false); show('win',false); show('pause',false);
+    resetPlayer();
+    state='menu'; show('menu',true); el.hud.classList.remove('on');
+    if(isLocked())document.exitPointerLock();
+  }
+  if(msg)toast(msg,4);
+}
+/* Dead in a shared game: wake at your nest, or where you both started. */
+function mpRespawn(){
+  show('dead',false);
+  const sp=activeSavePointId!==null?SAVE_POINTS[activeSavePointId]:null;
+  const x=sp?sp.x:MP.spawn.x, z=sp?sp.z:MP.spawn.z;
+  P.pos.set(x,groundH(x,z)+EYE,z); P.vel.set(0,0,0);
+  P.yaw=sp&&sp.yaw!==undefined?sp.yaw:MP.spawn.yaw; P.lastYaw=P.yaw;
+  unflipPlayer();
+  P.hp=100;P.sp=100;P.hidden=false;P.hideAmt=0;P.boost=0;P.lastHurt=99;P.winded=false;
+  P.raft=null;P.trap=null;P.caught=false;P.tumble=0;
+  // what you carried is in the shell you dropped
+  P.berries=0;P.shrooms=0;P.hasLantern=false;P.lanternOn=false;
+  if(lanternHeld)lanternHeld.visible=false;
+  state='play'; el.hud.classList.add('on');
+  clock.getDelta();
+  if(!TOUCH)lock();
+  updateHUD();updateHotbar();
+}
+/* After a shared win: both back to the menu, still connected; the host can start again. */
+function mpAfterWin(){
+  show('win',false);
+  MP.started=false; MP.on=true;
+  mpUnwrapSfx();
+  if(mpWorker){ mpWorker.terminate(); mpWorker=null; }
+  if(mpAv.rig){ mpAv.rig.visible=false; mpAv.tag.visible=false; }
+  MP.host=false; MP.guest=false;          // until the host starts the next one
+  state='menu'; show('menu',true); el.hud.classList.remove('on');
+  $('lobby').classList.remove('hide');
+  $('lobbyhost').hidden=NET.role!=='host'; $('lobbyjoin').hidden=true;
+  $('lobbystart').hidden=NET.role!=='host';
+  lobbyStatus(lobbyConnectedText(),'ok');
+}
 $('pause').addEventListener('click',()=>startPlay());
 $('app').addEventListener('click',()=>{if(state==='play'&&!isLocked()&&!TOUCH)lock();});
 $('dead').addEventListener('click',restart);
@@ -10612,6 +11406,7 @@ function createSaveData(spId){
 }
 
 function saveGame(spId){
+  if(MP.on)return;                   // a shared game is nobody's save
   if(spId === undefined) spId = (activeSavePointId !== null ? activeSavePointId : 0);
   const saveData = createSaveData(spId);
   try{
@@ -10696,6 +11491,9 @@ function applySaveData(data){
 }
 
 function restart(){
+  // a shared game carries on: you wake at your nest, the world does not reset
+  if(MP.started&&state==='dead'){mpRespawn();return;}
+  if(MP.started&&state==='win'){mpAfterWin();return;}
   const wasWin = (state === 'win');
   show('dead',false);show('win',false);
   roused=false;
@@ -10743,6 +11541,20 @@ let nearItem=null;
 function tryPickup(){
   if(!nearItem)return;
   const it=nearItem;
+  /* Shared game: the host decides who got there first. The guest asks,
+     and takes it when the host says so. */
+  if(MP.started&&MP.guest){
+    if(it.pending)return;
+    it.pending=true; setTimeout(()=>{it.pending=false;},1500);
+    netSend({t:'pick',id:items.indexOf(it)});
+    return;
+  }
+  collectItem(it,true);
+  if(MP.started&&MP.host)netSend({t:'picked',id:items.indexOf(it),by:'host'});
+}
+/* mine: this player picked it up. Otherwise the partner did, and it only
+   vanishes -- except a sunstone, which counts for both of you. */
+function collectItem(it,mine){
   it.collected=true;hideItemMesh(it);
   if(it.type==='stone'){
     P.stones++;SFX.stone();SFX.hollowStirs(P.stones);
@@ -10756,9 +11568,12 @@ function tryPickup(){
       const h=mobs.find(m=>m.type==='heron');
       if(h&&h.data&&h.data.cd>26&&!heronHintShown)h.data.cd=26;
     }
-    toast(`<b>Sunstone</b> recovered — ${P.stones} of 3`,3.2);
+    toast(mine?`<b>Sunstone</b> recovered — ${P.stones} of 3`
+              :`Your partner found a <b>Sunstone</b> — ${P.stones} of 3`,3.2);
     if(P.stones>=3)openGate();
     updateObjective();
+  }else if(!mine){
+    /* the partner's find: it is gone for you too, and that is all */
   }else if(it.type==='berry'){
     P.berries++;SFX.pickup();toast(hint('Picked up <b>Sunberries</b> — press <b>1</b> then <b>Q</b> to eat',
                                 'Picked up <b>Sunberries</b> — tap the 🫐 slot twice to eat'),2.8);
@@ -10772,7 +11587,7 @@ function tryPickup(){
   }
   updateHUD();updateHotbar();
   if(activeSavePointId !== null) saveGame(activeSavePointId);
-  nearItem=null;el.prompt.style.opacity='0';
+  if(nearItem===it){nearItem=null;el.prompt.style.opacity='0';}
 }
 function useItem(){
   if(P.slot===0){
@@ -10824,6 +11639,7 @@ function openGate(){
   }
 }
 function hurt(dmg,reason){
+  if(P!==LP){ netSend({t:'hurt',dmg,reason}); return; }   // a creature struck the partner
   if(P.hp<=0)return;
   P.hp=clamp(P.hp-dmg,0,100);P.lastHurt=0;
   el.dmg.style.opacity=String(clamp(0.4+dmg/40,0,1));
@@ -10836,10 +11652,12 @@ const DEATH_WORDS={
   heron:'A shadow, a stillness, and a beak like a spear. You never saw the rest of the bird.'
 };
 function die(reason){
+  if(P!==LP){ netSend({t:'die',reason}); return; }
   /* drop the shell at the death location — carrying whatever you had */
   deathShell = {
     x: P.pos.x, z: P.pos.z,
-    stones: P.stones, berries: P.berries,
+    // in a shared game the sunstones are both players', so they are not yours to drop
+    stones: MP.on?0:P.stones, berries: P.berries,
     shrooms: P.shrooms, hasLantern: P.hasLantern
   };
   placeDeathShell(P.pos.x, P.pos.z);
@@ -10860,6 +11678,8 @@ function die(reason){
   show('dead',true);el.hud.classList.remove('on');
 }
 function winGame(){
+  // one of you through the gate is both of you through it
+  if(MP.started&&!MP.winFromNet)netSend({t:'win'});
   hideDeathShell();
   state='win';SFX.win();touchRelease();
   document.exitPointerLock();
@@ -10925,7 +11745,7 @@ let envCur=ENV_BASE;
 
 function update(dt){
   P.time+=dt;
-  updateWeather(dt);
+  if(MP.guest)mpGuestWeather(dt); else updateWeather(dt);
   /* A wet day is a windy one, and a windy one moves faster: the clock that
      drives every sway, every travelling gust band and the ambience itself
      runs up to 45% quicker in rain, so the hedges work harder rather than
@@ -11448,8 +12268,7 @@ function update(dt){
 
   /* ---- mobs ---- */
   updateRafts(dt);
-  updateStage(dt);
-  updateMobs(dt);
+  const crowHuntingLP=MP.guest?false:stepHostWorld(dt);
   if(!thornHintShown&&state==='play'){
     for(const m of mobs){
       if(m.type!=='thornmaw'||!m.awake)continue;
@@ -11461,10 +12280,10 @@ function update(dt){
   }
 
   /* ---- crows & predators hunting ---- */
-  let crowHunting=false;
-  for(const c of crows)updateCrow(c,dt,()=>{crowHunting=true;});
+  // the guest hears it from the host, who is the one running the crows and the set pieces
+  let crowHunting=MP.guest?MP.huntedMe:crowHuntingLP;
   let mobHunting=false;
-  for(const m of mobs){
+  if(!MP.guest)for(const m of mobs){
     if(!m.awake)continue;
     if(m.type==='cat' && (m.state==='stalk'||m.state==='crouch'||m.state==='pounce') && mobDist(m)<CAT.noticeRange) mobHunting=true;
     if(m.type==='heron' && (m.state==='strike'||m.state==='seize') && mobDist(m)<18) mobHunting=true;
@@ -11692,6 +12511,9 @@ function animate(){
   requestAnimationFrame(animate);
   const dt=Math.min(clock.getDelta(),0.05);
   if(state==='play')update(dt);
+  // the host's world keeps going while the host is dead, paused or in the menu
+  else if(MP.started&&MP.host)mpHostIdleStep(dt);
+  if(MP.on)mpFrame(dt);
   waterU.value+=dt;
   if(ripple){ripple.offset.x+=dt*0.012;ripple.offset.y+=dt*0.008;}
   // fps + map at a lower rate
@@ -11803,6 +12625,8 @@ async function boot(){
   BOOT.phases.push(['ready',0]);
   state='menu';show('menu',true);
   animate();
+  // a host that pressed Start while this copy was still loading
+  if(MP.pendingStart!=null){ const sd=MP.pendingStart; MP.pendingStart=null; mpBegin(false,sd); }
  }catch(err){
   console.error('boot failed',err);
   window.__bootError=(err&&err.stack)||String(err);
@@ -11948,6 +12772,7 @@ function placeRiskCaches(){
 window.__game={
   PROF,profile,profileLayers,profReport,profToggle,
   LPOOL,setLightPool,DCULL,PHONE,applyPhoneTier,SHADOW,setBlobSoup,
+  MP,NET,mpFrame,netSend,WEATHER,STAGE,
   P,items,crows,keys,hazards,renderer,scene,camera,sun,hemi,AUDIO,POST,BOOT,
   renderFrame,buildTargets,matComposite,
   gust:gustU,gustAt,WIND_DIR,THORN,HERON,GLASS,CAT,FLIP,WEATHER,WASP,BEETLE,SHELL,FISH,
